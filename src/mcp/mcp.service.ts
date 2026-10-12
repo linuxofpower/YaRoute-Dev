@@ -17,7 +17,7 @@ import { ConnectorsService } from '../connectors/connectors.service';
 import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { githubInstallationUrl } from '../connectors/github-app.service';
-import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML } from '../connectors/connections-panel';
+import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
 
 @Injectable()
@@ -59,6 +59,7 @@ export class McpService {
     const server = new McpServer({
       name: 'NestNyx',
       version: '0.8.2',
+      icons: CONNECTIONS_PANEL_BRAND_ORIGIN ? [{src:CONNECTIONS_PANEL_BRAND_ORIGIN+'/branding/icon.png',mimeType:'image/png',sizes:['96x96']}] : [],
     });
 
     // Capability discovery is advisory: canonical Head/nyxcli.json defines semantics.
@@ -120,7 +121,7 @@ export class McpService {
       async () => ({contents:[{
         uri:CONNECTIONS_PANEL_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_PANEL_HTML,
-        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
           'openai/widgetCSP':{redirect_domains:['https://github.com']},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}),
