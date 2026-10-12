@@ -4,6 +4,12 @@
  * authenticated MCP tools. Render untrusted names with textContent only.
  */
 export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/connections/v8.html';
+const iconOrigin = process.env.NYX_PUBLIC_URL?.startsWith('https://')
+  ? new URL(process.env.NYX_PUBLIC_URL).origin : '';
+export const CONNECTIONS_PANEL_BRAND_ORIGIN = iconOrigin;
+const iconMarkup = iconOrigin
+  ? '<img src="'+iconOrigin+'/branding/icon.png" width="28" height="28" alt="" style="width:28px;height:28px;object-fit:contain" />'
+  : '';
 export const CONNECTIONS_PANEL_HTML = String.raw`<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -56,7 +62,7 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 </style></head>
 <body>
 <div id="nyx-quick">
-<strong class="brand">☁️ NestNyx</strong><span class="muted">Connections</span><span class="spacer"></span>
+<strong class="brand">${iconMarkup} NestNyx</strong><span class="muted">Connections</span><span class="spacer"></span>
 <button id="nyx-add" type="button" title="Add a connection" aria-label="Add a connection" aria-expanded="false" aria-controls="nyx-add-menu">＋</button>
 </div>
 <section id="nyx-add-menu" hidden aria-label="Add a connection">

@@ -83,5 +83,6 @@
       "description": "DEV-only PostgreSQL connection string (distinct DB from production). Set in Heroku private config vars.",
       "required": true
     }
-  }
+  },
+  "logo": "https://dev-nest-nyx-0df80c227630.herokuapp.com/branding/icon.png"
 }
