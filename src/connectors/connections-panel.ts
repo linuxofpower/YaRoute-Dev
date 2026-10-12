@@ -63,11 +63,11 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 <h2>Add a connection</h2>
 <div id="nyx-provider-choices" role="group" aria-label="Choose a provider">
 <button type="button" data-open="nyx-google-group">🌈 Google Drive<small>Connect accounts through Google OAuth when enabled</small></button>
-<button type="button" data-open="nyx-mega-group">🗄️ MEGA<small>Show configured remotes; new login pending</small></button>
+<button type="button" data-open="nyx-mega-group">🗄️ MEGA<small>Connect multiple accounts via private HTTPS form</small></button>
 <button type="button" data-open="nyx-rclone-group">🧰 Existing Rclone<small>View private configuration metadata</small></button>
 <button type="button" data-open="nyx-other-group" data-github="true">🐙 GitHub<small>Create a named GitHub connection</small></button>
 </div>
-<p class="muted">GitHub creation is available. Google Drive OAuth is available in activated multi-user mode. MEGA onboarding is not yet enabled; never enter credentials in chat.</p>
+<p class="muted">GitHub creation is available. Google Drive OAuth is available in activated multi-user mode. MEGA onboarding uses a separate NestNyx-hosted HTTPS form; never enter your MEGA credentials in chat.</p>
 </section>
 <header><p class="muted">Existing connections grouped by provider. Rclone configuration is not proof of connectivity.</p>
 <div class="warn">GitHub permissions and repository writes require explicit grants. No default-branch writes, workflow dispatch, credential editing, billing or infrastructure actions.</div></header>
@@ -78,7 +78,10 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 <p class="provider-note">Each account is authorized independently. Only NestNyx app-created or selected files are accessible. Choose MAIN after a successful write test.</p></div>
 <div id="nyx-google-list" aria-live="polite">Checking configured remotes…</div></div></details>
 <details class="nyx-provider-group" id="nyx-mega-group"><summary>🗄️ MEGA <span class="nyx-provider-count" id="nyx-mega-count">Loading</span></summary>
-<div class="nyx-provider-list" id="nyx-mega-list" aria-live="polite">Checking configured remotes…</div></details>
+<div class="nyx-provider-list"><div id="tenant-mega-ui" hidden>
+<form id="tenant-mega-add" class="row"><label>Connection name <input id="tenant-mega-name" type="text" maxlength="80" placeholder="My MEGA" required></label><button type="submit">Connect MEGA</button></form>
+<p class="provider-note">NestNyx hosts a one-time HTTPS credential form. No MEGA password or 2FA code goes through ChatGPT. Unlike Google Drive, MEGA has no OAuth connection here.</p></div>
+<div id="nyx-mega-list" aria-live="polite">Checking configured remotes…</div></div></details>
 <details class="nyx-provider-group" id="nyx-rclone-group"><summary>🧰 Rclone <span class="nyx-provider-count" id="nyx-rclone-count">Private inventory</span></summary>
 <div class="nyx-provider-list"><p class="provider-note">Existing private Rclone metadata; remotes are listed under their providers above. This does not import, connect or modify credentials.</p>
 <button id="rclone-refresh" type="button">Refresh configured remotes</button>
@@ -152,9 +155,10 @@ function renderTenantConnections(data){
  tenantReady=true;
  document.getElementById('tenant-google-ui').hidden=false;
  const list=document.getElementById('nyx-google-list');list.replaceChildren();
- document.getElementById('nyx-google-count').textContent=data.length+' account'+(data.length===1?'':'s');
- if(!data.length){list.append(el('p','No Google Drive accounts yet. Connect one above.'));return;}
- for(const item of data){
+ const drives=data.filter(x=>x?.provider==='google-drive');
+ document.getElementById('nyx-google-count').textContent=drives.length+' account'+(drives.length===1?'':'s');
+ if(!drives.length)list.append(el('p','No Google Drive accounts yet. Connect one above.'));
+ for(const item of drives){
   if(!item || item.provider!=='google-drive')continue;
   const card=el('div');card.className='card';
   const header=el('div');header.className='row';
@@ -172,6 +176,32 @@ function renderTenantConnections(data){
   card.append(controls,rename,button('Disconnect',async()=>{
    if(!confirm('Remove this NestNyx connection and local authorization?'))return;
    await call('nyx_storage_disconnect',{id:item.id});await refreshTenant();
+  }));
+  list.append(card);
+ }
+ renderTenantMega(data);
+}
+function renderTenantMega(data){
+ const megas=data.filter(x=>x?.provider==='mega');
+ document.getElementById('tenant-mega-ui').hidden=false;
+ document.getElementById('nyx-mega-count').textContent=megas.length+' account'+(megas.length===1?'':'s');
+ const list=document.getElementById('nyx-mega-list');list.replaceChildren();
+ if(!megas.length)list.append(el('p','No MEGA accounts yet. Connect one above.'));
+ for(const item of megas){
+  const card=el('div');card.className='card';
+  const header=el('div');header.className='row';
+  header.append(el('strong',item.name),el('span',item.status));
+  card.append(header,el('p','Read: '+(item.readVerified?'Verified':'Not verified')+' · Write: '+(item.writeVerified?'Verified':'Not verified')));
+  const controls=el('div');controls.className='row';
+  if(item.status==='connected'){
+   controls.append(button('Test read',async()=>{const r=await call('nyx_storage_probe',{id:item.id,mode:'read'});show(r.verified?'MEGA read verified':'MEGA read failed',!r.verified);await refreshTenant();}));
+   controls.append(button('Test write',async()=>{if(!confirm('Create and remove a disposable MEGA test folder?'))return;const r=await call('nyx_storage_probe',{id:item.id,mode:'write'});show(r.verified?'MEGA write verified':'MEGA write failed',!r.verified);await refreshTenant();}));
+  }
+  const name=input(item.name);const rename=el('div');rename.className='row';
+  rename.append(name,button('Rename',async()=>{await call('nyx_storage_rename',{id:item.id,name:name.value.trim()});await refreshTenant();}));
+  card.append(controls,rename,button('Disconnect',async()=>{
+    if(!confirm('Remove this MEGA connection and stored login from NestNyx?'))return;
+    await call('nyx_storage_disconnect',{id:item.id});await refreshTenant();
   }));
   list.append(card);
  }
@@ -280,8 +310,6 @@ async function refreshRclone(){
  try{
   await refreshTenant();
   document.getElementById('nyx-rclone-group').hidden=true;
-  document.getElementById('nyx-mega-count').textContent='Not yet enabled';
-  document.getElementById('nyx-mega-list').replaceChildren(el('p','MEGA per-user onboarding is not yet enabled.'));
   return;
  }catch{}
  try{
@@ -428,7 +456,7 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
   }else if(choice.dataset.open==='nyx-rclone-group'){
    show('Rclone credentials must be managed privately on the server. Inventory is read-only.');
   }else{
-   show(tenantReady?'Connect additional Google Drive accounts above. MEGA onboarding is still pending.':'Existing private Rclone remotes are read-only here. Public OAuth requires activation.');
+   show(tenantReady?'Connect additional Google Drive or MEGA accounts above.':'Existing private Rclone remotes are read-only here. Public onboarding requires activation.');
   }
   addMenu.hidden=true;
   quickAdd.setAttribute('aria-expanded','false');
@@ -448,6 +476,23 @@ document.getElementById('tenant-google-add').addEventListener('submit',async e=>
   await request('ui/open-link',{url:result.url});
   show('Authorize the selected Google account, then return and refresh.');
   document.getElementById('tenant-google-name').value='';
+  await refreshTenant();
+ }catch(e){show(e.message,true);}
+});
+document.getElementById('tenant-mega-add').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const name=document.getElementById('tenant-mega-name').value.trim();
+ try{
+  const result=await call('nyx_storage_begin_mega',{name});
+  if(result?.provider!=='mega'||typeof result?.url!=='string')throw Error('MEGA connection link unavailable');
+  const login=new URL(result.url);
+  // Server-created signed-in NestNyx HTTPS URL; never any user credentials here.
+  if(login.protocol!=='https:'||login.pathname!=='/connect/mega'||
+     !/^[A-Za-z0-9_-]{40,64}$/.test(login.searchParams.get('ticket')||''))
+    throw Error('Invalid secure MEGA form URL');
+  await request('ui/open-link',{url:result.url});
+  show('Enter your MEGA account details on the NestNyx-hosted HTTPS form, then return here and refresh.');
+  document.getElementById('tenant-mega-name').value='';
   await refreshTenant();
  }catch(e){show(e.message,true);}
 });
