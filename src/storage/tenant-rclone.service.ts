@@ -10,6 +10,7 @@ type DriveToken = {
   access_token: string; refresh_token: string; token_type: 'Bearer'; expiry: string;
 };
 type Provider = 'drive' | 'mega';
+type MegaCredential = { user:string; pass:string; session_id?:string; master_key?:string };
 type Row = {
   id:string; owner_id:string; provider:Provider; display_name:string;
   provider_identity:string|null; encrypted_credential:string|null;
@@ -65,6 +66,12 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       hour timestamptz NOT NULL,
       count integer NOT NULL,
       PRIMARY KEY(owner_id,kind,hour)
+    )`);
+    await this.db().query(`CREATE TABLE IF NOT EXISTS nyx_tenant_rclone_mega_login (
+      state_hash text PRIMARY KEY,
+      connection_id uuid NOT NULL,
+      owner_id text NOT NULL,
+      expires_at timestamptz NOT NULL
     )`);
     await this.db().query(`CREATE TABLE IF NOT EXISTS nyx_tenant_rclone_oauth_state (
       state_hash text PRIMARY KEY,
@@ -152,6 +159,102 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     // handled separately, as it may affect other remotes of the same account.
     return {disconnected:true};
   }
+  /** One-time browser-only enrollment; the MCP result never contains credentials. */
+  async beginMega(owner:string,name:string) {
+    this.owner(owner);this.db();
+    await this.budget(owner,'oauth',10);
+    const base=process.env.NYX_PUBLIC_URL;
+    if(!base||!/^https:\/\//.test(base))throw Error('MEGA_HTTPS_REQUIRED');
+    const id=randomUUID(),ticket=randomBytes(32).toString('base64url');
+    const digest=createHash('sha256').update(ticket).digest('hex');
+    const client=await this.db().connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO nyx_tenant_rclone (id,owner_id,provider,display_name,status)
+        VALUES($1,$2,'mega',$3,'pending')`,[id,owner,this.displayName(name)]);
+      await client.query(`INSERT INTO nyx_tenant_rclone_mega_login
+        (state_hash,connection_id,owner_id,expires_at)
+        VALUES($1,$2,$3,now()+interval '10 minutes')`,[digest,id,owner]);
+      await client.query('COMMIT');
+    }catch{await client.query('ROLLBACK');throw Error('MEGA_ENROLLMENT_FAILED');}
+    finally{client.release();}
+    return {id,url:base.replace(/\/$/,'')+'/connect/mega?ticket='+encodeURIComponent(ticket),
+      expiresInSeconds:600,provider:'mega'};
+  }
+  async inspectMegaTicket(ticket:string) {
+    const hash=this.megaTicketHash(ticket);
+    const q=await this.db().query<{owner_id:string;connection_id:string;display_name:string}>(`
+      SELECT s.owner_id,s.connection_id,c.display_name FROM nyx_tenant_rclone_mega_login s
+      JOIN nyx_tenant_rclone c ON c.id=s.connection_id AND c.owner_id=s.owner_id
+      WHERE s.state_hash=$1 AND s.expires_at>now() AND c.provider='mega'
+      AND c.status='pending'`,[hash]);
+    if(q.rowCount!==1)throw Error('MEGA_ENROLLMENT_INVALID');
+    return {name:q.rows[0].display_name};
+  }
+  private megaTicketHash(ticket:string) {
+    if(typeof ticket!=='string'||! /^[A-Za-z0-9_-]{40,64}$/.test(ticket))
+      throw Error('MEGA_ENROLLMENT_INVALID');
+    return createHash('sha256').update(ticket).digest('hex');
+  }
+  /** Pipe the password via stdin, never argv, logs, URLs or ChatGPT. */
+  private async obscureMegaPassword(password:string):Promise<string> {
+    if(typeof password!=='string'||password.length<1||password.length>1024||
+       /[\r\n\x00]/.test(password))throw Error('MEGA_PASSWORD_INVALID');
+    return new Promise((resolve,reject)=>{
+      let stdout='',size=0,done=false;
+      const child=spawn(this.binary,['obscure','-'],{
+        env:{PATH:process.env.PATH||'',HOME:os.tmpdir()},stdio:['pipe','pipe','pipe']});
+      const finish=(result:string|null)=>{
+        if(done)return;done=true;clearTimeout(timer);
+        if(result!==null)resolve(result);else reject(Error('MEGA_PASSWORD_OBSCURE_FAILED'));
+      };
+      const timer=setTimeout(()=>{child.kill('SIGKILL');finish(null);},8000);
+      child.stdout.on('data',(b:Buffer)=>{
+        size+=b.length;if(size>4096){child.kill('SIGKILL');finish(null);return;}
+        stdout+=b.toString('utf8');
+      });
+      // Never collect provider stderr: it may contain account details.
+      child.stderr.resume();
+      child.on('error',()=>finish(null));
+      child.on('close',code=>{
+        const text=stdout.trim();
+        finish(code===0 && /^[A-Za-z0-9_-]{16,4096}$/.test(text)?text:null);
+      });
+      child.stdin.on('error',()=>{});
+      child.stdin.end(password+'\n');
+    });
+  }
+  async completeMega(ticket:string,user:string,password:string,otp?:string) {
+    const digest=this.megaTicketHash(ticket);
+    if(typeof user!=='string'||user.length>320||! /^[^@\s\x00-\x1f]+@[^@\s\x00-\x1f]+\.[^@\s\x00-\x1f]+$/.test(user))
+      throw Error('MEGA_ACCOUNT_INVALID');
+    if(otp && !/^\d{6}$/.test(otp))throw Error('MEGA_OTP_INVALID');
+    // Consume state before reading any credentials so failed/replayed forms cannot retry.
+    const r=await this.db().query<{owner_id:string;connection_id:string}>(`
+      DELETE FROM nyx_tenant_rclone_mega_login
+      WHERE state_hash=$1 AND expires_at>now()
+      RETURNING owner_id,connection_id`,[digest]);
+    if(r.rowCount!==1)throw Error('MEGA_ENROLLMENT_INVALID');
+    const owner=r.rows[0].owner_id,id=r.rows[0].connection_id;
+    const row=await this.get(owner,id);
+    if(row.provider!=='mega'||row.status!=='pending')throw Error('MEGA_ENROLLMENT_INVALID');
+    const pass=await this.obscureMegaPassword(password);
+    const credential:MegaCredential={user,pass};
+    const result=await this.runIsolated(row,'read',{...credential,otp:otp||undefined});
+    if(!result.ok)throw Error('MEGA_LOGIN_FAILED');
+    const stored:MegaCredential={...credential,...result.megaSession};
+    // A 2FA-protected account needs persistent session keys. Never persist an OTP.
+    if(otp && (!stored.session_id||!stored.master_key))
+      throw Error('MEGA_SESSION_NOT_PERSISTED');
+    const encrypted=this.encrypt(owner,id,'mega',stored);
+    const updated=await this.db().query(`UPDATE nyx_tenant_rclone
+      SET encrypted_credential=$3,status='connected',read_verified_at=now(),
+          write_verified_at=NULL,updated_at=now()
+      WHERE owner_id=$1 AND id=$2 AND status='pending' RETURNING id`,
+      [owner,id,encrypted]);
+    if(updated.rowCount!==1)throw Error('MEGA_ENROLLMENT_INVALID');
+    return {connected:true};
+  }
   private clientId(){const value=process.env.NYX_GOOGLE_CLIENT_ID;if(!value)throw Error('GOOGLE_OAUTH_NOT_CONFIGURED');return value;}
   private clientSecret(){const value=process.env.NYX_GOOGLE_CLIENT_SECRET;if(!value)throw Error('GOOGLE_OAUTH_NOT_CONFIGURED');return value;}
   private callbackUrl(){
@@ -235,12 +338,20 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       [pending.owner_id,row.id,profile.sub,stored]);
     return {connected:true};
   }
-  private async runIsolated(row:Row,kind:'read'|'write') {
-    if(!row.encrypted_credential||row.provider!=='drive'||row.status!=='connected')
+  private async runIsolated(
+    row:Row,kind:'read'|'write',pendingMega?:MegaCredential&{otp?:string},
+  ):Promise<{ok:boolean;megaSession?:Pick<MegaCredential,'session_id'|'master_key'>}> {
+    if(row.status!=='connected' && !(row.provider==='mega'&&row.status==='pending'&&pendingMega))
       throw Error('STORAGE_CONNECTION_NOT_READY');
-    const token=this.decrypt<DriveToken>(row.owner_id,row.id,'drive',row.encrypted_credential);
-    if(!token.access_token||!token.refresh_token||!token.expiry)
+    if(!row.encrypted_credential && !pendingMega)throw Error('STORAGE_CONNECTION_NOT_READY');
+    const credential=row.provider==='drive'
+      ?this.decrypt<DriveToken>(row.owner_id,row.id,'drive',row.encrypted_credential!)
+      :pendingMega||this.decrypt<MegaCredential>(row.owner_id,row.id,'mega',row.encrypted_credential!);
+    if(row.provider==='drive' && (!(credential as DriveToken).access_token||
+       !(credential as DriveToken).refresh_token||!(credential as DriveToken).expiry))
       throw Error('STORAGE_CREDENTIAL_INVALID');
+    if(row.provider==='mega' && (!(credential as MegaCredential).user||
+       !(credential as MegaCredential).pass))throw Error('STORAGE_CREDENTIAL_INVALID');
     if(this.active>=this.maxActive || this.activeOwners.has(row.owner_id))
       throw Error('STORAGE_PROBE_BUSY');
     this.active++;this.activeOwners.add(row.owner_id);
@@ -250,9 +361,18 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       await fs.chmod(dir,0o700);
       const config=path.join(dir,'rclone.conf');
       // Only one synthetic remote exists in this per-operation config.
-      const lines=['[tenant]','type = drive','scope = drive.file',
-        'client_id = '+this.clientId(),'client_secret = '+this.clientSecret(),
-        'token = '+JSON.stringify(token),''];
+      const lines=row.provider==='drive'
+        ? ['[tenant]','type = drive','scope = drive.file',
+           'client_id = '+this.clientId(),'client_secret = '+this.clientSecret(),
+           'token = '+JSON.stringify(credential),'']
+        : ['[tenant]','type = mega',
+           'user = '+(credential as MegaCredential).user,
+           'pass = '+(credential as MegaCredential).pass,'use_https = true',
+           ...((credential as MegaCredential).session_id
+               ? ['session_id = '+(credential as MegaCredential).session_id] : []),
+           ...((credential as MegaCredential).master_key
+               ? ['master_key = '+(credential as MegaCredential).master_key] : []),
+           ...(pendingMega?.otp?['2fa = '+pendingMega.otp]:[]),''];
       await fs.writeFile(config,lines.join('\n'),{mode:0o600,flag:'wx'});
       const exec=(args:string[])=>new Promise<boolean>(resolve=>{
         let done=false,bytes=0;
@@ -266,13 +386,70 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
         child.once('error',()=>finish(false));
         child.once('close',code=>finish(code===0));
       });
-      if(kind==='read')return exec(['lsf','tenant:','--max-depth','1','--format','p']);
-      // Explicit user-requested write test; disposable unique folder, never delete user files.
-      const name='.nestnyx-test-'+randomUUID();
-      const created=await exec(['mkdir','tenant:'+name]);
-      if(!created)return false;
-      const cleaned=await exec(['rmdir','tenant:'+name]);
-      return cleaned;
+      const verified=kind==='read'
+        ?await exec(['lsf','tenant:','--max-depth','1','--format','p'])
+        :await (async()=>{
+           const name='.nestnyx-test-'+randomUUID();
+           const created=await exec(['mkdir','tenant:'+name]);
+           if(!created)return false;
+           return exec(['rmdir','tenant:'+name]);
+         })();
+      let megaSession:Pick<MegaCredential,'session_id'|'master_key'>|undefined;
+      if(row.provider==='mega' && verified) {
+        const text=await fs.readFile(config,'utf8');
+        const match=(key:string)=>text.match(new RegExp('^'+key+'\\s*=\\s*([^\\r\\n]+)
+    }finally{
+      if(dir)await fs.rm(dir,{recursive:true,force:true});
+      this.active--;this.activeOwners.delete(row.owner_id);
+    }
+  }
+  async probe(owner:string,id:string,mode:'read'|'write') {
+    if(mode!=='read'&&mode!=='write')throw Error('STORAGE_PROBE_INVALID');
+    const row=await this.get(owner,id);
+    await this.budget(owner,'probe',20);
+    const result=await this.runIsolated(row,mode);
+    const verified=result.ok;
+    const column=mode==='read'?'read_verified_at':'write_verified_at';
+    // MEGA may rotate its session; retain only the encrypted update.
+    if(row.provider==='mega' && result.megaSession && row.encrypted_credential) {
+      const old=this.decrypt<MegaCredential>(owner,id,'mega',row.encrypted_credential);
+      const updated=this.encrypt(owner,id,'mega',{...old,...result.megaSession});
+      await this.db().query(`UPDATE nyx_tenant_rclone
+        SET encrypted_credential=$3 WHERE owner_id=$1 AND id=$2 AND encrypted_credential=$4`,
+        [owner,id,updated,row.encrypted_credential]);
+    }
+    await this.db().query(`UPDATE nyx_tenant_rclone SET ${column}=$3,updated_at=now()
+      WHERE owner_id=$1 AND id=$2 AND status='connected'`,[owner,id,verified?new Date():null]);
+    return {id,mode,verified,writeAccess:mode==='write'?(verified?'verified':'failed'):'not-tested'};
+  }
+  async setMain(owner:string,id:string) {
+    const row=await this.get(owner,id);
+    if(row.provider!=='drive'||!row.write_verified_at||
+       Date.now()-new Date(row.write_verified_at).getTime()>15*60*1000||row.status!=='connected')
+      throw Error('MAIN_REQUIRES_VERIFIED_WRITABLE_DRIVE');
+    const client:PoolClient=await this.db().connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[owner]);
+      const found=await client.query(`SELECT id FROM nyx_tenant_rclone
+        WHERE owner_id=$1 AND id=$2 AND provider='drive'
+        AND status='connected' AND write_verified_at>now()-interval '15 minutes' FOR UPDATE`,[owner,id]);
+      if(found.rowCount!==1)throw Error('MAIN_NOT_ELIGIBLE');
+      await client.query('UPDATE nyx_tenant_rclone SET is_main=false WHERE owner_id=$1 AND is_main',[owner]);
+      await client.query('UPDATE nyx_tenant_rclone SET is_main=true WHERE owner_id=$1 AND id=$2',[owner,id]);
+      await client.query('COMMIT');
+      return {id,isMain:true};
+    }catch(error){await client.query('ROLLBACK');throw error;}
+    finally{client.release();}
+  }
+}
+,'m'))?.[1]?.trim();
+        const sid=match('session_id'),mk=match('master_key');
+        if(sid&&mk&&/^[A-Za-z0-9+/_=-]{8,4096}$/.test(sid)&&
+           /^[A-Za-z0-9+/=]{8,4096}$/.test(mk))
+           megaSession={session_id:sid,master_key:mk};
+      }
+      return {ok:verified,megaSession};
     }finally{
       if(dir)await fs.rm(dir,{recursive:true,force:true});
       this.active--;this.activeOwners.delete(row.owner_id);
