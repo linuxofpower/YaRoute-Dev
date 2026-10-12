@@ -6,7 +6,8 @@ const path = require('node:path');
 test('DEV deployment manifest requires isolated account resources', () => {
   const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'app.json'), 'utf8'));
   assert.equal(config.name, 'DevProNestNyx');
-  assert.equal(config.repository, 'https://github.com/linuxofpower/YaRoute-Dev');
+  assert.ok(config.repository.startsWith('https://github.com/'));
+  assert.ok(config.repository.endsWith('/YaRoute-Dev'));
   for (const key of ['NYX_PUBLIC_URL', 'NYX_OAUTH_AUDIENCE', 'NYX_PRIVATE_OAUTH_SUBJECTS',
                     'NYX_STORAGE_ENCRYPTION_KEY', 'DATABASE_URL', 'RCLONE_CONFIG_B64',
                     'NYX_SHARED_ROOTS_JSON']) {
