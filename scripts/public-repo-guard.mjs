@@ -2,6 +2,9 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
 const CANONICAL_REPO = 'yaMorozYaroslav/YaRoute';
+const DEVELOPMENT_REPO = 'linuxofpower/YaRoute-Dev';
+const APPROVED_REPOSITORIES = new Set([CANONICAL_REPO, DEVELOPMENT_REPO]);
+const runningRepo = process.env.GITHUB_REPOSITORY || CANONICAL_REPO;
 const historyMode = process.argv.includes('--history');
 
 function git(args, options = {}) {
@@ -74,8 +77,15 @@ function scanCurrent() {
       }
     }
 
-    if (text.includes('linuxofpower') && file !== 'scripts/public-repo-guard.mjs') {
-      failures.push(`private account identifier in ${file}`);
+    if (file !== 'scripts/public-repo-guard.mjs') {
+      // Development documentation may name this explicitly approved public repository.
+      // Continue blocking every other linuxofpower identifier, including in production.
+      const approvedText = runningRepo === DEVELOPMENT_REPO && file === 'README.md'
+        ? text.replaceAll(DEVELOPMENT_REPO, '')
+        : text;
+      if (approvedText.includes('linuxofpower')) {
+        failures.push(`private account identifier in ${file}`);
+      }
     }
 
     let match;
@@ -94,8 +104,8 @@ function scanCurrent() {
     failures.push('app.json repository is not the canonical YaRoute repository');
   }
 
-  if (process.env.GITHUB_REPOSITORY && process.env.GITHUB_REPOSITORY !== CANONICAL_REPO) {
-    failures.push(`workflow is running in noncanonical repository: ${process.env.GITHUB_REPOSITORY}`);
+  if (process.env.GITHUB_REPOSITORY && !APPROVED_REPOSITORIES.has(process.env.GITHUB_REPOSITORY)) {
+    failures.push('workflow is running outside the approved YaRoute production/development repositories');
   }
 
   if (failures.length) {
@@ -104,7 +114,7 @@ function scanCurrent() {
     process.exit(1);
   }
 
-  console.log(`Public-repository guard passed for ${CANONICAL_REPO}.`);
+  console.log(`Public-repository guard passed for ${runningRepo}.`);
 }
 
 function scanHistory() {
