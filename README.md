@@ -1,8 +1,10 @@
 # NestNyx
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/yaMorozYaroslav/YaRoute)
+**Development repository:** [`linuxofpower/YaRoute-Dev`](https://github.com/linuxofpower/YaRoute-Dev) (`main`).
 
-**Canonical implementation repository:** `yaMorozYaroslav/YaRoute`. Do not deploy or maintain a second GitHub repository for this service.
+**Production repository:** [`yaMorozYaroslav/YaRoute`](https://github.com/yaMorozYaroslav/YaRoute) (`master`).
+
+This is the independent development repository for the **same NestNyx/YaRoute product**, not a separate edition. Implement features and fixes here, verify CI and integration behavior, then propose tested changes to production by pull request for the owner's approval. Never push, merge, or deploy directly to production from this repository. The repositories have separate Git histories; an appropriate fork-network bridge is still required to create cross-account production PRs. Do not assume DEV changes automatically deploy to production.
 
 NestNyx is the execution side of Nyx storage operations. ChatGPT can inspect explicitly shared Google Drive folders and, through the MCP endpoint, call a small allow-listed set of storage tools. NestNyx executes those tools with `rclone` against the same logical shared-folder roots.
 
