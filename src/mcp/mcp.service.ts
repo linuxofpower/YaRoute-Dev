@@ -376,6 +376,12 @@ export class McpService {
         inputSchema:z.object({name:z.string().min(1).max(80)}),
         annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
       },async({name})=>this.safeTool(()=>this.tenantStorage.beginGoogle(this.connectorOwner(),name)));
+      server.registerTool('nyx_storage_begin_mega',{
+        title:'Connect another MEGA account',
+        description:'Create a one-time NestNyx HTTPS browser form for a MEGA login. Never send MEGA email, password or 2FA through ChatGPT. MEGA has no OAuth flow in Rclone.',
+        inputSchema:z.object({name:z.string().min(1).max(80)}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+      },async({name})=>this.safeTool(()=>this.tenantStorage.beginMega(this.connectorOwner(),name)));
       server.registerTool('nyx_storage_rename',{
         title:'Rename my cloud connection',
         inputSchema:z.object({id:z.string().uuid(),name:z.string().min(1).max(80)}),
