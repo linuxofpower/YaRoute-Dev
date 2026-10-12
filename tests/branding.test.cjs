@@ -53,5 +53,5 @@ test('MCP and ChatGPT connections panel advertise the icon from its own HTTPS se
  assert.match(mcp,/resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN/);
  assert.match(panel,/branding\/icon\.png/);
  assert.match(panel,/iconMarkup/);
- assert.match(app.logo,/\/public\/branding\/icon\.png$/);
+ assert.match(app.logo,/\/branding\/icon\.png$/);
 });
