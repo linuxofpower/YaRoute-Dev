@@ -84,7 +84,8 @@ test('existing MEGA and Drive remotes use read-only private inventory, never cre
  assert.match(panel,/Write access: Not tested/);
  assert.match(panel,/Test connection/);
  assert.match(panel,/nyx_rclone_connection_test_read/);
- assert.match(panel,/MEGA per-user onboarding is not yet enabled/);
+ assert.match(panel,/call\('nyx_storage_begin_mega'/);
+ assert.match(panel,/id="tenant-mega-add"/);
  assert.match(panel,/call\('nyx_storage_begin_google'/);
  assert.match(panel,/call\('nyx_storage_connections'/);
  assert.doesNotMatch(panel,/nyx_connection_create.{0,180}provider:.*mega/s);
