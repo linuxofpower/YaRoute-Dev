@@ -1,5 +1,10 @@
 # NestNyx
 
+<img src="public/branding/icon.png" width="96" height="96" alt="NestNyx development icon" />
+
+**Development branding:** Blue swallow/egg icon. The matching purple production artwork is stored at `public/branding/nestnyx-prod.png` for transfer to the independently managed production repository. All icon PNG files are under 10 KB. The application exposes public `/branding/icon.png`, `/favicon.ico` and `/manifest.webmanifest` routes once deployed. ChatGPT plugin-directory icons and Google Cloud OAuth branding are managed independently; repository changes alone do not change their listings.
+
+
 **Development repository:** [`linuxofpower/YaRoute-Dev`](https://github.com/linuxofpower/YaRoute-Dev) (`main`).
 
 **Production repository:** [`yaMorozYaroslav/YaRoute`](https://github.com/yaMorozYaroslav/YaRoute) (`master`).
