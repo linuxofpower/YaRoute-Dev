@@ -3,7 +3,7 @@
  * APIs, external forms or finance controls. All data/actions go through
  * authenticated MCP tools. Render untrusted names with textContent only.
  */
-export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/connections/v8.html';
+export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/connections/v9.html';
 export const CONNECTIONS_PANEL_HTML = String.raw`<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -53,6 +53,18 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 .nyx-remote .nyx-remote-permissions{padding:7px 4px 11px}
 .nyx-remote .nyx-remote-permissions p{margin:5px 0}
 .nyx-remote>summary:focus-visible{outline:3px solid #18a56c;outline-offset:2px}
+.nyx-command-buttons{display:flex;flex-wrap:wrap;gap:7px;margin:11px 0}
+.nyx-command-button{font-weight:700;min-width:70px;border-radius:9px;padding:8px 11px;transition:filter .15s}
+.nyx-command-button:hover{filter:brightness(1.08)}
+.nyx-command-button:focus-visible{outline:3px solid #1582d6;outline-offset:2px}
+.nyx-command-gray{background:#747b8520;border-color:#858e98;color:inherit}
+.nyx-command-yellow{background:#f4b94236;border-color:#b77914;color:inherit}
+.nyx-command-green{background:#36a86e35;border-color:#278d53;color:inherit}
+.nyx-command-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:6px}
+.nyx-command-legend span::before{content:'●';margin-right:5px}
+.nyx-command-legend .gray::before{color:#8b949e}
+.nyx-command-legend .yellow::before{color:#c18a19}
+.nyx-command-legend .green::before{color:#2aa56c}
 </style></head>
 <body>
 <div id="nyx-quick">
@@ -90,6 +102,12 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 <div class="row" style="justify-content:space-between"><h2>GitHub connections</h2><button id="refresh" type="button">Refresh GitHub</button></div>
 <div id="connection-list" aria-live="polite">Loading…</div>
 </div></details>
+<section id="nyx-command-health" aria-label="Nyx command health">
+<div class="row" style="justify-content:space-between"><h2>Nyx commands</h2><button id="nyx-command-refresh" type="button">Refresh</button></div>
+<div class="nyx-command-legend" aria-label="Command status colors"><span class="gray">Head only</span><span class="yellow">Incomplete / issues</span><span class="green">All variations verified</span></div>
+<div id="nyx-command-buttons" class="nyx-command-buttons" role="group" aria-label="Nyx command status buttons" aria-live="polite">Loading…</div>
+<small id="nyx-command-note" class="muted" role="status">Buttons inspect status only; they never execute commands.</small>
+</section>
 <div id="message" role="status" aria-live="polite"></div>
 <script>
 (function(){
@@ -143,6 +161,67 @@ function el(tag,text){const n=document.createElement(tag);if(text!==undefined)n.
 function button(name,handler){const b=el('button',name);b.type='button';b.addEventListener('click',async()=>{
  b.disabled=true;try{await handler();}catch(e){show(e.message,true);}finally{b.disabled=false;}});return b;}
 function input(value){const n=el('input');n.type='text';n.value=value||'';n.maxLength=80;return n;}
+const commandRoot=document.getElementById('nyx-command-buttons');
+const commandNote=document.getElementById('nyx-command-note');
+// Head-only: gray. A bound command is yellow until all required variations
+// have verified receipts for the same CLI authority hash; no green by inference.
+function commandHealthTone(command,cliSha){
+ if(command?.executable!==true || command?.status==='canonical-only')return 'gray';
+ const h=command.health;
+ if(h?.schema!=='nyx.command.verification.v1' ||
+    h.cli_sha256!==cliSha || h.issues?.length ||
+    !Array.isArray(h.required_variations) ||
+    !Array.isArray(h.verified_variations) ||
+    !h.required_variations.length)return 'yellow';
+ const required=new Set(h.required_variations);
+ if(required.size!==h.required_variations.length)return 'yellow';
+ const receipts=new Map();
+ for(const item of h.verified_variations){
+  if(!item || typeof item.name!=='string' || receipts.has(item.name))return 'yellow';
+  receipts.set(item.name,item);
+ }
+ if(receipts.size!==required.size)return 'yellow';
+ for(const name of required){
+  const receipt=receipts.get(name);
+  if(!receipt || receipt.status!=='COMPLETE' || !/^[a-f0-9]{64}$/.test(receipt.sha256||''))return 'yellow';
+ }
+ return 'green';
+}
+function renderCommandButtons(data){
+ if(data?.status!=='COMPLETE' || !Array.isArray(data.commands) ||
+    typeof data?.metadata?.cli?.sha256!=='string')
+  throw Error('Verified Nyx command inventory unavailable');
+ const frag=document.createDocumentFragment();const seen=new Set();
+ for(const command of data.commands){
+  if(typeof command?.name!=='string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(command.name) ||
+     seen.has(command.name))throw Error('Invalid Nyx command inventory');
+  seen.add(command.name);
+  const tone=commandHealthTone(command,data.metadata.cli.sha256);
+  const label='nyx '+command.name;
+  const meanings={
+   gray:'Head only; no CLI execution contract',
+   yellow:'Execution available but not all variations verified, or issues remain',
+   green:'All required variations verified against this CLI version'
+  };
+  const b=el('button',label);b.type='button';
+  b.className='nyx-command-button nyx-command-'+tone;
+  b.title=meanings[tone];
+  b.setAttribute('aria-label',label+': '+meanings[tone]);
+  b.addEventListener('click',()=>{commandNote.textContent=label+' — '+meanings[tone];});
+  frag.append(b);
+ }
+ commandRoot.replaceChildren(frag);
+ commandNote.textContent=seen.size+' commands from verified Head. Tap to inspect status; no command is executed.';
+}
+async function refreshCommandButtons(){
+ commandRoot.replaceChildren(el('span','Checking verified Head commands…'));
+ commandNote.textContent='Read-only health check.';
+ try{renderCommandButtons(await call('nyx_help',{}));}
+ catch(e){
+  commandRoot.replaceChildren(el('span','Command health unavailable'));
+  commandNote.textContent='Status unknown: '+(e?.message||'read failed')+'. Refresh to retry.';
+ }
+}
 function renderRclone(data){
  if(data?.schema!=='nyx.storage.rclone.connections.v1' ||
     data?.status!=='configured_not_live_verified' ||
@@ -391,6 +470,7 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
 }
 document.getElementById('refresh').addEventListener('click',()=>refresh().catch(e=>show(e.message,true)));
 document.getElementById('rclone-refresh').addEventListener('click',()=>refreshRclone());
+document.getElementById('nyx-command-refresh').addEventListener('click',()=>refreshCommandButtons());
 document.getElementById('new-form').addEventListener('submit',async e=>{
  e.preventDefault();const name=document.getElementById('new-name').value.trim();
  const provider='github';
@@ -401,6 +481,7 @@ document.getElementById('new-form').addEventListener('submit',async e=>{
 ready.then(()=>{
  refresh().catch(e=>show(e.message,true));
  refreshRclone();
+ refreshCommandButtons();
 }).catch(e=>show('MCP Apps unavailable: '+e.message,true));
 })();
 </script></body></html>`;
