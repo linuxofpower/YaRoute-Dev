@@ -397,53 +397,8 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       let megaSession:Pick<MegaCredential,'session_id'|'master_key'>|undefined;
       if(row.provider==='mega' && verified) {
         const text=await fs.readFile(config,'utf8');
-        const match=(key:string)=>text.match(new RegExp('^'+key+'\\s*=\\s*([^\\r\\n]+)
-    }finally{
-      if(dir)await fs.rm(dir,{recursive:true,force:true});
-      this.active--;this.activeOwners.delete(row.owner_id);
-    }
-  }
-  async probe(owner:string,id:string,mode:'read'|'write') {
-    if(mode!=='read'&&mode!=='write')throw Error('STORAGE_PROBE_INVALID');
-    const row=await this.get(owner,id);
-    await this.budget(owner,'probe',20);
-    const result=await this.runIsolated(row,mode);
-    const verified=result.ok;
-    const column=mode==='read'?'read_verified_at':'write_verified_at';
-    // MEGA may rotate its session; retain only the encrypted update.
-    if(row.provider==='mega' && result.megaSession && row.encrypted_credential) {
-      const old=this.decrypt<MegaCredential>(owner,id,'mega',row.encrypted_credential);
-      const updated=this.encrypt(owner,id,'mega',{...old,...result.megaSession});
-      await this.db().query(`UPDATE nyx_tenant_rclone
-        SET encrypted_credential=$3 WHERE owner_id=$1 AND id=$2 AND encrypted_credential=$4`,
-        [owner,id,updated,row.encrypted_credential]);
-    }
-    await this.db().query(`UPDATE nyx_tenant_rclone SET ${column}=$3,updated_at=now()
-      WHERE owner_id=$1 AND id=$2 AND status='connected'`,[owner,id,verified?new Date():null]);
-    return {id,mode,verified,writeAccess:mode==='write'?(verified?'verified':'failed'):'not-tested'};
-  }
-  async setMain(owner:string,id:string) {
-    const row=await this.get(owner,id);
-    if(row.provider!=='drive'||!row.write_verified_at||
-       Date.now()-new Date(row.write_verified_at).getTime()>15*60*1000||row.status!=='connected')
-      throw Error('MAIN_REQUIRES_VERIFIED_WRITABLE_DRIVE');
-    const client:PoolClient=await this.db().connect();
-    try{
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[owner]);
-      const found=await client.query(`SELECT id FROM nyx_tenant_rclone
-        WHERE owner_id=$1 AND id=$2 AND provider='drive'
-        AND status='connected' AND write_verified_at>now()-interval '15 minutes' FOR UPDATE`,[owner,id]);
-      if(found.rowCount!==1)throw Error('MAIN_NOT_ELIGIBLE');
-      await client.query('UPDATE nyx_tenant_rclone SET is_main=false WHERE owner_id=$1 AND is_main',[owner]);
-      await client.query('UPDATE nyx_tenant_rclone SET is_main=true WHERE owner_id=$1 AND id=$2',[owner,id]);
-      await client.query('COMMIT');
-      return {id,isMain:true};
-    }catch(error){await client.query('ROLLBACK');throw error;}
-    finally{client.release();}
-  }
-}
-,'m'))?.[1]?.trim();
+        const match=(key:string)=>text.split(/\r?\n/).find(line=>
+          line.startsWith(key+' = '))?.slice((key+' = ').length).trim();
         const sid=match('session_id'),mk=match('master_key');
         if(sid&&mk&&/^[A-Za-z0-9+/_=-]{8,4096}$/.test(sid)&&
            /^[A-Za-z0-9+/=]{8,4096}$/.test(mk))
@@ -459,8 +414,16 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     if(mode!=='read'&&mode!=='write')throw Error('STORAGE_PROBE_INVALID');
     const row=await this.get(owner,id);
     await this.budget(owner,'probe',20);
-    const verified=await this.runIsolated(row,mode);
+    const result=await this.runIsolated(row,mode);
+    const verified=result.ok;
     const column=mode==='read'?'read_verified_at':'write_verified_at';
+    if(row.provider==='mega' && result.megaSession && row.encrypted_credential) {
+      const old=this.decrypt<MegaCredential>(owner,id,'mega',row.encrypted_credential);
+      const updated=this.encrypt(owner,id,'mega',{...old,...result.megaSession});
+      await this.db().query(`UPDATE nyx_tenant_rclone
+        SET encrypted_credential=$3 WHERE owner_id=$1 AND id=$2 AND encrypted_credential=$4`,
+        [owner,id,updated,row.encrypted_credential]);
+    }
     await this.db().query(`UPDATE nyx_tenant_rclone SET ${column}=$3,updated_at=now()
       WHERE owner_id=$1 AND id=$2 AND status='connected'`,[owner,id,verified?new Date():null]);
     return {id,mode,verified,writeAccess:mode==='write'?(verified?'verified':'failed'):'not-tested'};
