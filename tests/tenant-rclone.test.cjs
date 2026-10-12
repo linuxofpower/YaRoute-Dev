@@ -99,7 +99,7 @@ test('per-job Rclone config includes only selected tenant credentials, and is re
   assert.equal(result.verified,true);
   const config=fs.readFileSync(path.join(dir,'captured.txt'),'utf8');
   assert.match(config,/only-alice/);
-  assert.doesNotMatch(config,/bob|linuxofpower|\[private\]/);
+  assert.doesNotMatch(config,/bob|operator-remotes|\[private\]/);
   assert.equal((config.match(/\[tenant\]/g)||[]).length,1);
  }finally{for(const [k,v] of Object.entries(original))v===undefined?delete process.env[k]:process.env[k]=v;}
 });
