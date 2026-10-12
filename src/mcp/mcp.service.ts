@@ -11,6 +11,7 @@ import * as z from 'zod/v4';
 import { InitService } from '../init/init.service';
 import { JobStoreService } from '../storage/job-store.service';
 import { StorageService } from '../storage/storage.service';
+import { TenantRcloneService } from '../storage/tenant-rclone.service';
 import { CopyJobPayload } from '../storage/storage.types';
 import { assessPotentialFinancialLoss } from '../connectors/financial-risk-preflight';
 import { ConnectorsService } from '../connectors/connectors.service';
@@ -28,6 +29,7 @@ export class McpService {
 
   constructor(
     private readonly storage: StorageService,
+    private readonly tenantStorage: TenantRcloneService,
     private readonly jobs: JobStoreService,
     private readonly init: InitService,
     private readonly commands: NyxCommandExecutor,
@@ -121,7 +123,7 @@ export class McpService {
         uri:CONNECTIONS_PANEL_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_PANEL_HTML,
         _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
-          'openai/widgetCSP':{redirect_domains:['https://github.com']},
+          'openai/widgetCSP':{redirect_domains:['https://github.com','https://accounts.google.com',...(process.env.NYX_PUBLIC_URL?.startsWith('https://')?[new URL(process.env.NYX_PUBLIC_URL).origin]:[])]},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}),
     );
@@ -357,6 +359,53 @@ export class McpService {
       annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
     },async({id,repo,title,body})=>this.safeTool(()=>
       this.limitedConnectionApi(id,()=>this.githubWrites.createIssue(this.connectorOwner(),id,repo,title,body))));
+
+    // Only tenant-owned encrypted credentials are eligible for these operations.
+    // Register in public mode only: never mix with private operator Rclone config.
+    if (process.env.NYX_DEPLOYMENT_MODE==='public' &&
+        process.env.NYX_TENANT_STORAGE_ENABLED==='true') {
+      server.registerTool('nyx_storage_connections',{
+        title:'List my cloud storage connections',
+        description:'Lists only the authenticated NestNyx owner\'s Google Drive remotes. No credentials.',
+        inputSchema:z.object({}),
+        annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+      },async()=>this.safeTool(()=>this.tenantStorage.list(this.connectorOwner())));
+      server.registerTool('nyx_storage_begin_google',{
+        title:'Connect another Google Drive account',
+        description:'Begin Google OAuth for the current NestNyx owner and return the official authorization URL. No passwords or tokens entered in chat.',
+        inputSchema:z.object({name:z.string().min(1).max(80)}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+      },async({name})=>this.safeTool(()=>this.tenantStorage.beginGoogle(this.connectorOwner(),name)));
+      server.registerTool('nyx_storage_begin_mega',{
+        title:'Connect another MEGA account',
+        description:'Create a one-time NestNyx HTTPS browser form for a MEGA login. Never send MEGA email, password or 2FA through ChatGPT. MEGA has no OAuth flow in Rclone.',
+        inputSchema:z.object({name:z.string().min(1).max(80)}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+      },async({name})=>this.safeTool(()=>this.tenantStorage.beginMega(this.connectorOwner(),name)));
+      server.registerTool('nyx_storage_rename',{
+        title:'Rename my cloud connection',
+        inputSchema:z.object({id:z.string().uuid(),name:z.string().min(1).max(80)}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+      },async({id,name})=>this.safeTool(()=>this.tenantStorage.rename(this.connectorOwner(),id,name)));
+      server.registerTool('nyx_storage_probe',{
+        title:'Test my cloud storage connection',
+        description:'Explicitly test read-only listing or create and remove a disposable folder to verify write access. Does not expose file contents.',
+        inputSchema:z.object({id:z.string().uuid(),mode:z.enum(['read','write'])}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+      },async({id,mode})=>this.safeTool(()=>this.tenantStorage.probe(this.connectorOwner(),id,mode)));
+      server.registerTool('nyx_storage_set_main',{
+        title:'Choose my main writable Google Drive',
+        description:'Only a write-verified connected Google Drive may become MAIN.',
+        inputSchema:z.object({id:z.string().uuid()}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+      },async({id})=>this.safeTool(()=>this.tenantStorage.setMain(this.connectorOwner(),id)));
+      server.registerTool('nyx_storage_disconnect',{
+        title:'Remove my cloud storage connection',
+        description:'Delete locally stored authorization. Does not revoke other Google OAuth connections.',
+        inputSchema:z.object({id:z.string().uuid()}),
+        annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:false},
+      },async({id})=>this.safeTool(()=>this.tenantStorage.disconnect(this.connectorOwner(),id)));
+    }
 
     // Public multi-user connector mode deliberately omits all legacy global
     // storage roots, Rclone, NYX CLI commands and cross-user private handoffs.

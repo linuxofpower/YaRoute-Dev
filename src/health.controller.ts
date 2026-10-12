@@ -13,7 +13,10 @@ export class HealthController {
   @Public()
   @Get()
   async getHealth() {
-    const version = await this.rclone.version();
+    // Public tenants must not touch the operator's private Rclone configuration.
+    const version = process.env.NYX_DEPLOYMENT_MODE === 'public'
+      ? 'tenant-isolated (operator config unavailable)'
+      : await this.rclone.version();
     return {
       ok: true,
       service: process.env.NYX_SERVICE_NAME?.trim() || 'NestNyx',
