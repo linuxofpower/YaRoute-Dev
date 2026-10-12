@@ -40,7 +40,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     this.key=Buffer.from(raw,'base64');
     if(this.key.length!==32)throw new Error('INVALID_TENANT_STORAGE_KEY');
     if(!process.env.DATABASE_URL)throw new Error('DATABASE_URL_REQUIRED');
-    this.pool=new Pool({connectionString:process.env.DATABASE_URL,max:8});
+    this.pool=new Pool({connectionString:process.env.DATABASE_URL,max:8,connectionTimeoutMillis:5000});
     await this.db().query(`CREATE TABLE IF NOT EXISTS nyx_tenant_rclone (
       id uuid PRIMARY KEY,
       owner_id text NOT NULL,
@@ -59,6 +59,13 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       ON nyx_tenant_rclone(owner_id,lower(display_name))`);
     await this.db().query(`CREATE UNIQUE INDEX IF NOT EXISTS nyx_tenant_rclone_one_main
       ON nyx_tenant_rclone(owner_id) WHERE is_main`);
+    await this.db().query(`CREATE TABLE IF NOT EXISTS nyx_tenant_rclone_usage (
+      owner_id text NOT NULL,
+      kind text NOT NULL,
+      hour timestamptz NOT NULL,
+      count integer NOT NULL,
+      PRIMARY KEY(owner_id,kind,hour)
+    )`);
     await this.db().query(`CREATE TABLE IF NOT EXISTS nyx_tenant_rclone_oauth_state (
       state_hash text PRIMARY KEY,
       connection_id uuid NOT NULL,
@@ -103,6 +110,17 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     decipher.setAuthTag(value.subarray(12,28));
     return JSON.parse(Buffer.concat([decipher.update(value.subarray(28)),decipher.final()]).toString('utf8')) as T;
   }
+  /** Atomic per-owner hourly limits across all NestJS replicas. */
+  private async budget(owner:string,kind:'oauth'|'probe',max:number) {
+    this.owner(owner);
+    const result=await this.db().query(`INSERT INTO nyx_tenant_rclone_usage
+      (owner_id,kind,hour,count) VALUES($1,$2,date_trunc('hour',now()),1)
+      ON CONFLICT(owner_id,kind,hour) DO UPDATE
+      SET count=nyx_tenant_rclone_usage.count+1
+      WHERE nyx_tenant_rclone_usage.count<$3
+      RETURNING count`,[owner,kind,max]);
+    if(result.rowCount!==1)throw Error('STORAGE_OWNER_RATE_LIMIT');
+  }
   private view(row:Row) {
     return {id:row.id,name:row.display_name,provider:row.provider==='drive'?'google-drive':'mega',
       status:row.status,isMain:row.is_main,
@@ -143,6 +161,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
   }
   async beginGoogle(owner:string,name:string) {
     this.owner(owner);this.db();
+    await this.budget(owner,'oauth',10);
     const id=randomUUID(),state=randomBytes(32).toString('base64url');
     const verifier=randomBytes(48).toString('base64url');
     const digest=createHash('sha256').update(state).digest('hex');
@@ -262,17 +281,17 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
   async probe(owner:string,id:string,mode:'read'|'write') {
     if(mode!=='read'&&mode!=='write')throw Error('STORAGE_PROBE_INVALID');
     const row=await this.get(owner,id);
+    await this.budget(owner,'probe',20);
     const verified=await this.runIsolated(row,mode);
-    if(verified) {
-      const column=mode==='read'?'read_verified_at':'write_verified_at';
-      await this.db().query(`UPDATE nyx_tenant_rclone SET ${column}=now(),updated_at=now()
-        WHERE owner_id=$1 AND id=$2 AND status='connected'`,[owner,id]);
-    }
+    const column=mode==='read'?'read_verified_at':'write_verified_at';
+    await this.db().query(`UPDATE nyx_tenant_rclone SET ${column}=$3,updated_at=now()
+      WHERE owner_id=$1 AND id=$2 AND status='connected'`,[owner,id,verified?new Date():null]);
     return {id,mode,verified,writeAccess:mode==='write'?(verified?'verified':'failed'):'not-tested'};
   }
   async setMain(owner:string,id:string) {
     const row=await this.get(owner,id);
-    if(row.provider!=='drive'||!row.write_verified_at||row.status!=='connected')
+    if(row.provider!=='drive'||!row.write_verified_at||
+       Date.now()-new Date(row.write_verified_at).getTime()>15*60*1000||row.status!=='connected')
       throw Error('MAIN_REQUIRES_VERIFIED_WRITABLE_DRIVE');
     const client:PoolClient=await this.db().connect();
     try{
@@ -280,7 +299,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[owner]);
       const found=await client.query(`SELECT id FROM nyx_tenant_rclone
         WHERE owner_id=$1 AND id=$2 AND provider='drive'
-        AND status='connected' AND write_verified_at IS NOT NULL FOR UPDATE`,[owner,id]);
+        AND status='connected' AND write_verified_at>now()-interval '15 minutes' FOR UPDATE`,[owner,id]);
       if(found.rowCount!==1)throw Error('MAIN_NOT_ELIGIBLE');
       await client.query('UPDATE nyx_tenant_rclone SET is_main=false WHERE owner_id=$1 AND is_main',[owner]);
       await client.query('UPDATE nyx_tenant_rclone SET is_main=true WHERE owner_id=$1 AND id=$2',[owner,id]);
