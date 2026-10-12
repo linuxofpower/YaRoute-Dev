@@ -1,10 +1,16 @@
 # NestNyx
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/linuxofpower/NestNyx)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/yaMorozYaroslav/YaRoute)
+
+**Canonical implementation repository:** `yaMorozYaroslav/YaRoute`. Do not deploy or maintain a second GitHub repository for this service.
 
 NestNyx is the execution side of Nyx storage operations. ChatGPT can inspect explicitly shared Google Drive folders and, through the MCP endpoint, call a small allow-listed set of storage tools. NestNyx executes those tools with `rclone` against the same logical shared-folder roots.
 
 The boundary is deliberate: **neither REST nor MCP accepts arbitrary rclone remote names or unrestricted Drive roots**. Every path is resolved below a configured shared folder.
+
+## Public-repository safety
+
+This repository contains implementation code and public-safe documentation only. Do not commit access tokens, client secrets, API keys, rclone configuration, private keys, personal email addresses, private Drive IDs, private artifact hashes, or account-specific remote names. Runtime secrets belong in Heroku config vars or GitHub Actions secrets.
 
 ## V0.3 capabilities
 
@@ -56,7 +62,29 @@ Shared folders are the GPT-visible control surface. Private rclone remotes are t
 - `nyx_stat` — inspect metadata, hashes, size, and owner.
 - `nyx_capacity` — report account quota information.
 - `nyx_copy_file` — queue a verified cross-area copy; source retained.
-- `nyx_job_status` — read job state and verification evidence.
+- `nyx_global_index` — queue a metadata-only scan of every accessible storage source and regenerate `global.md`, `n_global.json`, and `d_global.json` under the private Nyxpad file-global-index state.\n- `nyx_job_status` — read job state and verification evidence.
+
+## File global indexes
+
+NestNyx can build a three-depth metadata inventory across every accessible Google Drive and MEGA source:
+
+- `global.md` — Basic human-readable map: short source lines plus top-level folders only, in the same spirit as `paths.md`. No hashes, IDs, raw metadata, or exhaustive file lists.
+- `n_global.json` — Normal complete path inventory with compact file metadata.
+- `d_global.json` — Deep complete path inventory with hashes, parent/depth and extension metadata.
+
+Current files live privately at `MAIN:Documents/Nyxpad/file_global_indexes`. Each run can also preserve a timestamped snapshot under `versions/<scan-id>/`. Indexing reads file metadata only, not file contents or credentials, and excludes the index folder itself from future scans.
+
+## Public Heroku config bridge
+
+Public, non-secret runtime values that ChatGPT is allowed to maintain live in:
+
+```text
+config/heroku-public.json
+```
+
+A push to `master` validates this file against a strict allow-list, then GitHub Actions updates only those config vars through the Heroku Platform API before deployment. The API response is discarded so Heroku does not print the app's full config-var map into CI logs.
+
+Do **not** put credentials, rclone configuration, private account mappings, `NYX_SHARED_ROOTS_JSON`, database URLs, tokens, keys, or client secrets in this file. Those remain private runtime configuration.
 
 ## Heroku config vars
 
@@ -70,7 +98,7 @@ Shared folders are the GPT-visible control surface. Private rclone remotes are t
 
 ```json
 {
-  "MAIN": { "remote": "linuxofpower", "root": "." },
+  "MAIN": { "remote": "main_drive", "root": "." },
   "A": { "remote": "drive_a", "root": "A_Shared", "expectedOwner": "account-a@example.com" },
   "B": { "remote": "drive_b", "root": "B_Shared", "expectedOwner": "account-b@example.com" },
   "C": { "remote": "drive_c", "root": "C_Shared", "expectedOwner": "account-c@example.com" },
@@ -78,7 +106,7 @@ Shared folders are the GPT-visible control surface. Private rclone remotes are t
 }
 ```
 
-`MAIN` should point at the root of the `linuxofpower` Google Drive account. The canonical initialization defaults are:
+`MAIN` should point at the primary Google Drive root. The actual rclone remote name is runtime configuration and must not be committed. The canonical initialization defaults are:
 
 ```text
 NYX_INIT_AREA=MAIN
@@ -115,7 +143,7 @@ The production MCP endpoint is simply:
 https://YOUR-APP.herokuapp.com/mcp
 ```
 
-Do not put secrets in the URL. ChatGPT authenticates with OAuth and sends `Authorization: Bearer <access_token>`.
+Do not put secrets in the URL. ChatGPT authenticates with OAuth and sends a bearer access token.
 
 ## Prepare rclone config
 
@@ -137,9 +165,9 @@ Configure that provider so access tokens:
 - use the exact issuer configured in `NYX_OAUTH_ISSUER`;
 - contain the audience configured in `NYX_OAUTH_AUDIENCE`;
 - grant `nyx.read` and `nyx.write` scopes;
-- can issue refresh tokens (`offline_access`) so ChatGPT can remain connected.
+- can issue refresh tokens when persistent connection is required.
 
-When creating the custom app in ChatGPT, use OAuth authentication, copy the exact ChatGPT callback URL into the provider's allowed callback/redirect URLs, then enter the provider client ID and client secret in ChatGPT and run **Scan Tools**.
+When creating the custom app in ChatGPT, use OAuth authentication and the provider-side client configuration appropriate to that flow. Keep reusable credentials out of Git.
 
 ## OAuth discovery smoke test
 

@@ -1,0 +1,203 @@
+import { Injectable } from '@nestjs/common';
+import { createSign } from 'node:crypto';
+import { ConnectorCapability } from './connector-registry';
+import { ConnectorsService } from './connectors.service';
+
+type GitHubInstallation = {
+  id:number; app_id:number;
+  account?:{login?:string; type?:string};
+  permissions?:Record<string,string>;
+  repository_selection?:string;
+};
+type GitHubRepositories = {total_count:number;repositories:Array<{full_name:string}>};
+
+function githubAppConfig() {
+  const appId=process.env.NYX_GITHUB_APP_ID;
+  const key64=process.env.NYX_GITHUB_APP_PRIVATE_KEY_B64;
+  if(!appId || !/^[1-9]\d{0,12}$/.test(appId) ||
+     !key64 || !/^[A-Za-z0-9+/=\s]+$/.test(key64)) throw new Error('GITHUB_APP_NOT_CONFIGURED');
+  const pem=Buffer.from(key64,'base64').toString('utf8');
+  if(!pem.includes('-----BEGIN') || !pem.includes('PRIVATE KEY-----')) {
+    throw new Error('GITHUB_APP_KEY_INVALID');
+  }
+  return {appId:Number(appId),pem};
+}
+function appJwt():string {
+  const {appId,pem}=githubAppConfig();
+  const now=Math.floor(Date.now()/1000);
+  const input=[
+    Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT'})).toString('base64url'),
+    Buffer.from(JSON.stringify({iat:now-60,exp:now+540,iss:String(appId)})).toString('base64url'),
+  ].join('.');
+  const signer=createSign('RSA-SHA256');signer.update(input);signer.end();
+  return input+'.'+signer.sign(pem).toString('base64url');
+}
+async function boundedJson(response:Response,limit=150000):Promise<any> {
+  const raw=await response.text();
+  if(!response.ok || raw.length>limit) throw new Error('GITHUB_API_UNAVAILABLE');
+  try{return JSON.parse(raw);}catch{throw new Error('GITHUB_RESPONSE_INVALID');}
+}
+const jsonAccept={'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+async function requestGitHub(path:string,method:'GET'|'POST',token:string,body?:unknown):Promise<any> {
+  // Internal-only fixed host and known paths. Never expose path or method from MCP.
+  if(!path.startsWith('/') || path.includes('..') || /[?#]/.test(path)) throw new Error('GITHUB_API_PATH_INVALID');
+  const response=await fetch('https://api.github.com'+path,{
+    method,
+    headers:{...jsonAccept,Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},
+    body:body?JSON.stringify(body):undefined,
+    redirect:'error',
+    signal:AbortSignal.timeout(10000),
+  });
+  return boundedJson(response);
+}
+/**
+ * The configured GitHub App's own installation page, resolved with its
+ * server-only App JWT. Never construct a URL from a client-supplied slug.
+ * No App key, user token, repositories, or installation IDs are returned.
+ */
+export async function githubInstallationUrl():Promise<{url:string;provider:'github'}>{
+  const {appId}=githubAppConfig();
+  const app=await requestGitHub('/app','GET',appJwt()) as {id?:unknown;slug?:unknown};
+  if(app.id!==appId ||
+     typeof app.slug!=='string' ||
+     !/^[a-z0-9][a-z0-9-]{0,99}$/.test(app.slug)){
+    throw new Error('GITHUB_APP_INSTALLATION_URL_UNAVAILABLE');
+  }
+  return {provider:'github',
+    url:'https://github.com/apps/'+app.slug+'/installations/new'};
+}
+
+function verifiedGrants(permissions:Record<string,string>):ConnectorCapability[] {
+  const values=new Set<ConnectorCapability>(['repository:metadata']);
+  if(['read','write'].includes(permissions.actions)) values.add('ci:read');
+  if(['read','write'].includes(permissions.contents)) values.add('resources:read');
+  if(['read','write'].includes(permissions.contents)) values.add('releases:read');
+  if(['read','write'].includes(permissions.issues)) values.add('issues:read');
+  if(['read','write'].includes(permissions.pull_requests)) values.add('pulls:read');
+  if(permissions.contents==='write') values.add('contents:write');
+  if(permissions.issues==='write') values.add('issues:write');
+  if(permissions.pull_requests==='write') values.add('pulls:write');
+  // No release writes, Actions dispatch or workflow access even with provider grants.
+  return [...values];
+}
+const permissionsFor=(capability:ConnectorCapability):Record<string,'read'|'write'>=>{
+  switch(capability) {
+    case 'ci:read':return {metadata:'read',actions:'read'};
+    case 'contents:write':return {metadata:'read',contents:'write'};
+    case 'issues:write':return {metadata:'read',issues:'write'};
+    case 'pulls:write':return {metadata:'read',pull_requests:'write'};
+    case 'resources:read':return {metadata:'read',contents:'read'};
+    case 'releases:read':return {metadata:'read',contents:'read'};
+    case 'issues:read':return {metadata:'read',issues:'read'};
+    case 'pulls:read':return {metadata:'read',pull_requests:'read'};
+    case 'repository:metadata':return {metadata:'read'};
+    default:throw new Error('GITHUB_OPERATION_NOT_ALLOWED');
+  }
+};
+
+/**
+ * Signed installation identity and repo-bounded, capability-specific tokens.
+ * No CLI, no user tokens at rest, no GitHub Actions dispatch, no workflow grants.
+ * Write tokens are permitted ONLY for explicitly selected, verified capabilities.
+ */
+@Injectable()
+export class GithubAppService {
+  constructor(private readonly connections:ConnectorsService) {}
+
+  async completeCallback(state:string,code:string) {
+    if(!/^[a-zA-Z0-9_-]{8,255}$/.test(code)) throw new Error('GITHUB_OAUTH_CODE_INVALID');
+    const pending=await this.connections.consumeGithubState(state); // one-time state
+    const clientId=process.env.NYX_GITHUB_CLIENT_ID;
+    const clientSecret=process.env.NYX_GITHUB_CLIENT_SECRET;
+    const publicUrl=process.env.NYX_PUBLIC_URL;
+    if(!clientId||!clientSecret||!publicUrl) throw new Error('GITHUB_OAUTH_NOT_CONFIGURED');
+    const oauth=await fetch('https://github.com/login/oauth/access_token',{
+      method:'POST',
+      headers:{Accept:'application/json','Content-Type':'application/json'},
+      body:JSON.stringify({client_id:clientId,client_secret:clientSecret,code,
+        redirect_uri:publicUrl.replace(/\/$/,'')+'/connect/github/callback'}),
+      redirect:'error',signal:AbortSignal.timeout(10000),
+    });
+    const oauthData=await boundedJson(oauth,30000);
+    const userToken=oauthData.access_token;
+    if(typeof userToken!=='string'||userToken.length<12) throw new Error('GITHUB_OAUTH_EXCHANGE_FAILED');
+    // GitHub App user access token confirms this user can access the installation.
+    const accessible=await boundedJson(await fetch('https://api.github.com/user/installations?per_page=100',{
+      method:'GET',headers:{...jsonAccept,Authorization:'Bearer '+userToken},
+      redirect:'error',signal:AbortSignal.timeout(10000),
+    }));
+    if(!Number.isSafeInteger(accessible.total_count)||accessible.total_count>100 ||
+      !Array.isArray(accessible.installations)) throw new Error('GITHUB_INSTALLATION_REVIEW_REQUIRED');
+    // Only consider installations GitHub confirms the OAuth user can access,
+    // and which belong to this exact GitHub App. Never trust caller-supplied IDs.
+    const eligible=(accessible.installations as GitHubInstallation[]).filter(i=>
+      Number.isSafeInteger(i?.id) && i.id>0 &&
+      i.app_id===githubAppConfig().appId &&
+      typeof i.account?.login==='string' && i.account.login.length>0);
+    let matched:GitHubInstallation|undefined;
+    if(pending.installationId==='auto'){
+      if(eligible.length===1){
+        matched=eligible[0];
+      }else if(eligible.length>1){
+        // A display label may help choose among multiple verified installs,
+        // but is NOT an authorization grant. Verify installation and repos below.
+        const connection=await this.connections.getOwned(pending.ownerId,pending.connectionId);
+        if(connection.provider!=='github' || connection.status!=='pending')
+          throw new Error('GITHUB_CONNECTION_NOT_PENDING');
+        const label=connection.displayName.trim().toLowerCase();
+        const exact=eligible.filter(i=>i.account?.login?.toLowerCase()===label);
+        if(exact.length!==1)throw new Error('GITHUB_INSTALLATION_CHOICE_REQUIRED');
+        matched=exact[0];
+      }else{
+        throw new Error('GITHUB_APP_INSTALLATION_REQUIRED');
+      }
+    }else{
+      if(!/^[1-9][0-9]{0,19}$/.test(pending.installationId))
+        throw new Error('GITHUB_INSTALLATION_INVALID');
+      matched=eligible.find(i=>String(i.id)===pending.installationId);
+      if(!matched)throw new Error('GITHUB_INSTALLATION_NOT_OWNED');
+    }
+    const id=matched.id;
+    const verified=await requestGitHub('/app/installations/'+id,'GET',appJwt()) as GitHubInstallation;
+    if(verified.id!==id||verified.app_id!==githubAppConfig().appId ||
+      !verified.account?.login || verified.account.login!==matched.account?.login) {
+      throw new Error('GITHUB_INSTALLATION_INVALID');
+    }
+    // Inspect provider authorization using metadata-only installation token.
+    const token=await requestGitHub('/app/installations/'+id+'/access_tokens','POST',appJwt(),{
+      permissions:{metadata:'read'},
+    });
+    if(typeof token.token!=='string') throw new Error('GITHUB_TOKEN_UNAVAILABLE');
+    const repos=await requestGitHub('/installation/repositories','GET',token.token) as GitHubRepositories;
+    if(!Number.isSafeInteger(repos.total_count)||repos.total_count<1||repos.total_count>100||
+      !Array.isArray(repos.repositories)||repos.repositories.length!==repos.total_count) {
+      throw new Error('GITHUB_REPOSITORIES_REQUIRE_NARROW_INSTALLATION');
+    }
+    const names=repos.repositories.map(r=>r.full_name);
+    if(names.some(x=>typeof x!=='string'||!/(^[\w.-]+\/[\w.-]+$)/.test(x))) throw new Error('GITHUB_REPOSITORIES_INVALID');
+    return this.connections.activateGithub(pending.ownerId,pending.connectionId,
+      String(id),verified.account.login,verifiedGrants(verified.permissions??{}),names);
+  }
+
+  /**
+   * Every GitHub call mints a short-lived token restricted to one exact
+   * user-selected repo AND one minimal provider permission. No token is persisted.
+   */
+  async tokenFor(ownerId:string,connectionId:string,installationId:string,
+    repo:string,capability:ConnectorCapability,boundary?:{branch?:string;path?:string}):Promise<string> {
+    const c=await this.connections.registryPolicy().requireResource(ownerId,connectionId,capability,{
+      kind:'repository',id:repo,...boundary,
+    });
+    if(c.provider!=='github'||c.installationId!==installationId) throw new Error('GITHUB_INSTALLATION_MISMATCH');
+    if(!/^[\w.-]+\/[\w.-]+$/.test(repo)||repo.includes('..')) throw new Error('GITHUB_REPOSITORY_INVALID');
+    if(!/^[1-9]\d{0,19}$/.test(installationId)) throw new Error('GITHUB_INSTALLATION_INVALID');
+    const perms=permissionsFor(capability);
+    const token=await requestGitHub('/app/installations/'+installationId+'/access_tokens',
+      'POST',appJwt(),{
+        repositories:[repo.split('/')[1]],
+        permissions:perms,
+      });
+    if(typeof token.token!=='string'||token.token.length<15) throw new Error('GITHUB_TOKEN_UNAVAILABLE');
+    return token.token;
+  }
+}

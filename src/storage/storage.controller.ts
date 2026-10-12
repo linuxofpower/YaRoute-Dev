@@ -11,13 +11,33 @@ export class StorageController {
   ) {}
 
   @Get('areas')
-  getAreas() {
-    return { areas: this.storage.areas() };
+  async getAreas() {
+    return { areas: await this.storage.areas() };
   }
 
   @Get('capacity')
   capacity() {
     return this.storage.capacity();
+  }
+
+  @Get('mega/accounts')
+  async megaAccounts() {
+    return { accounts: await this.storage.megaAreas() };
+  }
+
+  @Get('mega/capacity')
+  megaCapacity() {
+    return this.storage.megaCapacity();
+  }
+
+  @Get('mega/:account/list')
+  megaList(@Param('account') account: string, @Query('path') path = '') {
+    return this.storage.megaList(account, path);
+  }
+
+  @Get('mega/:account/stat')
+  megaStat(@Param('account') account: string, @Query('path') path: string) {
+    return this.storage.megaStat(account, path);
   }
 
   @Get(':area/list')

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import path from 'node:path';
-import { SharedRoot } from './storage.types';
+import { SharedRoot, StorageProvider } from './storage.types';
 
 @Injectable()
 export class SharedRootsService {
@@ -11,16 +11,24 @@ export class SharedRootsService {
     if (!raw) throw new Error('NYX_SHARED_ROOTS_JSON is required');
 
     const parsed = JSON.parse(raw) as Record<string, SharedRoot>;
+    const providers = new Set<StorageProvider>(['google-drive', 'mega', 'other']);
+
     for (const [name, config] of Object.entries(parsed)) {
       if (!name || !config?.remote || !config?.root) {
         throw new Error(`Invalid shared root config for ${name || '<empty>'}`);
+      }
+      if (config.provider && !providers.has(config.provider)) {
+        throw new Error(`Invalid storage provider for ${name}: ${config.provider}`);
       }
     }
     this.roots = parsed;
   }
 
-  listAreas() {
-    return Object.keys(this.roots).sort();
+  listAreas(provider?: StorageProvider) {
+    return Object.entries(this.roots)
+      .filter(([, config]) => !provider || config.provider === provider)
+      .map(([name]) => name)
+      .sort();
   }
 
   get(area: string): SharedRoot {
@@ -29,11 +37,20 @@ export class SharedRootsService {
     return root;
   }
 
+  assertProvider(area: string, provider: StorageProvider) {
+    const root = this.get(area);
+    if (root.provider !== provider) {
+      throw new BadRequestException(`${area} is not configured as provider ${provider}`);
+    }
+    return root;
+  }
+
   resolve(area: string, relativePath = ''): string {
     const root = this.get(area);
     const clean = this.cleanRelativePath(relativePath);
-    const fullPath = clean ? path.posix.join(root.root, clean) : root.root;
-    return `${root.remote}:${fullPath}`;
+    const base = root.root === '.' ? '' : root.root;
+    const fullPath = clean ? path.posix.join(base, clean) : base;
+    return fullPath ? `${root.remote}:${fullPath}` : `${root.remote}:`;
   }
 
   cleanRelativePath(value: string): string {

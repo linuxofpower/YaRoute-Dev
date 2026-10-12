@@ -1,7 +1,10 @@
+export type StorageProvider = 'google-drive' | 'mega' | 'other';
+
 export type SharedRoot = {
   remote: string;
   root: string;
   expectedOwner?: string;
+  provider?: StorageProvider;
 };
 
 export type FileRef = {
@@ -15,12 +18,17 @@ export type CopyJobPayload = {
   verify?: boolean;
 };
 
+export type GlobalIndexJobPayload = {
+  snapshot?: boolean;
+};
+
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type StorageJobType = 'copy-file' | 'global-index';
 
 export type StorageJob = {
   id: string;
-  type: 'copy-file';
-  payload: CopyJobPayload;
+  type: StorageJobType;
+  payload: CopyJobPayload | GlobalIndexJobPayload;
   status: JobStatus;
   attempts: number;
   result?: unknown;
