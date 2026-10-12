@@ -83,5 +83,6 @@
       "description": "DEV-only PostgreSQL connection string (distinct DB from production). Set in Heroku private config vars.",
       "required": true
     }
-  }
+  },
+  "logo": "https://raw.githubusercontent.com/linuxofpower/YaRoute-Dev/main/public/branding/icon.png"
 }
