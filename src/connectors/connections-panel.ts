@@ -62,18 +62,21 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 <section id="nyx-add-menu" hidden aria-label="Add a connection">
 <h2>Add a connection</h2>
 <div id="nyx-provider-choices" role="group" aria-label="Choose a provider">
-<button type="button" data-open="nyx-google-group">🌈 Google Drive<small>Show configured remotes; new OAuth pending</small></button>
+<button type="button" data-open="nyx-google-group">🌈 Google Drive<small>Connect accounts through Google OAuth when enabled</small></button>
 <button type="button" data-open="nyx-mega-group">🗄️ MEGA<small>Show configured remotes; new login pending</small></button>
 <button type="button" data-open="nyx-rclone-group">🧰 Existing Rclone<small>View private configuration metadata</small></button>
 <button type="button" data-open="nyx-other-group" data-github="true">🐙 GitHub<small>Create a named GitHub connection</small></button>
 </div>
-<p class="muted">Only GitHub creation is enabled. Google Drive and MEGA authentication is not released; never enter provider credentials in chat.</p>
+<p class="muted">GitHub creation is available. Google Drive OAuth is available in activated multi-user mode. MEGA onboarding is not yet enabled; never enter credentials in chat.</p>
 </section>
 <header><p class="muted">Existing connections grouped by provider. Rclone configuration is not proof of connectivity.</p>
 <div class="warn">GitHub permissions and repository writes require explicit grants. No default-branch writes, workflow dispatch, credential editing, billing or infrastructure actions.</div></header>
 <h2>Existing connections</h2>
 <details class="nyx-provider-group" id="nyx-google-group"><summary>🌈 Google Drive <span class="nyx-provider-count" id="nyx-google-count">Loading</span></summary>
-<div class="nyx-provider-list" id="nyx-google-list" aria-live="polite">Checking configured remotes…</div></details>
+<div class="nyx-provider-list"><div id="tenant-google-ui" hidden>
+<form id="tenant-google-add" class="row"><label>Connection name <input id="tenant-google-name" type="text" maxlength="80" placeholder="My Drive" required></label><button type="submit">Connect Google Drive</button></form>
+<p class="provider-note">Each account is authorized independently. Only NestNyx app-created or selected files are accessible. Choose MAIN after a successful write test.</p></div>
+<div id="nyx-google-list" aria-live="polite">Checking configured remotes…</div></div></details>
 <details class="nyx-provider-group" id="nyx-mega-group"><summary>🗄️ MEGA <span class="nyx-provider-count" id="nyx-mega-count">Loading</span></summary>
 <div class="nyx-provider-list" id="nyx-mega-list" aria-live="polite">Checking configured remotes…</div></details>
 <details class="nyx-provider-group" id="nyx-rclone-group"><summary>🧰 Rclone <span class="nyx-provider-count" id="nyx-rclone-count">Private inventory</span></summary>
@@ -143,6 +146,41 @@ function el(tag,text){const n=document.createElement(tag);if(text!==undefined)n.
 function button(name,handler){const b=el('button',name);b.type='button';b.addEventListener('click',async()=>{
  b.disabled=true;try{await handler();}catch(e){show(e.message,true);}finally{b.disabled=false;}});return b;}
 function input(value){const n=el('input');n.type='text';n.value=value||'';n.maxLength=80;return n;}
+let tenantReady=false;
+function renderTenantConnections(data){
+ if(!Array.isArray(data))throw Error('Invalid tenant connection list');
+ tenantReady=true;
+ document.getElementById('tenant-google-ui').hidden=false;
+ const list=document.getElementById('nyx-google-list');list.replaceChildren();
+ document.getElementById('nyx-google-count').textContent=data.length+' account'+(data.length===1?'':'s');
+ if(!data.length){list.append(el('p','No Google Drive accounts yet. Connect one above.'));return;}
+ for(const item of data){
+  if(!item || item.provider!=='google-drive')continue;
+  const card=el('div');card.className='card';
+  const header=el('div');header.className='row';
+  header.append(el('strong',item.name),el('span',item.isMain?'MAIN':item.status));
+  card.append(header);
+  card.append(el('p','Read: '+(item.readVerified?'Verified':'Not verified')+' · Write: '+(item.writeVerified?'Verified':'Not verified')));
+  const controls=el('div');controls.className='row';
+  if(item.status==='connected'){
+   controls.append(button('Test read',async()=>{const r=await call('nyx_storage_probe',{id:item.id,mode:'read'});show(r.verified?'Read access verified':'Read test failed',!r.verified);await refreshTenant();}));
+   controls.append(button('Test write',async()=>{if(!confirm('Create and remove a temporary test folder on this Drive?'))return;const r=await call('nyx_storage_probe',{id:item.id,mode:'write'});show(r.verified?'Write access verified':'Write test failed',!r.verified);await refreshTenant();}));
+   if(item.writeVerified && !item.isMain)controls.append(button('Set MAIN',async()=>{await call('nyx_storage_set_main',{id:item.id});await refreshTenant();}));
+  }
+  const name=input(item.name);const rename=el('div');rename.className='row';
+  rename.append(name,button('Rename',async()=>{await call('nyx_storage_rename',{id:item.id,name:name.value.trim()});await refreshTenant();}));
+  card.append(controls,rename,button('Disconnect',async()=>{
+   if(!confirm('Remove this NestNyx connection and local authorization?'))return;
+   await call('nyx_storage_disconnect',{id:item.id});await refreshTenant();
+  }));
+  list.append(card);
+ }
+}
+async function refreshTenant(){
+ const items=await call('nyx_storage_connections',{});
+ if(!Array.isArray(items))throw Error('Tenant storage connections unavailable');
+ renderTenantConnections(items);
+}
 function renderRclone(data){
  if(data?.schema!=='nyx.storage.rclone.connections.v1' ||
     data?.status!=='configured_not_live_verified' ||
@@ -239,6 +277,13 @@ function renderRclone(data){
 }
 async function refreshRclone(){
  rcloneStatus.textContent='';
+ try{
+  await refreshTenant();
+  document.getElementById('nyx-rclone-group').hidden=true;
+  document.getElementById('nyx-mega-count').textContent='Not yet enabled';
+  document.getElementById('nyx-mega-list').replaceChildren(el('p','MEGA per-user onboarding is not yet enabled.'));
+  return;
+ }catch{}
  try{
   const data=await call('nyx_rclone_connections_list',{});
   renderRclone(data);
@@ -383,7 +428,7 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
   }else if(choice.dataset.open==='nyx-rclone-group'){
    show('Rclone credentials must be managed privately on the server. Inventory is read-only.');
   }else{
-   show('Existing configured remotes are listed here. New Google Drive/MEGA authorization is not enabled in production.');
+   show(tenantReady?'Connect additional Google Drive accounts above. MEGA onboarding is still pending.':'Existing private Rclone remotes are read-only here. Public OAuth requires activation.');
   }
   addMenu.hidden=true;
   quickAdd.setAttribute('aria-expanded','false');
@@ -391,6 +436,21 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
 }
 document.getElementById('refresh').addEventListener('click',()=>refresh().catch(e=>show(e.message,true)));
 document.getElementById('rclone-refresh').addEventListener('click',()=>refreshRclone());
+document.getElementById('tenant-google-add').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const name=document.getElementById('tenant-google-name').value.trim();
+ try{
+  const result=await call('nyx_storage_begin_google',{name});
+  if(typeof result?.url!=='string')throw Error('Google sign-in URL unavailable');
+  const oauth=new URL(result.url);
+  if(oauth.protocol!=='https:' || oauth.hostname!=='accounts.google.com' ||
+     oauth.pathname!=='/o/oauth2/v2/auth')throw Error('Invalid Google sign-in URL');
+  await request('ui/open-link',{url:result.url});
+  show('Authorize the selected Google account, then return and refresh.');
+  document.getElementById('tenant-google-name').value='';
+  await refreshTenant();
+ }catch(e){show(e.message,true);}
+});
 document.getElementById('new-form').addEventListener('submit',async e=>{
  e.preventDefault();const name=document.getElementById('new-name').value.trim();
  const provider='github';
