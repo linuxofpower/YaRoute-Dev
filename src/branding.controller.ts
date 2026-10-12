@@ -2,7 +2,7 @@ import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { Public } from '../common/public.decorator';
+import { Public } from './common/public.decorator';
 
 /** Public, credential-free brand resources. No access to NYX storage, DB or user data. */
 @Public()
