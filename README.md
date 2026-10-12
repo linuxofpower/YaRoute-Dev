@@ -10,6 +10,15 @@ NestNyx is the execution side of Nyx storage operations. ChatGPT can inspect exp
 
 The boundary is deliberate: **neither REST nor MCP accepts arbitrary rclone remote names or unrestricted Drive roots**. Every path is resolved below a configured shared folder.
 
+## Separate DEV MCP plugin — DevProNestNyx
+
+This repository has its own **DevProNestNyx** Heroku deployment template. It is
+**not** the existing production NestNyx MCP connection. See
+[DEV plugin setup](docs/devpronestnyx-plugin-activation.md) for isolated
+Heroku, OAuth, PostgreSQL, GitHub App and ChatGPT installation steps. Deploying
+or connecting it is a separate user-authorized action; no production backend,
+credentials or ChatGPT plugin is changed by a code commit.
+
 ## Public-repository safety
 
 This repository contains implementation code and public-safe documentation only. Do not commit access tokens, client secrets, API keys, rclone configuration, private keys, personal email addresses, private Drive IDs, private artifact hashes, or account-specific remote names. Runtime secrets belong in Heroku config vars or GitHub Actions secrets.

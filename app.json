@@ -1,7 +1,7 @@
 {
-  "name": "NestNyx",
-  "description": "Shared-folder-scoped rclone execution API and OAuth-protected MCP server for Nyx",
-  "repository": "https://github.com/yaMorozYaroslav/YaRoute",
+  "name": "DevProNestNyx",
+  "description": "Independent DEV MCP instance; does not replace or deploy the YaRoute production service",
+  "repository": "https://github.com/linuxofpower/YaRoute-Dev",
   "keywords": [
     "nestjs",
     "mcp",
@@ -16,7 +16,7 @@
       "generator": "secret"
     },
     "NYX_PUBLIC_URL": {
-      "description": "Public HTTPS origin of this Heroku app, for example https://your-app.herokuapp.com.",
+      "description": "HTTPS origin of NEW dedicated DevProNestNyx Heroku app, not production.",
       "required": true
     },
     "NYX_OAUTH_ISSUER": {
@@ -24,7 +24,7 @@
       "required": true
     },
     "NYX_OAUTH_AUDIENCE": {
-      "description": "Audience/resource identifier that NestNyx requires in MCP access tokens.",
+      "description": "Unique audience for this DEV MCP resource; do not reuse production audience.",
       "required": true
     },
     "NYX_OAUTH_JWKS_URI": {
@@ -36,11 +36,11 @@
       "value": "nyx.read,nyx.write"
     },
     "RCLONE_CONFIG_B64": {
-      "description": "Base64-encoded rclone.conf. Keep this only in Heroku config vars.",
+      "description": "DEV-only rclone config. Do NOT paste or reuse production credentials without explicit authorization.",
       "required": true
     },
     "NYX_SHARED_ROOTS_JSON": {
-      "description": "JSON map of logical storage aliases to rclone remote/root pairs. Configure MAIN for the primary Drive and optionally A/B/C/D or other remotes; all configured aliases remain usable by storage tools.",
+      "description": "DEV/test logical root mapping. Do NOT point at production-write data.",
       "required": true
     },
     "NYX_INIT_AREA": {
@@ -58,6 +58,30 @@
     "NYX_YARO_PREFIX": {
       "description": "Relative YaRoute root below NYX_INIT_AREA. Current initialization also resolves the live 3_template overlays and Template map/index.",
       "value": "YaRoute"
+    },
+    "NYX_SERVICE_NAME": {
+      "description": "Non-secret identity used by health and OAuth resource metadata.",
+      "value": "DevProNestNyx"
+    },
+    "NYX_DEPLOYMENT_MODE": {
+      "description": "DEV instance starts private; never enable public connectors before tenant-isolated security checks.",
+      "value": "private"
+    },
+    "NYX_PUBLIC_CONNECTORS_ENABLED": {
+      "description": "Keep DEV shared storage tools private.",
+      "value": "false"
+    },
+    "NYX_PRIVATE_OAUTH_SUBJECTS": {
+      "description": "Comma-separated allow-listed owner OAuth subjects; configure separately from production. DO NOT use public tenants.",
+      "required": true
+    },
+    "NYX_STORAGE_ENCRYPTION_KEY": {
+      "description": "Distinct encryption key for this DEV instance. Generate locally; do not reuse production.",
+      "required": true
+    },
+    "DATABASE_URL": {
+      "description": "DEV-only PostgreSQL connection string (distinct DB from production). Set in Heroku private config vars.",
+      "required": true
     }
   }
 }

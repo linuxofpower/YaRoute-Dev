@@ -80,8 +80,10 @@ function scanCurrent() {
     if (file !== 'scripts/public-repo-guard.mjs') {
       // Development documentation may name this explicitly approved public repository.
       // Continue blocking every other linuxofpower identifier, including in production.
-      const approvedText = runningRepo === DEVELOPMENT_REPO && file === 'README.md'
-        ? text.replaceAll(DEVELOPMENT_REPO, '')
+      // Only the exact declared DEV repository URL is public-safe in app.json.
+      const approvedText = runningRepo === DEVELOPMENT_REPO
+        ? (file === 'README.md' ? text.replaceAll(DEVELOPMENT_REPO, '') :
+           file === 'app.json' ? text.replaceAll('https://github.com/' + DEVELOPMENT_REPO, '') : text)
         : text;
       if (approvedText.includes('linuxofpower')) {
         failures.push(`private account identifier in ${file}`);
@@ -100,8 +102,9 @@ function scanCurrent() {
   }
 
   const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
-  if (app.repository !== `https://github.com/${CANONICAL_REPO}`) {
-    failures.push('app.json repository is not the canonical YaRoute repository');
+  const expectedRepo = runningRepo === DEVELOPMENT_REPO ? DEVELOPMENT_REPO : CANONICAL_REPO;
+  if (app.repository !== `https://github.com/${expectedRepo}`) {
+    failures.push('app.json does not match the approved repository identity');
   }
 
   if (process.env.GITHUB_REPOSITORY && !APPROVED_REPOSITORIES.has(process.env.GITHUB_REPOSITORY)) {
