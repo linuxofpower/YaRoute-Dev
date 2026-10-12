@@ -88,7 +88,7 @@ test('MEGA credentials arrive only through HTTPS form, are obscured through stdi
   const {service,row,writes}=fixture();
   const begin=await service.beginMega('oauth:alice','Archive MEGA');
   const ticket=new URL(begin.url).searchParams.get('ticket');
-  const result=await service.completeMega(ticket,''archive'+'@'+'example.test'','SuperSecret_42','123456');
+  const result=await service.completeMega(ticket,('archive'+'@'+'example.test'),'SuperSecret_42','123456');
   assert.deepEqual(result,{connected:true});
   assert.equal(row.status,'connected');
   assert.equal(fs.readFileSync(passwordFile,'utf8'),'SuperSecret_42');
@@ -102,12 +102,12 @@ test('MEGA credentials arrive only through HTTPS form, are obscured through stdi
   assert.ok(!serialized.includes('SuperSecret_42'));
   assert.ok(!serialized.includes('123456'));
   const stored=service.decrypt('oauth:alice',UUID,'mega',row.encrypted_credential);
-  assert.equal(stored.user,''archive'+'@'+'example.test'');
+  assert.equal(stored.user,('archive'+'@'+'example.test'));
   assert.equal(stored.pass,'abcdefghijklmnopqrstu1234567890');
   assert.equal(stored.session_id,'ThisIsASafeSession000');
   assert.equal(stored.master_key,'c2Vzc2lvbk1hc3RlcktleQ==');
   assert.equal(stored.otp,undefined);
-  await assert.rejects(()=>service.completeMega(ticket,''archive'+'@'+'example.test'','Again123'),/MEGA_ENROLLMENT_INVALID/);
+  await assert.rejects(()=>service.completeMega(ticket,('archive'+'@'+'example.test'),'Again123'),/MEGA_ENROLLMENT_INVALID/);
   await assert.rejects(()=>service.probe('oauth:bob',UUID,'read'),/STORAGE_CONNECTION_NOT_FOUND/);
  }finally{for(const[k,v]of Object.entries(old))v===undefined?delete process.env[k]:process.env[k]=v;}
 });
