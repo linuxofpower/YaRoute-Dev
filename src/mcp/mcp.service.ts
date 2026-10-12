@@ -123,7 +123,7 @@ export class McpService {
         uri:CONNECTIONS_PANEL_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_PANEL_HTML,
         _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
-          'openai/widgetCSP':{redirect_domains:['https://github.com']},
+          'openai/widgetCSP':{redirect_domains:['https://github.com','https://accounts.google.com',...(process.env.NYX_PUBLIC_URL?.startsWith('https://')?[new URL(process.env.NYX_PUBLIC_URL).origin]:[])]},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}),
     );
