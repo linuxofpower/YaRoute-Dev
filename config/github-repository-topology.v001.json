@@ -108,7 +108,6 @@
         "repository": "DEV_GITHUB_OWNER/YaRoute-Dev",
         "default_branch": "main",
         "branches_observed": [
-          "main",
           "feat/nestnyx-blue-brand-20261012",
           "feat/shared-storage-v0",
           "feat/tenant-rclone-connections-20261012",
@@ -118,7 +117,10 @@
           "feature/nyx-init-mcp",
           "feature/yaro-command-frame-v026",
           "fix/nyx-ini-scope-depth-modifiers-20261009",
+          "main",
+          "nyx/command-panel-hea-icons-v2",
           "nyx/command-status-buttons",
+          "nyx/github-topology-and-migration-20261013",
           "nyx/mcp-v0",
           "nyx/mega-limit-scope-review",
           "nyx/mega-six-tenant-policy",
@@ -302,7 +304,7 @@
     {
       "repo": "DEV_GITHUB_OWNER/YaRoute-Dev",
       "number": 11,
-      "status": "open",
+      "status": "closed (superseded by PR 15)",
       "kind": "Nyx colored command status buttons"
     },
     {
@@ -311,6 +313,18 @@
       "status": "draft open",
       "kind": "MEGA six cap folder policy",
       "base": "feat/tenant-rclone-connections-20261012"
+    },
+    {
+      "repo": "DEV_GITHUB_OWNER/YaRoute-Dev",
+      "number": 14,
+      "status": "draft open, CI success",
+      "kind": "private topology audit sanitized for public repo"
+    },
+    {
+      "repo": "DEV_GITHUB_OWNER/YaRoute-Dev",
+      "number": 15,
+      "status": "draft open, CI success",
+      "kind": "command colored icons / private nyx_hea auxiliary"
     }
   ],
   "cli": {
@@ -318,7 +332,7 @@
     "canonical_commands": 21,
     "hea_canonical": false,
     "hel_canonical": true,
-    "health_panel_status_feature": "dev PR 11; not deployed",
+    "health_panel_status_feature": "dev PR #15 CI success; not merged or deployed; old PR #11 closed as superseded",
     "hea_proposal": "Propose canonical nyx hea as read-only command health report during next proper Head generation; don't silently alias hel."
   },
   "policy": {
@@ -337,5 +351,7 @@
     "A repository can look empty on its default branch but still retain full Git history; deleting tracked files in a new commit keeps ancestors, but profile contribution counts may depend on verified email/default branch and hosting GitHub rules.",
     "Do not copy historical .env, certificates backups, recovery codes or secrets into any new public repo.",
     "Never change the existing production YaRoute default branch or deploy during relocation."
-  ]
+  ],
+  "last_edited": "2026-10-13 11:08:48 Europe/Warsaw",
+  "edited_by": "ChatGPT (user-requested)"
 }
