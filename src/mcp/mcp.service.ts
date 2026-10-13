@@ -454,6 +454,50 @@ export class McpService {
       async () => this.safeTool(() => this.commands.execute({ command: 'hel' }, this.ownerContext.getStore())),
     );
 
+    // Private, read-only MCP auxiliary. 'hea' is NOT canonical until Head GEN.
+    server.registerTool('nyx_hea',{
+      title:'🩺 Check Nyx command health',
+      description:'Read-only health status derived from canonical nyx hel; no commands are executed for verification. The nyx hea CLI spelling requires a future canonical Head change.',
+      inputSchema:z.object({}),
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+    },async()=>this.safeTool(async()=>{
+      const result=await this.commands.execute({command:'hel'},this.ownerContext.getStore());
+      const data=result as {commands?:Array<{name:string;executable:boolean;status?:string;health?:{
+        schema?:string;cli_sha256?:string;issues?:unknown[];
+        required_variations?:string[];verified_variations?:Array<{name:string;status:string;sha256:string}>;
+      }}>;metadata?:{cli?:{sha256?:string}}};
+      const sha=data.metadata?.cli?.sha256;
+      if(!sha||!Array.isArray(data.commands))throw new Error('NYX_HEALTH_REFERENCE_UNAVAILABLE');
+      const commands=data.commands.map(command=>{
+        let state:'head-only'|'incomplete'|'verified'='head-only';
+        if(command.executable===true && command.status!=='canonical-only'){
+          state='incomplete';
+          const h=command.health;
+          if(h?.schema==='nyx.command.verification.v1'&&h.cli_sha256===sha&&
+             !h.issues?.length&&Array.isArray(h.required_variations)&&
+             h.required_variations.length>0&&Array.isArray(h.verified_variations)){
+            const required=new Set(h.required_variations);
+            const verified=new Map(h.verified_variations.map(v=>[v.name,v]));
+            if(required.size===h.required_variations.length &&
+               verified.size===required.size && h.verified_variations.length===required.size &&
+               [...required].every(name=>{
+                 const x=verified.get(name);
+                 return x?.status==='COMPLETE'&&/^[a-f0-9]{64}$/.test(x.sha256||'');
+               }))state='verified';
+          }
+        }
+        return {name:command.name,state};
+      });
+      return {schema:'nyx.command.health.v1',source:'verified-canonical-hel-readonly',
+        checkedAt:new Date().toISOString(),canonicalCommand:'hel',
+        requestedCliCommand:'hea',requestedCliCommandCanonical:false,
+        cliSha256:sha,commandCount:commands.length,
+        headOnly:commands.filter(x=>x.state==='head-only').length,
+        incomplete:commands.filter(x=>x.state==='incomplete').length,
+        verified:commands.filter(x=>x.state==='verified').length,
+        commands,probesExecuted:false,mutations:'none'};
+    }));
+
     server.registerTool(
       'nyx_execute',
       {
