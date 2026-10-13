@@ -4,14 +4,14 @@ This is an **operational snapshot**, not a canonical Head/Body/Footer update. Re
 
 ## Two connected identities and access truth
 
-- **linuxofpower (development):** GitHub reports owner permission on its eight repositories. Creating branches, editing files and opening PRs were actually verified in `linuxofpower/YaRoute-Dev` (example: development PR #13). **On `yaMorozYaroslav/YaRoute`, this account is read-only.**
-- **yaMorozYaroslav (production):** GitHub reports owner/admin permission on its ten repositories, but the current ChatGPT GitHub App returned **HTTP 403** for creating a branch, changing a file or opening a PR in `YaRoute`. That discrepancy is an **installation/token permission problem**, not evidence of working write access. This account can read `linuxofpower/YaRoute-Dev` but not write it.
+- **DEV_GITHUB_OWNER (development):** GitHub reports owner permission on its eight repositories. Creating branches, editing files and opening PRs were actually verified in `DEV_GITHUB_OWNER/YaRoute-Dev` (example: development PR #13). **On `PROD_GITHUB_OWNER/YaRoute`, this account is read-only.**
+- **PROD_GITHUB_OWNER (production):** GitHub reports owner/admin permission on its ten repositories, but the current ChatGPT GitHub App returned **HTTP 403** for creating a branch, changing a file or opening a PR in `YaRoute`. That discrepancy is an **installation/token permission problem**, not evidence of working write access. This account can read `DEV_GITHUB_OWNER/YaRoute-Dev` but not write it.
 - No claim of verified write access on every branch. Branch lists and owner-level permissions are observations; protections, rulesets and commit signatures must be checked separately when a specific branch is targeted.
 - All original repositories retain their identities and default branches. No destructive operations are allowed based on this registry.
 
 ## Verified source → destination relocation matrix
 
-| Source (yaMorozYaroslav) | Destination (linuxofpower) | Status |
+| Source (PROD_GITHUB_OWNER) | Destination (DEV_GITHUB_OWNER) | Status |
 | --- | --- | --- |
 | FloraDevClient-relocate- | FloraClient-Dev | **NOT MIGRATED.** Destination default branch contains README only. |
 | FloraDevServer-relocate- | FloraServer-Dev | **NOT MIGRATED.** Destination default branch contains README only. |
@@ -33,11 +33,11 @@ Additional production/development pairings: `MyWeb → MyWeb-Dev`, `YaRoute → 
 ### Git inspection examples (read-only or local artifacts)
 
 ```sh
-git clone --mirror https://github.com/yaMorozYaroslav/FloraDevClient-relocate-.git source.mirror.git
+git clone --mirror https://github.com/PROD_GITHUB_OWNER/FloraDevClient-relocate-.git source.mirror.git
 git -C source.mirror.git fsck --full
 git -C source.mirror.git bundle create ../source.full-history.bundle --all
 git -C source.mirror.git show-ref
-git clone https://github.com/linuxofpower/FloraClient-Dev.git destination
+git clone https://github.com/DEV_GITHUB_OWNER/FloraClient-Dev.git destination
 git -C destination branch -a
 # DO NOT run `push --mirror` on an occupied destination.
 ```
