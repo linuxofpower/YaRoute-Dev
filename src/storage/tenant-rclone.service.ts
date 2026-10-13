@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Pool, PoolClient } from 'pg';
+import { TENANT_ACCOUNT_CAPS, TenantScopeMode, validateTenantScope } from './tenant-storage-policy';
 
 type DriveToken = {
   access_token: string; refresh_token: string; token_type: 'Bearer'; expiry: string;
@@ -15,6 +16,7 @@ type Row = {
   id:string; owner_id:string; provider:Provider; display_name:string;
   provider_identity:string|null; encrypted_credential:string|null;
   status:string; is_main:boolean; read_verified_at:Date|null; write_verified_at:Date|null;
+  scope_mode?:TenantScopeMode; scope_root?:string|null;
 };
 
 /**
@@ -53,9 +55,13 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       is_main boolean NOT NULL DEFAULT false,
       read_verified_at timestamptz,
       write_verified_at timestamptz,
+      scope_mode text NOT NULL DEFAULT 'folder',
+      scope_root text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
+    await this.db().query("ALTER TABLE nyx_tenant_rclone ADD COLUMN IF NOT EXISTS scope_mode text NOT NULL DEFAULT 'folder'");
+    await this.db().query('ALTER TABLE nyx_tenant_rclone ADD COLUMN IF NOT EXISTS scope_root text');
     await this.db().query(`CREATE UNIQUE INDEX IF NOT EXISTS nyx_tenant_rclone_owner_name
       ON nyx_tenant_rclone(owner_id,lower(display_name))`);
     await this.db().query(`CREATE UNIQUE INDEX IF NOT EXISTS nyx_tenant_rclone_one_main
@@ -132,7 +138,8 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     return {id:row.id,name:row.display_name,provider:row.provider==='drive'?'google-drive':'mega',
       status:row.status,isMain:row.is_main,
       configured:row.status==='connected',readVerified:!!row.read_verified_at,
-      writeVerified:!!row.write_verified_at};
+      writeVerified:!!row.write_verified_at,
+      scopeMode:row.scope_mode||'folder', scopeConfigured:row.scope_root!=null};
   }
   async list(owner:string) {
     this.owner(owner);
@@ -159,6 +166,31 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     // handled separately, as it may affect other remotes of the same account.
     return {disconnected:true};
   }
+  /** Serialize per-owner/provider creation so parallel requests cannot bypass 6/9 caps. */
+  private async assertCreationCapacity(client:PoolClient,owner:string,provider:Provider){
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+      ['nyx_tenant_rclone:'+owner+':'+provider]);
+    const result=await client.query<{count:string|number}>(
+      'SELECT count(*) AS count FROM nyx_tenant_rclone WHERE owner_id=$1 AND provider=$2',
+      [owner,provider]);
+    const count=Number(result.rows[0]?.count??0);
+    if(!Number.isSafeInteger(count)||count>=TENANT_ACCOUNT_CAPS[provider])
+      throw new Error('STORAGE_PROVIDER_ACCOUNT_LIMIT');
+  }
+
+  /** Set metadata only. Never changes MEGA provider privileges or enables operations. */
+  async configureScope(owner:string,id:string,mode:TenantScopeMode,root:string,confirmUnrestricted=false){
+    const row=await this.get(owner,id);
+    if(row.status!=='connected')throw new Error('STORAGE_CONNECTION_NOT_READY');
+    const scope=validateTenantScope(mode,root,confirmUnrestricted);
+    const result=await this.db().query(
+      'UPDATE nyx_tenant_rclone SET scope_mode=$3,scope_root=$4,updated_at=now() WHERE owner_id=$1 AND id=$2 AND status=\'connected\' RETURNING id',
+      [owner,id,scope.mode,scope.root]);
+    if(result.rowCount!==1)throw new Error('STORAGE_CONNECTION_NOT_FOUND');
+    return {id,scopeMode:scope.mode,scopeConfigured:true,
+      providerScopeChanged:false,fileOperationsEnabled:false};
+  }
+
   /** One-time browser-only enrollment; the MCP result never contains credentials. */
   async beginMega(owner:string,name:string) {
     this.owner(owner);this.db();
@@ -170,6 +202,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     const client=await this.db().connect();
     try {
       await client.query('BEGIN');
+      await this.assertCreationCapacity(client,owner,'mega');
       await client.query(`INSERT INTO nyx_tenant_rclone (id,owner_id,provider,display_name,status)
         VALUES($1,$2,'mega',$3,'pending')`,[id,owner,this.displayName(name)]);
       await client.query(`INSERT INTO nyx_tenant_rclone_mega_login
@@ -282,6 +315,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     const client=await this.db().connect();
     try{
       await client.query('BEGIN');
+      await this.assertCreationCapacity(client,owner,'drive');
       await client.query(`INSERT INTO nyx_tenant_rclone(id,owner_id,provider,display_name,status)
         VALUES($1,$2,'drive',$3,'pending')`,[id,owner,this.displayName(name)]);
       await client.query(`INSERT INTO nyx_tenant_rclone_oauth_state
