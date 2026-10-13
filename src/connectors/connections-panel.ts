@@ -4,6 +4,12 @@
  * authenticated MCP tools. Render untrusted names with textContent only.
  */
 export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/connections/v9.html';
+const iconOrigin = process.env.NYX_PUBLIC_URL?.startsWith('https://')
+  ? new URL(process.env.NYX_PUBLIC_URL).origin : '';
+export const CONNECTIONS_PANEL_BRAND_ORIGIN = iconOrigin;
+const iconMarkup = iconOrigin
+  ? '<img src="'+iconOrigin+'/branding/icon.png" width="28" height="28" alt="" style="width:28px;height:28px;object-fit:contain" />'
+  : '';
 export const CONNECTIONS_PANEL_HTML = String.raw`<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -60,6 +66,11 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 .nyx-command-gray{background:#747b8520;border-color:#858e98;color:inherit}
 .nyx-command-yellow{background:#f4b94236;border-color:#b77914;color:inherit}
 .nyx-command-green{background:#36a86e35;border-color:#278d53;color:inherit}
+.nyx-command-icon{display:inline-block;margin-right:6px;min-width:1.1em;text-align:center}
+.nyx-command-button .nyx-command-tone{margin-left:6px;font-size:12px}
+.nyx-command-button[data-tone='gray']{border-left:4px solid #858e98}
+.nyx-command-button[data-tone='yellow']{border-left:4px solid #b77914}
+.nyx-command-button[data-tone='green']{border-left:4px solid #278d53}
 .nyx-command-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:6px}
 .nyx-command-legend span::before{content:'●';margin-right:5px}
 .nyx-command-legend .gray::before{color:#8b949e}
@@ -68,7 +79,7 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 </style></head>
 <body>
 <div id="nyx-quick">
-<strong class="brand">☁️ NestNyx</strong><span class="muted">Connections</span><span class="spacer"></span>
+<strong class="brand">${iconMarkup} 🪼 NestNyx</strong><span class="muted">Connections</span><span class="spacer"></span>
 <button id="nyx-add" type="button" title="Add a connection" aria-label="Add a connection" aria-expanded="false" aria-controls="nyx-add-menu">＋</button>
 </div>
 <section id="nyx-add-menu" hidden aria-label="Add a connection">
@@ -103,7 +114,7 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 <div id="connection-list" aria-live="polite">Loading…</div>
 </div></details>
 <section id="nyx-command-health" aria-label="Nyx command health">
-<div class="row" style="justify-content:space-between"><h2>Nyx commands</h2><button id="nyx-command-refresh" type="button">Refresh</button></div>
+<div class="row" style="justify-content:space-between"><h2>🧩 Nyx commands</h2><span class="spacer"></span><button id="nyx-command-hea" type="button" title="Read-only diagnostic; future CLI nyx hea requires Head canonicalization">🩺 Check (hea)</button><button id="nyx-command-refresh" type="button">Refresh</button></div>
 <div class="nyx-command-legend" aria-label="Command status colors"><span class="gray">Head only</span><span class="yellow">Incomplete / issues</span><span class="green">All variations verified</span></div>
 <div id="nyx-command-buttons" class="nyx-command-buttons" role="group" aria-label="Nyx command status buttons" aria-live="polite">Loading…</div>
 <small id="nyx-command-note" class="muted" role="status">Buttons inspect status only; they never execute commands.</small>
@@ -198,13 +209,19 @@ function renderCommandButtons(data){
   seen.add(command.name);
   const tone=commandHealthTone(command,data.metadata.cli.sha256);
   const label='nyx '+command.name;
+  const glyphs={hel:'📖',ini:'🚀',key:'🔑',mat:'📦',ske:'📝',inf:'🔎',com:'⚖️',can:'🏛️',fin:'🏁',upd:'🛠️',sav:'💾',gen:'🏗️',rec:'♻️',che:'🩺',dec:'🧹',ded:'🧬',execute:'▶️',ext:'📤',abs:'📥',sum:'📊',ver:'✅'};
+  const toneGlyphs={gray:'⚪',yellow:'🟡',green:'🟢'};
   const meanings={
    gray:'Head only; no CLI execution contract',
    yellow:'Execution available but not all variations verified, or issues remain',
    green:'All required variations verified against this CLI version'
   };
-  const b=el('button',label);b.type='button';
+  const b=el('button');b.type='button';
+  b.append(el('span',(glyphs[command.name]||'🧩')+' '));
+  b.append(el('span',label));
+  const flag=el('span',' '+toneGlyphs[tone]);flag.className='nyx-command-tone';b.append(flag);
   b.className='nyx-command-button nyx-command-'+tone;
+  b.dataset.tone=tone;
   b.title=meanings[tone];
   b.setAttribute('aria-label',label+': '+meanings[tone]);
   b.addEventListener('click',()=>{commandNote.textContent=label+' — '+meanings[tone];});
@@ -212,6 +229,16 @@ function renderCommandButtons(data){
  }
  commandRoot.replaceChildren(frag);
  commandNote.textContent=seen.size+' commands from verified Head. Tap to inspect status; no command is executed.';
+}
+async function refreshHeaStatus(){
+ commandNote.textContent='Checking verified Nyx command health…';
+ try{
+  const result=await call('nyx_hea',{});
+  if(result?.schema!=='nyx.command.health.v1' || result?.requestedCliCommandCanonical!==false ||
+      !Array.isArray(result.commands) || result.commandCount!==result.commands.length)
+   throw Error('Unverified health response');
+  commandNote.textContent='🩺 Health: '+result.headOnly+' Head only, '+result.incomplete+' incomplete, '+result.verified+' verified. Source: nyx hel. CLI nyx hea is pending Head generation.';
+ }catch(e){commandNote.textContent='Health diagnostic unavailable; nyx hel is the verified canonical command. '+(e?.message||'');}
 }
 async function refreshCommandButtons(){
  commandRoot.replaceChildren(el('span','Checking verified Head commands…'));
@@ -471,6 +498,7 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
 document.getElementById('refresh').addEventListener('click',()=>refresh().catch(e=>show(e.message,true)));
 document.getElementById('rclone-refresh').addEventListener('click',()=>refreshRclone());
 document.getElementById('nyx-command-refresh').addEventListener('click',()=>refreshCommandButtons());
+document.getElementById('nyx-command-hea').addEventListener('click',()=>refreshHeaStatus());
 document.getElementById('new-form').addEventListener('submit',async e=>{
  e.preventDefault();const name=document.getElementById('new-name').value.trim();
  const provider='github';
