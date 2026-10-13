@@ -4,7 +4,7 @@
   "authority": "read_only_operational_observation_NOT_Head_or_Footer",
   "accounts": [
     {
-      "github_login": "linuxofpower",
+      "github_login": "DEV_GITHUB_OWNER",
       "role": "development-owner",
       "installation_repository_selection": "all",
       "accessible_owner_repositories": 8,
@@ -13,10 +13,10 @@
         "GitHub file create/update YaRoute-Dev",
         "GitHub PR create YaRoute-Dev"
       ],
-      "cross_account_visibility": "yaMorozYaroslav/YaRoute read-only"
+      "cross_account_visibility": "PROD_GITHUB_OWNER/YaRoute read-only"
     },
     {
-      "github_login": "yaMorozYaroslav",
+      "github_login": "PROD_GITHUB_OWNER",
       "role": "production-owner",
       "installation_repository_selection": "selected",
       "accessible_owner_repositories": 10,
@@ -28,13 +28,13 @@
         "create PR in YaRoute:403",
         "write file in YaRoute:403"
       ],
-      "cross_account_visibility": "linuxofpower/YaRoute-Dev read-only"
+      "cross_account_visibility": "DEV_GITHUB_OWNER/YaRoute-Dev read-only"
     }
   ],
   "repositories": {
     "development": [
       {
-        "repository": "linuxofpower/CodeSnippets",
+        "repository": "DEV_GITHUB_OWNER/CodeSnippets",
         "default_branch": "main",
         "branches_observed": [
           "main"
@@ -44,7 +44,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/FloraClient-Dev",
+        "repository": "DEV_GITHUB_OWNER/FloraClient-Dev",
         "default_branch": "main",
         "branches_observed": [
           "main"
@@ -54,7 +54,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/FloraServer-Dev",
+        "repository": "DEV_GITHUB_OWNER/FloraServer-Dev",
         "default_branch": "main",
         "branches_observed": [
           "main"
@@ -64,7 +64,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/IdeaClient-Dev",
+        "repository": "DEV_GITHUB_OWNER/IdeaClient-Dev",
         "default_branch": "main",
         "branches_observed": [
           "main"
@@ -74,7 +74,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/IdeaServer-Dev",
+        "repository": "DEV_GITHUB_OWNER/IdeaServer-Dev",
         "default_branch": "main",
         "branches_observed": [
           "main"
@@ -84,7 +84,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/MyWeb-Dev",
+        "repository": "DEV_GITHUB_OWNER/MyWeb-Dev",
         "default_branch": "main",
         "branches_observed": [
           "main"
@@ -94,7 +94,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/NyxGPT",
+        "repository": "DEV_GITHUB_OWNER/NyxGPT",
         "default_branch": "main",
         "branches_observed": [
           "main",
@@ -105,7 +105,7 @@
         "connector_write_capability": "verified_git_branch_and_file_create_for_YaRoute-Dev_only"
       },
       {
-        "repository": "linuxofpower/YaRoute-Dev",
+        "repository": "DEV_GITHUB_OWNER/YaRoute-Dev",
         "default_branch": "main",
         "branches_observed": [
           "main",
@@ -131,7 +131,7 @@
     ],
     "production": [
       {
-        "repository": "yaMorozYaroslav/FloraClient",
+        "repository": "PROD_GITHUB_OWNER/FloraClient",
         "default_branch": "master",
         "branches_observed": [
           "master",
@@ -143,7 +143,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/FloraDevClient-relocate-",
+        "repository": "PROD_GITHUB_OWNER/FloraDevClient-relocate-",
         "default_branch": "master",
         "branches_observed": [
           "master",
@@ -154,7 +154,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/FloraDevServer-relocate-",
+        "repository": "PROD_GITHUB_OWNER/FloraDevServer-relocate-",
         "default_branch": "master",
         "branches_observed": [
           "master"
@@ -164,7 +164,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/FloraServer",
+        "repository": "PROD_GITHUB_OWNER/FloraServer",
         "default_branch": "master",
         "branches_observed": [
           "master"
@@ -174,7 +174,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/IdeaCliDev-relocate-",
+        "repository": "PROD_GITHUB_OWNER/IdeaCliDev-relocate-",
         "default_branch": "master",
         "branches_observed": [
           "master"
@@ -184,7 +184,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/IdeaClient",
+        "repository": "PROD_GITHUB_OWNER/IdeaClient",
         "default_branch": "master",
         "branches_observed": [
           "master"
@@ -194,7 +194,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/IdeaServDev-relocate-",
+        "repository": "PROD_GITHUB_OWNER/IdeaServDev-relocate-",
         "default_branch": "master",
         "branches_observed": [
           "master"
@@ -204,7 +204,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/IdeaServer",
+        "repository": "PROD_GITHUB_OWNER/IdeaServer",
         "default_branch": "master",
         "branches_observed": [
           "master"
@@ -214,7 +214,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/MyWeb",
+        "repository": "PROD_GITHUB_OWNER/MyWeb",
         "default_branch": "master",
         "branches_observed": [
           "master",
@@ -225,7 +225,7 @@
         "connector_write_capability": "github_app_writes_not_verified_YaRoute_writes_403"
       },
       {
-        "repository": "yaMorozYaroslav/YaRoute",
+        "repository": "PROD_GITHUB_OWNER/YaRoute",
         "default_branch": "master",
         "branches_observed": [
           "master",
@@ -264,29 +264,29 @@
   },
   "relocation": [
     {
-      "from": "yaMorozYaroslav/FloraDevClient-relocate-",
-      "to": "linuxofpower/FloraClient-Dev",
+      "from": "PROD_GITHUB_OWNER/FloraDevClient-relocate-",
+      "to": "DEV_GITHUB_OWNER/FloraClient-Dev",
       "source_head": "bbf6239327299cabe5491012590b1cc773f556d2",
       "target_head": "271b4fa82f22f402aca08ef25d25b34c4ea77ea8",
       "status": "NOT_MIGRATED_placeholder_README_only"
     },
     {
-      "from": "yaMorozYaroslav/FloraDevServer-relocate-",
-      "to": "linuxofpower/FloraServer-Dev",
+      "from": "PROD_GITHUB_OWNER/FloraDevServer-relocate-",
+      "to": "DEV_GITHUB_OWNER/FloraServer-Dev",
       "source_head": "c1eb5d38e997cdb8f8526248309d17f687faf1c4",
       "target_head": "b574cd52343d659bba2cbfc2f21e95de12bda23d",
       "status": "NOT_MIGRATED_placeholder_README_only"
     },
     {
-      "from": "yaMorozYaroslav/IdeaCliDev-relocate-",
-      "to": "linuxofpower/IdeaClient-Dev",
+      "from": "PROD_GITHUB_OWNER/IdeaCliDev-relocate-",
+      "to": "DEV_GITHUB_OWNER/IdeaClient-Dev",
       "source_head": "50dc396a79d2e4e481673df9e38996fa07a69c62",
       "target_head": "76090964ee96c68bf94f0b777257874df88b4f2b",
       "status": "PARTIAL_OR_INDEPENDENT_CODE_source_head_not_reachable_in_target_history"
     },
     {
-      "from": "yaMorozYaroslav/IdeaServDev-relocate-",
-      "to": "linuxofpower/IdeaServer-Dev",
+      "from": "PROD_GITHUB_OWNER/IdeaServDev-relocate-",
+      "to": "DEV_GITHUB_OWNER/IdeaServer-Dev",
       "source_head": "361a163b1165a035d7ff932b917e67f4f726d40f",
       "target_head": "c94709ac20c30c93f1e728654ca995931adbcf8f",
       "status": "PARTIAL_OR_INDEPENDENT_CODE_source_head_not_reachable_in_target_history"
@@ -294,19 +294,19 @@
   ],
   "development_prs": [
     {
-      "repo": "linuxofpower/YaRoute-Dev",
+      "repo": "DEV_GITHUB_OWNER/YaRoute-Dev",
       "number": 10,
       "status": "open",
       "kind": "tenant Rclone staging"
     },
     {
-      "repo": "linuxofpower/YaRoute-Dev",
+      "repo": "DEV_GITHUB_OWNER/YaRoute-Dev",
       "number": 11,
       "status": "open",
       "kind": "Nyx colored command status buttons"
     },
     {
-      "repo": "linuxofpower/YaRoute-Dev",
+      "repo": "DEV_GITHUB_OWNER/YaRoute-Dev",
       "number": 13,
       "status": "draft open",
       "kind": "MEGA six cap folder policy",
