@@ -393,6 +393,18 @@ export class McpService {
         inputSchema:z.object({id:z.string().uuid(),mode:z.enum(['read','write'])}),
         annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
       },async({id,mode})=>this.safeTool(()=>this.tenantStorage.probe(this.connectorOwner(),id,mode)));
+      server.registerTool('nyx_storage_scope_set',{
+        title:'Restrict one owned cloud connection to a folder or file',
+        description:'Choose file, folder (default), or explicit unrestricted scope. Path is relative to the selected connection. This stores intent only; it does not change provider credentials or enable file operations.',
+        inputSchema:z.object({
+          id:z.string().uuid(),
+          mode:z.enum(['file','folder','unrestricted']),
+          root:z.string().max(512),
+          confirmUnrestricted:z.boolean().optional().default(false),
+        }),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+      },async({id,mode,root,confirmUnrestricted})=>this.safeTool(()=>
+        this.tenantStorage.configureScope(this.connectorOwner(),id,mode,root,confirmUnrestricted)));
       server.registerTool('nyx_storage_set_main',{
         title:'Choose my main writable Google Drive',
         description:'Only a write-verified connected Google Drive may become MAIN.',
