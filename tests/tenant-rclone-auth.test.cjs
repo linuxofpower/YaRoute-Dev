@@ -13,7 +13,11 @@ function meta(owner = 'oauth:alice', provider = 'google-drive') {
 function service(owner = 'oauth:alice', provider = 'google-drive') {
   const connection = meta(owner,provider);
   const connectors = {
-    list: async actor => actor === owner ? [connection] : [],
+    getOwned: async (actor,key) => {
+      if (actor !== owner || key !== id) throw Error('DENIED');
+      return connection;
+    },
+    registryPolicy: () => ({
     require: async (actor, key, capability) => {
       if (actor!==owner || key!==id || capability!=='storage:list') throw Error('DENIED');
       return connection;
@@ -24,6 +28,7 @@ function service(owner = 'oauth:alice', provider = 'google-drive') {
           resource.id!=='root-1') throw Error('RESOURCE_DENIED');
       return connection;
     },
+    }),
   };
   const svc = new TenantRcloneService(connectors);
   svc.encryptionKey = Buffer.alloc(32, 7);
