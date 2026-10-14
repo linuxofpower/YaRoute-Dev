@@ -124,7 +124,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
 
   private async owned(ownerId: string, connectionId: string, provider?: TenantRcloneProvider) {
     this.owner(ownerId, connectionId);
-    const item = (await this.connectors.list(ownerId)).find(x => x.id === connectionId);
+    const item = await this.connectors.getOwned(ownerId, connectionId).catch(() => undefined);
     if (!item || item.status === 'revoked' ||
         !['google-drive', 'mega'].includes(item.provider) ||
         (provider && provider !== item.provider)) {
@@ -204,7 +204,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
   /** Requires independent provider grant AND successful recent read probe. */
   async activate(ownerId: string, connectionId: string) {
     await this.owned(ownerId, connectionId);
-    const grant = await this.connectors.require(ownerId, connectionId, 'storage:list');
+    const grant = await this.connectors.registryPolicy().require(ownerId, connectionId, 'storage:list');
     if (!['google-drive','mega'].includes(grant.provider)) {
       throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
     }
@@ -238,7 +238,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
                             resourceId: string, relativePath = ''): Promise<ReadProbeResult> {
     const clean = tenantRclonePath(relativePath);
     await this.owned(ownerId, connectionId, provider);
-    const authorization = await this.connectors.requireResource(
+    const authorization = await this.connectors.registryPolicy().requireResource(
       ownerId, connectionId, 'storage:list',
       {kind: provider === 'mega' ? 'mega-root' : 'drive', id: resourceId, path: clean});
     if (authorization.provider !== provider) throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
