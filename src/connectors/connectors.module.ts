@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConnectorsService } from './connectors.service';
+import { TenantRcloneService } from './tenant-rclone.service';
 import { GithubAppService } from './github-app.service';
 import { GithubReadonlyConnector } from './github-readonly';
 import { GithubWriteConnector } from './github-writes';
@@ -8,7 +9,7 @@ import { GithubOAuthController } from './github-oauth.controller';
 @Module({
   controllers:[GithubOAuthController],
   providers:[
-    ConnectorsService, GithubAppService,
+    ConnectorsService, GithubAppService, TenantRcloneService,
     {provide: GithubReadonlyConnector,
       useFactory:(connections:ConnectorsService,credentials:GithubAppService)=>
         new GithubReadonlyConnector(connections.registryPolicy(),credentials),
@@ -19,6 +20,6 @@ import { GithubOAuthController } from './github-oauth.controller';
         new GithubWriteConnector(connections.registryPolicy(),credentials),
       inject:[ConnectorsService,GithubAppService]},
   ],
-  exports:[ConnectorsService,GithubAppService,GithubReadonlyConnector,GithubWriteConnector],
+  exports:[ConnectorsService,GithubAppService,GithubReadonlyConnector,GithubWriteConnector,TenantRcloneService],
 })
 export class ConnectorsModule {}
