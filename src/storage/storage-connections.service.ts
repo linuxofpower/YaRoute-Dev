@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { encryptScopedCredential, decryptScopedCredential } from './scoped-credential-crypto';
 import { Pool } from 'pg';
 import { PUBLIC_STORAGE_SCHEMA, PublicStorageSlot } from './public-storage-schema';
 
@@ -81,15 +81,9 @@ export class StorageConnectionsService implements OnModuleInit, OnModuleDestroy 
     if (row.provider !== PUBLIC_STORAGE_SCHEMA[validSlot].provider) {
       throw new Error('STORAGE_PROVIDER_MISMATCH');
     }
-    const packed = Buffer.from(row.encrypted_credential, 'base64');
-    if (packed.length < 29) throw new Error('INVALID_ENCRYPTED_CREDENTIAL');
-    const iv = packed.subarray(0, 12);
-    const tag = packed.subarray(12, 28);
-    const encrypted = packed.subarray(28);
-    const decipher = createDecipheriv('aes-256-gcm', this.key!, iv);
-    decipher.setAAD(Buffer.from(JSON.stringify([owner, validSlot, row.provider])));
-    decipher.setAuthTag(tag);
-    const credential = JSON.parse(Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8'));
+    const credential = decryptScopedCredential<Record<string, unknown>>(
+      this.key!, [owner, validSlot, row.provider], row.encrypted_credential,
+    );
     return { owner, slot: validSlot, provider: row.provider, credential };
   }
 
@@ -100,11 +94,7 @@ export class StorageConnectionsService implements OnModuleInit, OnModuleDestroy 
     if (!credential || Array.isArray(credential) || typeof credential !== 'object') {
       throw new Error('INVALID_STORAGE_CREDENTIAL');
     }
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.key!, iv);
-    cipher.setAAD(Buffer.from(JSON.stringify([owner, validSlot, provider])));
-    const encrypted = Buffer.concat([cipher.update(JSON.stringify(credential), 'utf8'), cipher.final()]);
-    const packed = Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64');
+    const packed = encryptScopedCredential(this.key!,[owner,validSlot,provider],credential);
     await this.db().query(
       `INSERT INTO nyx_user_connections(owner, slot, provider, encrypted_credential)
        VALUES($1,$2,$3,$4)
