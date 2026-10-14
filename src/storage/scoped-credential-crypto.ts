@@ -51,7 +51,7 @@ export function decryptScopedCredential<T>(
   assertMasterKey(masterKey);
   const aad = bind(binding);
   if (typeof encryptedCredential !== 'string' ||
-      /^v\\d+:/.test(encryptedCredential) && !encryptedCredential.startsWith(V2_PREFIX)) {
+      /^v\d+:/.test(encryptedCredential) && !encryptedCredential.startsWith(V2_PREFIX)) {
     throw new Error('STORAGE_CREDENTIAL_VERSION_UNSUPPORTED');
   }
   const isV2 = encryptedCredential.startsWith(V2_PREFIX);
