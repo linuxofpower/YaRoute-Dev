@@ -20,7 +20,7 @@ function installFixture() {
         scope_mode:'folder',scope_root:null});
       return {rowCount:1,rows:[]};
     }
-    if(sql.includes('SELECT * FROM nyx_tenant_rclone WHERE owner_id=$1 ORDER BY created_at,id'))
+    if(sql.includes('SELECT * FROM nyx_tenant_rclone') && sql.includes('WHERE owner_id=$1 ORDER BY created_at,id'))
       return {rowCount:stored.filter(row=>row.owner_id===args[0]).length,
         rows:stored.filter(row=>row.owner_id===args[0])};
     if(sql.includes('SELECT * FROM nyx_tenant_rclone WHERE id=$1 AND owner_id=$2')) {
