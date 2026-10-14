@@ -24,6 +24,7 @@ function safeLine(value: string, max = 32768): string {
 /** Construct one single remote; no caller-controlled section names, config paths or options. */
 export function tenantRcloneConfig(profile: TenantRcloneProfile): string {
   if (profile.provider === 'google-drive') {
+    if (!profile.rootFolderId) throw new Error('TENANT_RCLONE_ROOT_REQUIRED');
     const token = safeLine(profile.token);
     let parsed: unknown;
     try { parsed = JSON.parse(token); } catch { throw new Error('TENANT_RCLONE_PROFILE_INVALID'); }
@@ -103,7 +104,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       state text NOT NULL CHECK (state IN ('pending', 'active')),
       read_verified_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (owner_id, connection_id)
+      PRIMARY KEY (owner_id, connection_id, state)
     )`);
   }
 
@@ -168,9 +169,9 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     await this.db().query(`INSERT INTO nyx_rclone_tenant_credentials_v2
       (owner_id, connection_id, provider, encrypted_profile, state)
       VALUES ($1,$2,$3,$4,'pending')
-      ON CONFLICT (owner_id, connection_id) DO UPDATE SET
+      ON CONFLICT (owner_id, connection_id, state) DO UPDATE SET
         provider=EXCLUDED.provider, encrypted_profile=EXCLUDED.encrypted_profile,
-        state='pending', read_verified_at=NULL, updated_at=now()`,
+        read_verified_at=NULL, updated_at=now()`,
       [ownerId, connectionId, profile.provider, packed]);
     return { status: 'pending_read_probe' as const, connectionId };
   }
@@ -207,12 +208,28 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     if (!['google-drive','mega'].includes(grant.provider)) {
       throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
     }
-    const updated = await this.db().query(`UPDATE nyx_rclone_tenant_credentials_v2
-      SET state='active', updated_at=now()
-      WHERE owner_id=$1 AND connection_id=$2 AND provider=$3
-        AND state='pending' AND read_verified_at > now() - interval '15 minutes'
-      RETURNING connection_id`, [ownerId, connectionId, grant.provider]);
-    if (!updated.rowCount) throw new Error('TENANT_RCLONE_VERIFICATION_REQUIRED');
+    const client = await this.db().connect();
+    try {
+      await client.query('BEGIN');
+      const pending = await client.query(`SELECT connection_id FROM nyx_rclone_tenant_credentials_v2
+        WHERE owner_id=$1 AND connection_id=$2 AND provider=$3
+          AND state='pending' AND read_verified_at > now() - interval '15 minutes'
+        FOR UPDATE`, [ownerId, connectionId, grant.provider]);
+      if (!pending.rowCount) throw new Error('TENANT_RCLONE_VERIFICATION_REQUIRED');
+      // Preserve the active V2 credentials until the staged candidate is verified;
+      // switch both rows in one transaction, rolling back if promotion fails.
+      await client.query(`DELETE FROM nyx_rclone_tenant_credentials_v2
+        WHERE owner_id=$1 AND connection_id=$2 AND state='active'`, [ownerId, connectionId]);
+      await client.query(`UPDATE nyx_rclone_tenant_credentials_v2 SET
+        state='active', updated_at=now()
+        WHERE owner_id=$1 AND connection_id=$2 AND state='pending'`, [ownerId, connectionId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
     return { status: 'active' as const, connectionId };
   }
 
@@ -227,7 +244,17 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     if (authorization.provider !== provider) throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
     const active = await this.profile(ownerId, connectionId, 'active');
     if (active.provider !== provider) throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
-    return this.probe(active.profile, clean);
+    if (provider === 'google-drive') {
+      if (active.profile.provider !== 'google-drive' ||
+          active.profile.rootFolderId !== resourceId) {
+        throw new Error('TENANT_RCLONE_ROOT_FORBIDDEN');
+      }
+      return this.probe(active.profile, clean);
+    }
+    // MEGA resource IDs are bounded root paths (not rclone remote names).
+    const root = tenantRclonePath(resourceId);
+    const absolute = tenantRclonePath([root, clean].filter(Boolean).join('/'));
+    return this.probe(active.profile, absolute);
   }
 
   /** Only one isolated config file per invocation; old shared config is never read or written. */
