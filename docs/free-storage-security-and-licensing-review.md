@@ -45,25 +45,50 @@ Crypto code and Rclone are free to license. Hosted database, app dynos,
 managed KMS, rate limits and transfer bandwidth may still cost money.
 Avoid adding external billable cloud resources automatically.
 
-## Licensing discrepancy — explicit decision required
+## Owner's open-source direction — accepted as a proposal, NOT relicensed yet
 
-`LICENSE` in the production and development repositories currently says
-PROPRIETARY / ALL RIGHTS RESERVED, while `package.json` lists
-`AGPL-3.0-or-later`. This is a legal/documentation conflict; do not claim
-the entire repository is uniformly proprietary or AGPL until reviewed.
+**Owner decision (14 October 2026):** Open-source all original NYX/Yaro
+software, including the platform, storage engine, CLI, reusable adapters,
+interfaces, tests, architecture and executable definitions, **preferably
+under MIT** where authorship and upstream licenses permit. The goal is to
+keep **private personal and tenant data**, not to keep NYX code proprietary.
 
-Rclone's independent license is MIT and allows commercial use, including by a
-proprietary server, provided required notices are preserved. Switching original
-NestNyx code to MIT would grant everyone permission to copy, fork, modify,
-redistribute and commercially sell that code. A previously granted MIT license
-cannot practically be withdrawn from copies already distributed.
+### Public software versus private data boundary
 
-Do not edit the LICENSE, package.json `license` field, or third-party notices
-without confirming copyright ownership, contributor provenance, inbound
-licenses of incorporated works, and explicit owner approval of intended
-open-source vs proprietary business model.
+**Public, after safety review:** implementation source code, architectural
+rules, generic command schemas and templates, sanitized examples, CI,
+documentation, provider adapters, and encryption algorithm implementations.
 
-**Suggested compromise for discussion:** MIT-license a clearly owned reusable
-Rclone adapter/SDK, preserve commercial proprietary NYX application code if the
-owner wants exclusivity, and preserve upstream MIT notices. No licensing change
-has been made.
+**Private, always:** user records and project notes, private canonical Body
+content and mutable Footer continuity, secrets, authentication tokens,
+OAuth credentials, tenant database contents, backups, private manifests and
+hashes, location identifiers and sensitive account metadata. Do not
+assume a Head/Body/Footer bundle is safe to publish simply because some
+schema or command definitions inside it are open-sourceable. Extract,
+sanitize, and verify individual public elements.
+
+**Enforcement:** no production secrets or personal data in commits, GitHub
+Actions artifacts/logs, build outputs, examples or public issue/PR text.
+Use explicit exclusions, automated secret checks, local and CI scanning,
+and a private runtime data store. Scan **reachable history** of every
+repository before making it public or copying its historical commits.
+Rotate leaked credentials rather than relying on current-file deletion.
+
+### Pending licensing actions (must verify before publication)
+
+1. Audit file-level authorship and inbound dependency/third-party licenses.
+   The current `LICENSE` says proprietary while `package.json` declares
+   `AGPL-3.0-or-later`; the mismatch remains unresolved.
+2. Confirm all original code is controlled by the owner and any incorporated
+   copyleft components permit the desired distribution model. Do not
+   relabel third-party AGPL code as MIT.
+3. After confirming provenance and public-data hygiene, reconcile the
+   `LICENSE`, `package.json` and copyright/third-party notices to the
+   chosen license consistently, one controlled PR at a time.
+4. Preserve Rclone MIT copyright notices; its commercial permission does
+   not grant proprietary rights to provider accounts/data.
+5. Keep private canonical data separate from the publicly licensed NYX
+   implementation. Do not rewrite Head/Body/Footer outside canonical lifecycle.
+
+This document records the owner's preference and the release gate. **No
+existing repository license is changed by this proposal.**
