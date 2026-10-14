@@ -32,7 +32,7 @@ function service(owner = 'oauth:alice', provider = 'google-drive') {
 
 const drive = {provider:'google-drive',token:JSON.stringify({access_token:'dummy'}),
   rootFolderId:'root-1',scope:'drive.readonly'};
-const mega = {provider:'mega',user:'test@example.invalid',obscuredPassword:'obscured-for-testing'};
+const mega = {provider:'mega',user:'test@example.com',obscuredPassword:'obscured-for-testing'};
 
 test('isolated per-invocation rclone configuration is provider-specific',()=>{
   const driveConfig=tenantRcloneConfig(drive);
