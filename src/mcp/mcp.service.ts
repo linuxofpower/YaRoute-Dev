@@ -128,7 +128,10 @@ export class McpService {
         uri:CONNECTIONS_PANEL_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_PANEL_HTML,
         _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
-          'openai/widgetCSP':{redirect_domains:['https://github.com']},
+          'openai/widgetCSP':{redirect_domains:[
+            'https://github.com','https://accounts.google.com',
+            ...(CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []),
+          ]},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}),
     );
