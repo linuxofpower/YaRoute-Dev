@@ -16,6 +16,7 @@ import { assessPotentialFinancialLoss } from '../connectors/financial-risk-prefl
 import { ConnectorsService } from '../connectors/connectors.service';
 import { TenantRcloneService } from '../connectors/tenant-rclone.service';
 import { TenantGoogleOAuthService } from '../connectors/tenant-google-oauth.service';
+import { TenantMegaEnrollmentService } from '../connectors/tenant-mega-enrollment.service';
 import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { githubInstallationUrl } from '../connectors/github-app.service';
@@ -39,6 +40,7 @@ export class McpService {
     private readonly connections: ConnectorsService,
     private readonly tenantRclone: TenantRcloneService,
     private readonly tenantGoogle: TenantGoogleOAuthService,
+    private readonly tenantMega: TenantMegaEnrollmentService,
     private readonly github: GithubReadonlyConnector,
     private readonly githubWrites: GithubWriteConnector,
   ) {
@@ -412,6 +414,14 @@ export class McpService {
         annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
       },async({id,folderId})=>this.safeTool(()=>
         this.tenantGoogle.begin(this.connectorOwner(),id,folderId)));
+
+      server.registerTool('nyx_storage_connection_begin_mega', {
+        title:'Open a secure MEGA account sign-in form',
+        description:'Create an expiring HTTPS link for MEGA sign-in. Enter passwords ONLY on the first-party NestNyx page, never in ChatGPT. Does not ask to disable 2FA.',
+        inputSchema:z.object({id:z.string().uuid(),rootPath:z.string().min(1).max(256)}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+      },async({id,rootPath})=>this.safeTool(()=>
+        this.tenantMega.begin(this.connectorOwner(),id,rootPath)));
 
       server.registerTool('nyx_storage_connection_test_pending', {
         title: 'Check pending connection connectivity',
