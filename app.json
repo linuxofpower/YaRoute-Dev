@@ -82,6 +82,10 @@
     "DATABASE_URL": {
       "description": "DEV-only PostgreSQL connection string (distinct DB from production). Set in Heroku private config vars.",
       "required": true
+    },
+    "NYX_BRAND_VARIANT": {
+      "description": "Public app icon variant. DEV is blue; a reviewed PROD build uses purple.",
+      "value": "development"
     }
   },
   "logo": "https://dev-nest-nyx-0df80c227630.herokuapp.com/branding/icon.png"
