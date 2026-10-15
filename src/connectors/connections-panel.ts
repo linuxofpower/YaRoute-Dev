@@ -464,7 +464,14 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
   }else if(choice.dataset.open==='nyx-rclone-group'){
    show('Rclone credentials must be managed privately on the server. Inventory is read-only.');
   }else{
-   show('Existing configured remotes are listed here. New Google Drive/MEGA authorization is not enabled in production.');
+   const label=choice.dataset.open==='nyx-google-group'?'google':'mega';
+   if(tenantToolsAvailable){
+    document.getElementById('tenant-'+label+'-create').hidden=false;
+    document.getElementById('tenant-'+label+'-name').focus();
+    show('Create a separate '+label+' connection. Never enter credentials into ChatGPT.');
+   }else{
+    show('New Google Drive/MEGA authorization is not enabled in production.');
+   }
   }
   addMenu.hidden=true;
   quickAdd.setAttribute('aria-expanded','false');
@@ -472,6 +479,18 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
 }
 document.getElementById('refresh').addEventListener('click',()=>refresh().catch(e=>show(e.message,true)));
 document.getElementById('rclone-refresh').addEventListener('click',()=>refreshRclone());
+for(const [provider,label] of [['google-drive','google'],['mega','mega']]){
+ document.getElementById('tenant-'+label+'-add').addEventListener('click',async()=>{
+  const field=document.getElementById('tenant-'+label+'-name');
+  const name=field.value.trim();
+  if(!name)return show('Choose a connection name.',true);
+  try{
+   await call('nyx_storage_connection_create',{provider,name});
+   field.value='';await refreshTenantStorage();
+   show('Connection created. Select a root and authorize this account.');
+  }catch(e){show(e.message,true);}
+ });
+}
 document.getElementById('new-form').addEventListener('submit',async e=>{
  e.preventDefault();const name=document.getElementById('new-name').value.trim();
  const provider='github';
