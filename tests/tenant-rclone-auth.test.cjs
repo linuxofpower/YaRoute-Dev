@@ -108,7 +108,9 @@ test('activation requires a recent verified candidate and promotes transactional
     },
     release:()=>{},
   };
-  svc.pool={connect:async()=>client};
+  svc.pool={connect:async()=>client,query:async()=>({rowCount:1,rows:[{
+    provider:'google-drive',encrypted_profile:svc.seal('oauth:alice',id,drive),
+  }]})};
   await assert.rejects(()=>svc.activate('oauth:alice',id),/VERIFICATION_REQUIRED/);
   assert.equal(statements.some(x=>x.includes('DELETE FROM')),false);
   assert.equal(statements.at(-1),'ROLLBACK');
