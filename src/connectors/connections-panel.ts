@@ -256,6 +256,81 @@ async function refreshRclone(){
   rcloneStatus.className='error';
  }
 }
+
+let tenantToolsAvailable=false;
+function renderTenant(connections){
+ for(const [provider,label] of [['google-drive','google'],['mega','mega']]){
+  const host=document.getElementById('tenant-'+label+'-list');
+  host.replaceChildren();
+  const kind=provider==='mega'?'mega-root':'drive';
+  const items=connections.filter(x=>x.provider===provider && x.status!=='revoked');
+  host.append(el('p',items.length+' separate NestNyx connection(s).'));
+  for(const item of items){
+   const box=el('div');box.className='card';
+   box.append(el('strong',item.displayName),el('p','Connection status: '+item.status));
+   const root=input((item.resources||[]).find(x=>x.kind===kind)?.id || (provider==='mega'?'MEGA_ROOT':''));
+   root.maxLength=256;
+   root.placeholder=provider==='mega'?'MEGA_ROOT or subfolder':'Google folder ID';
+   const line=el('div');line.className='row';
+   line.append(el('span','Allowed root'),root);box.append(line);
+   box.append(el('p','Read-only access. Old Rclone connections stay unchanged.'));
+   const configure=async()=>{
+    const value=root.value.trim();
+    if(!value || value.length>256)throw Error('Enter an allowed root first');
+    await call('nyx_storage_connection_permissions',{id:item.id,capabilities:['storage:list']});
+    await call('nyx_storage_connection_roots',{id:item.id,
+      resources:[{kind,id:value,capabilities:['storage:list']}]});
+    return value;
+   };
+   box.append(button('Save read-only root',async()=>{
+    await configure();show('Root selected. Sign in separately to authorize access.');
+   }));
+   box.append(button(provider==='mega'?'Secure MEGA sign-in':'Google OAuth sign-in',async()=>{
+    const value=await configure();
+    const args=provider==='mega'?{id:item.id,rootPath:value}:{id:item.id,folderId:value};
+    const cmd=provider==='mega'?'nyx_storage_connection_begin_mega':'nyx_storage_connection_begin_google';
+    const result=await call(cmd,args);
+    if(typeof result?.url!=='string')throw Error('Authorization link missing');
+    const url=new URL(result.url);
+    const base=${JSON.stringify(iconOrigin)};
+    if(url.protocol!=='https:' ||
+      (provider==='google-drive' ? 
+       (url.hostname!=='accounts.google.com'||url.pathname!=='/o/oauth2/v2/auth') :
+       (!base || url.origin!==base || url.pathname!=='/connect/mega/setup'))) {
+      throw Error('Unexpected provider sign-in URL');
+    }
+    await request('ui/open-link',{url:result.url});
+    show('Complete provider authorization in your browser, then return for a read-only test.');
+   }));
+   box.append(button('Test new connection',async()=>{
+    const result=await call('nyx_storage_connection_test_pending',{id:item.id});
+    show('Read-only test: '+String(result));
+   }));
+   box.append(button('Activate after test',async()=>{
+    const result=await call('nyx_storage_connection_activate',{id:item.id});
+    show('Storage connection: '+String(result.status));
+    await refreshTenantStorage();
+   }));
+   host.append(box);
+  }
+ }
+}
+async function refreshTenantStorage(){
+ try{
+  const data=await call('nyx_storage_connections_list',{});
+  if(!Array.isArray(data))throw Error('Storage tools unavailable');
+  tenantToolsAvailable=true;
+  for(const name of ['google','mega'])document.getElementById('tenant-'+name+'-create').hidden=false;
+  renderTenant(data);
+ }catch{
+  tenantToolsAvailable=false;
+  for(const name of ['google','mega']){
+   document.getElementById('tenant-'+name+'-create').hidden=true;
+   document.getElementById('tenant-'+name+'-list').replaceChildren(
+     el('p','Independent multi-user onboarding is not enabled on this deployment.'));
+  }
+ }
+}
 function render(connections){
  root.replaceChildren();
  const github=connections.filter(c=>c && c.provider==='github' && c.status!=='revoked');
