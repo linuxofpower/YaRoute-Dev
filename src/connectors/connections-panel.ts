@@ -3,7 +3,7 @@
  * APIs, external forms or finance controls. All data/actions go through
  * authenticated MCP tools. Render untrusted names with textContent only.
  */
-export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/connections/v8.html';
+export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/connections/v9.html';
 const iconOrigin = process.env.NYX_PUBLIC_URL?.startsWith('https://')
   ? new URL(process.env.NYX_PUBLIC_URL).origin : '';
 export const CONNECTIONS_PANEL_BRAND_ORIGIN = iconOrigin;
@@ -68,20 +68,20 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 <section id="nyx-add-menu" hidden aria-label="Add a connection">
 <h2>Add a connection</h2>
 <div id="nyx-provider-choices" role="group" aria-label="Choose a provider">
-<button type="button" data-open="nyx-google-group">🌈 Google Drive<small>Show configured remotes; new OAuth pending</small></button>
-<button type="button" data-open="nyx-mega-group">🗄️ MEGA<small>Show configured remotes; new login pending</small></button>
+<button type="button" data-open="nyx-google-group">🌈 Google Drive<small>Independent OAuth connection in DEV</small></button>
+<button type="button" data-open="nyx-mega-group">🗄️ MEGA<small>Independent secure sign-in in DEV</small></button>
 <button type="button" data-open="nyx-rclone-group">🧰 Existing Rclone<small>View private configuration metadata</small></button>
 <button type="button" data-open="nyx-other-group" data-github="true">🐙 GitHub<small>Create a named GitHub connection</small></button>
 </div>
-<p class="muted">Only GitHub creation is enabled. Google Drive and MEGA authentication is not released; never enter provider credentials in chat.</p>
+<p class="muted">Multi-user storage onboarding works only in isolated DEV when enabled. Never enter credentials in ChatGPT.</p>
 </section>
 <header><p class="muted">Existing connections grouped by provider. Rclone configuration is not proof of connectivity.</p>
 <div class="warn">GitHub permissions and repository writes require explicit grants. No default-branch writes, workflow dispatch, credential editing, billing or infrastructure actions.</div></header>
 <h2>Existing connections</h2>
 <details class="nyx-provider-group" id="nyx-google-group"><summary>🌈 Google Drive <span class="nyx-provider-count" id="nyx-google-count">Loading</span></summary>
-<div class="nyx-provider-list" id="nyx-google-list" aria-live="polite">Checking configured remotes…</div></details>
+<div class="nyx-provider-list"><div class="row" id="tenant-google-create" hidden><label>Name <input id="tenant-google-name" type="text" maxlength="80" placeholder="My Google Drive"></label><button type="button" id="tenant-google-add">Create Google connection</button></div><div id="tenant-google-list" aria-live="polite"></div><div id="nyx-google-list" aria-live="polite">Checking configured remotes…</div></div></details>
 <details class="nyx-provider-group" id="nyx-mega-group"><summary>🗄️ MEGA <span class="nyx-provider-count" id="nyx-mega-count">Loading</span></summary>
-<div class="nyx-provider-list" id="nyx-mega-list" aria-live="polite">Checking configured remotes…</div></details>
+<div class="nyx-provider-list"><div class="row" id="tenant-mega-create" hidden><label>Name <input id="tenant-mega-name" type="text" maxlength="80" placeholder="My MEGA"></label><button type="button" id="tenant-mega-add">Create MEGA connection</button></div><div id="tenant-mega-list" aria-live="polite"></div><div id="nyx-mega-list" aria-live="polite">Checking configured remotes…</div></div></details>
 <details class="nyx-provider-group" id="nyx-rclone-group"><summary>🧰 Rclone <span class="nyx-provider-count" id="nyx-rclone-count">Private inventory</span></summary>
 <div class="nyx-provider-list"><p class="provider-note">Existing private Rclone metadata; remotes are listed under their providers above. This does not import, connect or modify credentials.</p>
 <button id="rclone-refresh" type="button">Refresh configured remotes</button>
