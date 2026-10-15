@@ -117,7 +117,7 @@ test('Google callback consumes state and stages provider-bound credential withou
  assert.equal(staged[0][2].rootFolderId,'folder123');
  assert.equal(staged[0][2].provider,'google-drive');
  assert.equal(confirmed.length,1);
- assert.equal(confirmed[0][4],'provider-account-42');
+ assert.equal(confirmed[0][3],'provider-account-42');
  assert.equal(JSON.stringify(outcome).includes('private_'),false);
 });
 
@@ -140,7 +140,7 @@ test('MEGA sign-in uses one-time HTTPS form link and requires a successful probe
  assert.equal(result.status,'pending_activation');
  assert.equal(staged.length,1);
  assert.equal(staged[0][2].provider,'mega');
- assert.equal(confirmed[0][4],'tester@example.com');
+ assert.equal(confirmed[0][3],'tester@example.com');
  const bad=stores(c);
  bad.storage.probePending=async()=> 'failed';
  const other=new TenantMegaEnrollmentService(bad.connectors,bad.storage);
