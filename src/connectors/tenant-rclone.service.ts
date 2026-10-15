@@ -252,7 +252,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       return this.probe(active.profile, clean);
     }
     // MEGA resource IDs are bounded root paths (not rclone remote names).
-    const root = tenantRclonePath(resourceId);
+    const root = resourceId === 'MEGA_ROOT' ? '' : tenantRclonePath(resourceId);
     const absolute = tenantRclonePath([root, clean].filter(Boolean).join('/'));
     return this.probe(active.profile, absolute);
   }
