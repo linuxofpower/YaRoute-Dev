@@ -15,6 +15,11 @@ export class JobWorkerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
+    // The dedicated HeartBit dyno must not claim storage jobs. HeartBit owns
+    // scheduling/control-plane liveness only; storage work remains on the web
+    // process until a separate worker dyno is explicitly introduced.
+    if (process.env.NYX_PROCESS_ROLE === 'heartbit') return;
+
     // Legacy global-storage jobs may contain unscoped Rclone roots; do not
     // process them alongside public multi-user connector traffic.
     if (process.env.NYX_DEPLOYMENT_MODE === 'public' &&
