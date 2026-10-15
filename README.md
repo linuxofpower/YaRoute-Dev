@@ -70,6 +70,20 @@ rclone
 
 Shared folders are the GPT-visible control surface. Private rclone remotes are the execution/data plane.
 
+### HeartBit process
+
+HeartBit now has its own Heroku process type instead of using the web dyno or ChatGPT automation as the clock:
+
+```text
+web:      npm run start:prod
+heartbit: npm run start:heartbit
+```
+
+The `heartbit` process is non-HTTP and requires durable PostgreSQL. It journals hourly boundaries, records missed slots without fabricating success, verifies the live canonical Head/Body/Footer and CLI, and commits one verified cycle per successful hourly slot. It never claims legacy storage jobs. Read current state through protected `GET /heartbit/status` or private MCP `nyx_heartbit_status`.
+
+See [HeartBit second dyno](docs/heartbit-dyno.md) for scaling and cutover. Defining the Procfile process does not automatically scale it to one dyno.
+
+
 ## MCP tools
 
 - `nyx_ini` — resolve and verify the canonical Nyx bootstrap from the configured `MAIN` drive, with optional Area hydration.
