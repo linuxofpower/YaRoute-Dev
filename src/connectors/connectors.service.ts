@@ -242,6 +242,29 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     return this.view(updated);
   }
 
+  /** Trusted server-side provider verification only; never an MCP input. */
+  async confirmStorageProvider(ownerId: string, id: string,
+                               provider: 'google-drive' | 'mega', verifiedAccountId: string) {
+    this.assertTenantStorageMode();
+    const connection = await this.owned(this.owner(ownerId), id);
+    if (connection.provider !== provider || connection.status === 'revoked' ||
+        !/^[A-Za-z0-9_.:@-]{1,256}$/.test(verifiedAccountId)) {
+      throw new Error('TENANT_RCLONE_PROVIDER_IDENTITY_INVALID');
+    }
+    if (connection.status === 'active' &&
+        connection.externalAccountId !== verifiedAccountId) {
+      throw new Error('TENANT_RCLONE_ACCOUNT_CHANGE_FORBIDDEN');
+    }
+    const verified: ConnectorConnection = {
+      ...connection, externalAccountId: verifiedAccountId,
+      // Provider consent grants only metadata for read-only operations.
+      // User-enabled capabilities and chosen resources remain separate.
+      providerCapabilities: ['storage:list'], status: 'active',
+    };
+    await this.repository!.save(verified);
+    return this.view(verified);
+  }
+
   async beginGithub(ownerId:string, id:string, installationId?:string) {
     await this.consumeQuota(ownerId,id);
     const c = await this.owned(ownerId,id);
