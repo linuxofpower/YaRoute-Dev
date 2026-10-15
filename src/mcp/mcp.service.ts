@@ -14,6 +14,7 @@ import { StorageService } from '../storage/storage.service';
 import { CopyJobPayload } from '../storage/storage.types';
 import { assessPotentialFinancialLoss } from '../connectors/financial-risk-preflight';
 import { ConnectorsService } from '../connectors/connectors.service';
+import { TenantRcloneService } from '../connectors/tenant-rclone.service';
 import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { githubInstallationUrl } from '../connectors/github-app.service';
@@ -35,6 +36,7 @@ export class McpService {
     private readonly cliRegistry: NyxCliRegistryService,
     private readonly headLibrary: NyxHeadLibraryService,
     private readonly connections: ConnectorsService,
+    private readonly tenantRclone: TenantRcloneService,
     private readonly github: GithubReadonlyConnector,
     private readonly githubWrites: GithubWriteConnector,
   ) {
@@ -358,6 +360,65 @@ export class McpService {
       annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
     },async({id,repo,title,body})=>this.safeTool(()=>
       this.limitedConnectionApi(id,()=>this.githubWrites.createIssue(this.connectorOwner(),id,repo,title,body))));
+
+
+    // Per-owner storage connection metadata and read-probe onboarding. Registered
+    // only for the isolated opt-in public runtime. Private legacy remotes remain
+    // in their existing restricted worker, never reachable through these tools.
+    if (process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true' &&
+        process.env.NYX_DEPLOYMENT_MODE === 'public' &&
+        process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true') {
+      server.registerTool('nyx_storage_connections_list', {
+        title: 'List my independent Google Drive and MEGA connections',
+        description: 'Owner-scoped storage connections only, with no credentials or legacy rclone configuration.',
+        inputSchema: z.object({}),
+        annotations: {readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false},
+      }, async () => this.safeTool(() => this.connections.listStorage(this.connectorOwner())));
+
+      server.registerTool('nyx_storage_connection_create', {
+        title: 'Add a separate storage connection',
+        description: 'Create a pending owner-specific Google Drive or MEGA connection without provider grants or secret input. Provider sign-in is required separately.',
+        inputSchema: z.object({provider: z.enum(['google-drive', 'mega']), name: z.string().min(1).max(80)}),
+        annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false},
+      }, async ({provider,name}) => this.safeTool(() =>
+        this.connections.createStorage(this.connectorOwner(),provider,name)));
+
+      server.registerTool('nyx_storage_connection_permissions', {
+        title: 'Select read-only storage permission',
+        description: 'Set storage:list only. A user selection cannot grant provider permissions.',
+        inputSchema: z.object({id: z.string().uuid(),capabilities: z.array(z.literal('storage:list')).max(1)}),
+        annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
+      }, async ({id,capabilities}) => this.safeTool(() =>
+        this.connections.storagePermissions(this.connectorOwner(),id,capabilities)));
+
+      server.registerTool('nyx_storage_connection_roots', {
+        title: 'Set exact storage root boundaries',
+        description: 'Select explicit Drive folder ID or MEGA relative-root; never provide rclone remote names or credentials.',
+        inputSchema: z.object({id:z.string().uuid(),resources:z.array(z.object({
+          kind:z.enum(['drive','mega-root']),
+          id:z.string().min(1).max(256),
+          capabilities:z.array(z.literal('storage:list')).min(1).max(1),
+        }).strict()).max(10)}),
+        annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
+      }, async ({id,resources}) => this.safeTool(() =>
+        this.connections.storageResources(this.connectorOwner(),id,resources as ConnectorResourceRule[])));
+
+      server.registerTool('nyx_storage_connection_test_pending', {
+        title: 'Check pending connection connectivity',
+        description: 'Read-only isolated rclone probe; uses only the owner-scoped pending secret previously staged through verified provider authorization.',
+        inputSchema: z.object({id:z.string().uuid()}),
+        annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true},
+      }, async ({id}) => this.safeTool(() =>
+        this.tenantRclone.probePending(this.connectorOwner(),id)));
+
+      server.registerTool('nyx_storage_connection_activate', {
+        title: 'Activate a successfully verified storage connection',
+        description: 'Requires provider verified grant, scoped user-selected permission and fresh successful read test. Does not change existing legacy connections.',
+        inputSchema: z.object({id:z.string().uuid()}),
+        annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true},
+      }, async ({id}) => this.safeTool(() =>
+        this.tenantRclone.activate(this.connectorOwner(),id)));
+    }
 
     // Public multi-user connector mode deliberately omits all legacy global
     // storage roots, Rclone, NYX CLI commands and cross-user private handoffs.
