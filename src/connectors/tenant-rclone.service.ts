@@ -203,7 +203,17 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
 
   /** Requires independent provider grant AND successful recent read probe. */
   async activate(ownerId: string, connectionId: string) {
-    await this.owned(ownerId, connectionId);
+    const owner = await this.owned(ownerId, connectionId);
+    const pendingCandidate = await this.profile(ownerId, connectionId, 'pending');
+    const rootId = pendingCandidate.profile.provider === 'google-drive'
+      ? pendingCandidate.profile.rootFolderId : undefined;
+    const kind = pendingCandidate.provider === 'mega' ? 'mega-root' : 'drive';
+    if (pendingCandidate.provider !== owner.provider ||
+        !(owner.resources || []).some(r => r.kind === kind &&
+          (kind === 'mega-root' || r.id === rootId) &&
+          r.capabilities.includes('storage:list'))) {
+      throw new Error('TENANT_RCLONE_RESOURCE_FORBIDDEN');
+    }
     const grant = await this.connectors.registryPolicy().require(ownerId, connectionId, 'storage:list');
     if (!['google-drive','mega'].includes(grant.provider)) {
       throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
