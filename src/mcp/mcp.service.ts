@@ -15,6 +15,7 @@ import { CopyJobPayload } from '../storage/storage.types';
 import { assessPotentialFinancialLoss } from '../connectors/financial-risk-preflight';
 import { ConnectorsService } from '../connectors/connectors.service';
 import { TenantRcloneService } from '../connectors/tenant-rclone.service';
+import { TenantGoogleOAuthService } from '../connectors/tenant-google-oauth.service';
 import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { githubInstallationUrl } from '../connectors/github-app.service';
@@ -37,6 +38,7 @@ export class McpService {
     private readonly headLibrary: NyxHeadLibraryService,
     private readonly connections: ConnectorsService,
     private readonly tenantRclone: TenantRcloneService,
+    private readonly tenantGoogle: TenantGoogleOAuthService,
     private readonly github: GithubReadonlyConnector,
     private readonly githubWrites: GithubWriteConnector,
   ) {
@@ -402,6 +404,14 @@ export class McpService {
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
       }, async ({id,resources}) => this.safeTool(() =>
         this.connections.storageResources(this.connectorOwner(),id,resources as ConnectorResourceRule[])));
+
+      server.registerTool('nyx_storage_connection_begin_google', {
+        title:'Authorize Google Drive for one NestNyx connection',
+        description:'Generate a ten-minute, owner-bound Google OAuth URL using PKCE and read-only Drive scope. Requires selected Drive folder ID. Sign in using Google; do not send tokens in chat.',
+        inputSchema:z.object({id:z.string().uuid(),folderId:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/)}),
+        annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+      },async({id,folderId})=>this.safeTool(()=>
+        this.tenantGoogle.begin(this.connectorOwner(),id,folderId)));
 
       server.registerTool('nyx_storage_connection_test_pending', {
         title: 'Check pending connection connectivity',
