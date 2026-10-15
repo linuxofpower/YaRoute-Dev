@@ -1,73 +1,41 @@
-# Multiple-user Rclone reconnect — isolated staging (2026-10-14)
+# Multiple-user Rclone reconnect — isolated DEV (2026-10-15)
 
-**Status: DEV implementation, default OFF; NOT a deployed or user-ready login flow.**
-Never remove, rotate, re-encrypt, rewrite, or migrate the current operator `rclone.conf`,
-`RCLONE_CONFIG_B64`, `RCLONE_CONFIG_PATH`, `NYX_SHARED_ROOTS_JSON`, or private MEGA routes
-as a side effect of enabling development code.
+**Status: DEV draft PR; not deployed. Feature flag defaults OFF.**
+**Never delete or rotate the legacy operator config before independently verified rollback.**
 
-## Two independent connection planes
+## Two separate authorization planes
 
-- **Native ChatGPT Google Drive connector:** per-user ChatGPT authorization managed by ChatGPT.
-  Its tokens are not Rclone credentials, and must never be copied into NestNyx.
-- **NestNyx Rclone:** per-user OAuth identity -> immutable connection ID -> selected
-  Google Drive folder or MEGA root -> independently verified provider grant ->
-  user-selected capability -> operation-specific approval if needed.
+- **Native ChatGPT Google Drive:** Google consent managed by the ChatGPT connector. Users connect it inside ChatGPT. Tokens are never shared with Rclone.
+- **NestNyx Google Drive & MEGA through Rclone:** JWT-authenticated NestNyx owner -> separate immutable connection ID -> explicit provider authorization -> selected Drive folder or MEGA root -> read-only Rclone probe -> manual activation.
+- The same Rclone executable can serve multiple users; one global credential file **cannot** safely serve unrelated users.
 
-One Rclone binary may serve many users. **Never** use one operator's shared
-`rclone.conf` or remote names to select other users' accounts.
+## Implemented in DEV
 
-## Implementation staged in DEV
+- `TenantRcloneService`: independent, encrypted PostgreSQL V2 credential records keyed by owner and immutable connection ID. Pending and active credentials coexist through tests. Every Rclone invocation creates a private `0600` config under a unique `0700` directory; legacy config and inherited credentials are not used.
+- Per-tenant MCP tools: list/create Google/MEGA connections, select read-only `storage:list`, choose exact Drive folder ID or MEGA root, begin provider authorization, test pending credentials, activate after verification. New storage tools register only when the isolated public feature flag is enabled.
+- `TenantGoogleOAuthService`: read-only Drive OAuth2 authorization code + PKCE, one-use hashed state, encrypted temporary verifier, 10-minute expiration, Google account verification, offline refresh token and no token returned to browser or ChatGPT.
+- `TenantMegaEnrollmentService`: expiring, owner-scoped HTTPS setup link and first-party form. Password is never sent via GPT, command arguments, or URLs. Server runs `rclone obscure -` via standard input before encryption. Successful MEGA read probe is required before verified provider grant; temporary failure cannot replace active credentials.
+- `RcloneService` refuses all legacy commands in public connector mode, but now allows bootstrapping the isolated public runtime without loading `RCLONE_CONFIG_B64`. `SharedRootsService` similarly hides legacy private roots from public tenants.
+- Old private mode and existing production settings remain unchanged. All new code is behind the `NYX_MULTIUSER_RCLONE_ENABLED=true` switch.
 
-`TenantRcloneService` introduces a separate, opt-in PostgreSQL table
-`nyx_rclone_tenant_credentials_v2` (keyed by authenticated owner and immutable
-connection ID). AES-256-GCM with owner/connection/provider-bound AAD encrypts
-provider credentials. Pending and active versions are held separately to allow
-reconnection tests without replacing an already working connection.
+## Explicit user configuration required in an ISOLATED DEV Heroku environment
 
-- Default `NYX_MULTIUSER_RCLONE_ENABLED` is unset: **no tenant DB initialization**.
-- If enabled, requires `NYX_DEPLOYMENT_MODE=public`,
-  `NYX_PUBLIC_CONNECTORS_ENABLED=true`, a private database and
-  `NYX_STORAGE_ENCRYPTION_KEY` (32 random bytes, canonical base64).
-- Only verified JWT subject ownership may select a connection. User-selected
-  capabilities, verified provider capabilities, typed resource grants and
-  independent provider matching are all required for an active read probe.
-- Runtime creates an exclusive, `0600` temporary config inside a `0700` folder,
-  uses a single ephemeral `tenant` remote, runs **read-only** `lsf` with
-  time and output limits, sanitizes the child environment, and deletes the config.
-- Drive probes are bound to the **selected root_folder_id**. MEGA probes are
-  restricted to the selected root path. No cross-user remote names or arbitrary
-  shell commands are accepted.
-- Profile staging, read probe, and activation are separate. A passed root list
-  is **not** proof of write permission or of an OAuth provider grant.
-- No new MCP or HTTP credential-upload endpoint is exposed. The internal
-  staging method must only be called by a future trusted, verified provider
-  authorization handler; never feed credentials via a chat tool.
+1. Create a Google Cloud OAuth web client for the DEV NestNyx host, enable Google Drive API and configure the **exact** HTTPS authorized callback: `https://YOUR-DEV-HOST/connect/google/callback`.
+2. Finish Google OAuth consent-screen requirements for requested `openid`, `email`, and Drive `drive.readonly` scopes. If Google requires verification or test-user approval, complete that with Google before offering the connector to others.
+3. Configure separate DEV secrets, not in GitHub files or ChatGPT: `NYX_GOOGLE_CLIENT_ID`, `NYX_GOOGLE_CLIENT_SECRET`, `NYX_STORAGE_ENCRYPTION_KEY` (fresh random 32-byte base64 key), `DATABASE_URL`, `NYX_PUBLIC_URL`, and JWT/OIDC secrets/settings already required by NestNyx.
+4. Only in the **independent DEV** deployment set `NYX_DEPLOYMENT_MODE=public`, `NYX_PUBLIC_CONNECTORS_ENABLED=true` and `NYX_MULTIUSER_RCLONE_ENABLED=true`; never activate this feature on the existing private production service. Do not copy the production operator Rclone config.
+5. Connect two test users separately. For each, create an owner-specific storage connection, explicitly select a folder/root, begin Google OAuth or open the secure MEGA login link, then run a read-only probe and activate.
+6. Prove cross-tenant access is denied and refresh/restart/rollback work. Do not enable storage writes/moves/deletes until separate risk gates and user-specific approval have been implemented.
 
-## Required BEFORE a user can reconnect with NestNyx
+## Limitations / release gates
 
-1. Implement Google OAuth authorization-code + PKCE with state, nonce, redirect
-   checks, per-user identity proof and server-side token refresh. Use a
-   project-specific OAuth client ID; do not depend on rclone's retiring shared
-   Google client ID. Keep all keys and tokens in the private vault.
-2. Implement a secure MEGA credential entry/onboarding route with
-   independently verified account identity and 2FA handling as applicable;
-   do not ask for passwords or codes in ChatGPT messages.
-3. Extend the production connection onboarding service and UI beyond today's
-   GitHub-only connector. No storage grant is active merely because a remote is
-   configured.
-4. Perform live per-user smoke tests (user A Drive, user B Drive, A MEGA, B MEGA):
-   valid authorization, reconnect, token refresh, root-bounded reads,
-   denied cross-tenant reads, encrypted persistence and restart behavior.
-5. Only after verified tests should an explicit migration/activation copy the
-   selected accounts into V2, one at a time. Keep the previous operator config
-   and routes intact until rollback and user acceptance are verified.
-6. Add independent write/copy/move/delete authorization and confirmation gates
-   **separately**. This stage implements read-only connectivity checks, not
-   arbitrary storage execution or any background migration.
+- Native ChatGPT Google Drive consent remains separate; the code cannot create or authorize users' native ChatGPT connector sessions.
+- The new read-only storage path is not a general file-management API yet. Write access is **not implemented**, even if Google or Rclone remote could write elsewhere.
+- The current MEGA browser enrollment does **not** implement an additional MEGA 2FA challenge. Do **not** disable 2FA to use NestNyx.
+- User-visible storage provider cards in the existing GitHub-only NestNyx connection UI still require dedicated UI work; the new backend MCP tools provide the staged onboarding.
+- Live provider acceptance, cross-tenant integration tests and independent deployment tests have **not** been performed. CI/unit passing is not proof of provider access.
+- Each provider may enforce additional consent or OAuth verification requirements. `storage:list` grants must be provider-verified, user-enabled and root-bound. A successful generic root probe does not prove any write permission.
 
 ## Rollback
 
-Disable `NYX_MULTIUSER_RCLONE_ENABLED`. Private legacy configurations, fixed
-legacy slots and routes remain unchanged. Pending V2 rows are not automatically
-promoted and no legacy file is ever deleted. Revocation, expired grants and
-missing resource rules must fail closed.
+Disable `NYX_MULTIUSER_RCLONE_ENABLED` in DEV, or revert this draft PR. No legacy Rclone remote, `RCLONE_CONFIG_B64`, `NYX_SHARED_ROOTS_JSON`, production storage credential, or Head/Body/Footer file has been altered by this PR. No old credential is deleted by V2 staging.
