@@ -416,11 +416,11 @@ export class HeartbitStoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async lock(client: PoolClient): Promise<boolean> {
-    const result = await client.query(
-      'SELECT pg_try_advisory_xact_lock($1, $2) AS locked',
+    await client.query(
+      'SELECT pg_advisory_xact_lock($1, $2)',
       [LOCK_CLASS, LOCK_KEY],
     );
-    return Boolean(result.rows[0]?.locked);
+    return true;
   }
 
   private async rollback(client: PoolClient) {
