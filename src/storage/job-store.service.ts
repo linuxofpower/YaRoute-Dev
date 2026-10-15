@@ -24,7 +24,12 @@ export class JobStoreService implements OnModuleInit, OnModuleDestroy {
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    await this.pool.query("UPDATE nyx_storage_jobs SET status = 'queued', updated_at = now() WHERE status = 'running'");
+    // Only a process that can actually run storage jobs may recover abandoned
+    // running rows. A HeartBit dyno shares DATABASE_URL but must never reset a
+    // legitimate storage job being executed by the web process.
+    if (process.env.NYX_PROCESS_ROLE !== 'heartbit') {
+      await this.pool.query("UPDATE nyx_storage_jobs SET status = 'queued', updated_at = now() WHERE status = 'running'");
+    }
   }
 
   async onModuleDestroy() {
