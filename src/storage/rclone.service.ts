@@ -12,7 +12,12 @@ export class RcloneService implements OnModuleInit {
     // A process-wide rclone.conf contains one operator's storage credentials.
     // Never start a public multi-user service with that configuration.
     if (process.env.NYX_DEPLOYMENT_MODE === 'public') {
-      throw new Error('PUBLIC_STORAGE_ISOLATION_NOT_IMPLEMENTED');
+      // Public tenant storage uses ephemeral owner-scoped configs exclusively.
+      // Never read, decode or overwrite RCLONE_CONFIG_B64/RCLONE_CONFIG_PATH here.
+      if (process.env.NYX_PUBLIC_CONNECTORS_ENABLED !== 'true') {
+        throw new Error('PUBLIC_STORAGE_ISOLATION_NOT_IMPLEMENTED');
+      }
+      return;
     }
     const encoded = process.env.RCLONE_CONFIG_B64;
     if (encoded) {
@@ -154,6 +159,9 @@ export class RcloneService implements OnModuleInit {
   }
 
   async run(args: string[], maxOutputBytes?: number): Promise<{ stdout: string; stderr: string }> {
+    if (process.env.NYX_DEPLOYMENT_MODE === 'public') {
+      throw new Error('PRIVATE_RCLONE_CONNECTIONS_ONLY');
+    }
     return new Promise((resolve, reject) => {
       const child = spawn(this.binary, ['--config', this.configPath, ...args], {
         env: process.env,
