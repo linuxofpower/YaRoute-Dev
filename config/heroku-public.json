@@ -9,5 +9,6 @@
   "NYX_GLOBAL_INDEX_ON_BOOT": "false",
   "NYX_BOOTSTRAP_PATH": "Documents/Nyxpad/nyx_bootstrap.json",
   "NYX_HANDOFF_COORDINATION": "single-dyno",
-  "NYX_BRAND_VARIANT": "development"
+  "NYX_BRAND_VARIANT": "development",
+  "NYX_SERVICE_NAME": "DevNestNyx"
 }
