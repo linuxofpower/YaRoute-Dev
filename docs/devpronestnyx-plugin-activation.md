@@ -6,7 +6,7 @@ The actual two environments are:
 
 | Existing app | Purpose | Branding | Source |
 | --- | --- | --- | --- |
-| **DevNestNyx** | Development and tests | Blue icon | `linuxofpower/YaRoute-Dev` |
+| **DevNestNyx** | Development and tests | Blue icon | the existing development repository |
 | **NestNyx** | Production | Purple icon | `yaMorozYaroslav/YaRoute` |
 
 ## Corrected rollout rules
