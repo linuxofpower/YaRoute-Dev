@@ -10,9 +10,9 @@ Status: prepared in the DEV source for a reviewed production promotion. **No pro
 
 ## Google Cloud production project
 
-- Keep the existing DEV Google Cloud project and consent-screen settings.
+- Keep the existing DevNestNyx Google Cloud project and consent-screen settings.
 - Create a new **production** Google Cloud project in the Google Cloud Console, enable Google Drive API and open Google Auth Platform.
-- Under Branding, choose **NestNyx** (not DevProNestNyx) and the purple production logo. A 96x96 production PNG is already committed in the DEV reference source at `public/branding/nestnyx-prod.png`; Google normally recommends a square 120x120 PNG for its consent screen. Upload the appropriate resized image manually to the *production* Google Cloud project; committing artwork does not change Google branding.
+- Under Branding, choose **NestNyx** (not DevNestNyx) and the purple production logo. A 96x96 production PNG is already committed in the DEV reference source at `public/branding/nestnyx-prod.png`; Google normally recommends a square 120x120 PNG for its consent screen. Upload the appropriate resized image manually to the *production* Google Cloud project; committing artwork does not change Google branding.
 - Under Audience, choose External for Google consumer accounts; start Testing for limited test users, and only publish when verification is ready.
 - Under Data Access, request only implemented scopes. The DEV implementation currently requests `openid email https://www.googleapis.com/auth/drive.readonly`. **Google classifies drive.readonly as restricted**: a public multi-user app may need extensive verification and an independent security assessment. Consider narrowing to `drive.file` with explicit file selection before broad launch; this requires design and backend changes.
 - Under Clients, create an OAuth web application named **NestNyx Production** and set the exact HTTPS authorized redirect URI:
