@@ -26,12 +26,12 @@ function response(){
  r.redirect=(code,p)=>{r.redirectCode=code;r.redirectPath=p;return r;};
  return r;
 }
-test('public NestNyx icon switches DEV blue and PROD purple without changing paths',async()=>{
+test('only DevNestNyx and NestNyx brand identities use independent icons',async()=>{
  const ctl=new BrandingController();
  const previous=process.env.NYX_BRAND_VARIANT;
  try {
   for (const [variant,asset,title] of [
-    ['development','nestnyx-dev.png','NestNyx Development'],
+    ['development','nestnyx-dev.png','DevNestNyx'],
     ['production','nestnyx-prod.png','NestNyx'],
   ]) {
    process.env.NYX_BRAND_VARIANT=variant;
