@@ -5,13 +5,23 @@ import path from 'node:path';
 import { Public } from './common/public.decorator';
 
 /** Public, credential-free brand resources. No access to NYX storage, DB or user data. */
+/** Branding is deployment-specific, not governed by the current OAuth owner's data. */
+export function nestNyxBrandVariant(): 'development' | 'production' {
+  const configured = process.env.NYX_BRAND_VARIANT;
+  if (configured === 'development' || configured === 'production') return configured;
+  return process.env.NYX_SERVICE_NAME === 'DevNestNyx' ? 'development' : 'production';
+}
+
 @Public()
 @Controller()
 export class BrandingController {
   @Get('branding/icon.png')
   async icon(@Res() res:Response) {
     // Fixed, repository-controlled path: the caller cannot choose any file.
-    const image=await fs.readFile(path.resolve('public/branding/icon.png'));
+    // Both 96x96 PNGs are committed and have different Git blob hashes.
+    // The URL stays stable across environments; the pixels do not.
+    const asset = nestNyxBrandVariant() === 'development' ? 'nestnyx-dev.png' : 'nestnyx-prod.png';
+    const image=await fs.readFile(path.resolve('public/branding',asset));
     res.setHeader('Cache-Control','public, max-age=3600');
     res.setHeader('X-Content-Type-Options','nosniff');
     res.type('image/png').send(image);
@@ -25,8 +35,7 @@ export class BrandingController {
 
   @Get('manifest.webmanifest')
   manifest(@Res() res:Response) {
-    const label=process.env.NYX_SERVICE_NAME || 'NestNyx';
-    const title=label==='DevProNestNyx'?'NestNyx Development':'NestNyx';
+    const title=nestNyxBrandVariant()==='development'?'DevNestNyx':'NestNyx';
     res.setHeader('Cache-Control','public, max-age=3600');
     res.setHeader('X-Content-Type-Options','nosniff');
     res.type('application/manifest+json').send({
@@ -39,8 +48,8 @@ export class BrandingController {
   @Get()
   home(@Res() res:Response) {
     // Never advertise provider verification or commercial availability.
-    const dev=process.env.NYX_SERVICE_NAME==='DevProNestNyx';
-    const title=dev?'NestNyx Development':'NestNyx';
+    const dev=nestNyxBrandVariant()==='development';
+    const title=dev?'DevNestNyx':'NestNyx';
     res.setHeader('Cache-Control','public, max-age=3600');
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Security-Policy',"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");

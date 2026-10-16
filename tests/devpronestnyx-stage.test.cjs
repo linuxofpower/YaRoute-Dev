@@ -3,9 +3,9 @@ const { test } = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('DEV deployment manifest requires isolated account resources', () => {
+test('existing DevNestNyx manifest retains isolated account resources', () => {
   const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'app.json'), 'utf8'));
-  assert.equal(config.name, 'DevProNestNyx');
+  assert.equal(config.name, 'DevNestNyx');
   assert.ok(config.repository.startsWith('https://github.com/'));
   assert.ok(config.repository.endsWith('/YaRoute-Dev'));
   for (const key of ['NYX_PUBLIC_URL', 'NYX_OAUTH_AUDIENCE', 'NYX_PRIVATE_OAUTH_SUBJECTS',
@@ -15,7 +15,7 @@ test('DEV deployment manifest requires isolated account resources', () => {
   }
   assert.equal(config.env.NYX_DEPLOYMENT_MODE.value, 'private');
   assert.equal(config.env.NYX_PUBLIC_CONNECTORS_ENABLED.value, 'false');
-  assert.equal(config.env.NYX_SERVICE_NAME.value, 'DevProNestNyx');
+  assert.equal(config.env.NYX_SERVICE_NAME.value, 'DevNestNyx');
 });
 
 test('both read-only introspection surfaces use instance-specific identity', () => {

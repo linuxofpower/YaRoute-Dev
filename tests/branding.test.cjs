@@ -26,17 +26,30 @@ function response(){
  r.redirect=(code,p)=>{r.redirectCode=code;r.redirectPath=p;return r;};
  return r;
 }
-test('public NestNyx icon and favicon serve the checked-in artwork, not credentials',async()=>{
- const ctl=new BrandingController();const res=response();
- await ctl.icon(res);
- assert.equal(res.mime,'image/png');
- assert.deepEqual(res.sent,file('icon.png'));
- assert.equal(res.headers['X-Content-Type-Options'],'nosniff');
+test('only DevNestNyx and NestNyx brand identities use independent icons',async()=>{
+ const ctl=new BrandingController();
+ const previous=process.env.NYX_BRAND_VARIANT;
+ try {
+  for (const [variant,asset,title] of [
+    ['development','nestnyx-dev.png','DevNestNyx'],
+    ['production','nestnyx-prod.png','NestNyx'],
+  ]) {
+   process.env.NYX_BRAND_VARIANT=variant;
+   const res=response();await ctl.icon(res);
+   assert.equal(res.mime,'image/png');
+   assert.deepEqual(res.sent,file(asset));
+   assert.equal(res.headers['X-Content-Type-Options'],'nosniff');
+   const manifest=response();ctl.manifest(manifest);
+   assert.equal(manifest.sent.name,title);
+   assert.equal(manifest.sent.icons[0].src,'/branding/icon.png');
+   assert.equal(manifest.sent.icons[0].sizes,'96x96');
+  }
+ } finally {
+  if(previous===undefined)delete process.env.NYX_BRAND_VARIANT;
+  else process.env.NYX_BRAND_VARIANT=previous;
+ }
  const iconRedirect=response();ctl.favicon(iconRedirect);
  assert.equal(iconRedirect.redirectPath,'/branding/icon.png');
- const manifest=response();ctl.manifest(manifest);
- assert.equal(manifest.sent.icons[0].src,'/branding/icon.png');
- assert.equal(manifest.sent.icons[0].sizes,'96x96');
 });
 test('the public home page includes favicon and social preview but no secrets',()=>{
  const home=response();new BrandingController().home(home);
