@@ -1,5 +1,5 @@
 {
-  "name": "DevProNestNyx",
+  "name": "DevNestNyx",
   "description": "Independent DEV MCP instance; does not replace or deploy the YaRoute production service",
   "repository": "https://github.com/linuxofpower/YaRoute-Dev",
   "keywords": [
@@ -16,7 +16,7 @@
       "generator": "secret"
     },
     "NYX_PUBLIC_URL": {
-      "description": "HTTPS origin of NEW dedicated DevProNestNyx Heroku app, not production.",
+      "description": "HTTPS origin of the existing DevNestNyx Heroku app; not the production NestNyx origin.",
       "required": true
     },
     "NYX_OAUTH_ISSUER": {
@@ -61,7 +61,7 @@
     },
     "NYX_SERVICE_NAME": {
       "description": "Non-secret identity used by health and OAuth resource metadata.",
-      "value": "DevProNestNyx"
+      "value": "DevNestNyx"
     },
     "NYX_DEPLOYMENT_MODE": {
       "description": "DEV instance starts private; never enable public connectors before tenant-isolated security checks.",
