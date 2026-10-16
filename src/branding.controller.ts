@@ -9,7 +9,7 @@ import { Public } from './common/public.decorator';
 export function nestNyxBrandVariant(): 'development' | 'production' {
   const configured = process.env.NYX_BRAND_VARIANT;
   if (configured === 'development' || configured === 'production') return configured;
-  return process.env.NYX_SERVICE_NAME === 'DevProNestNyx' ? 'development' : 'production';
+  return process.env.NYX_SERVICE_NAME === 'DevNestNyx' ? 'development' : 'production';
 }
 
 @Public()
@@ -35,8 +35,7 @@ export class BrandingController {
 
   @Get('manifest.webmanifest')
   manifest(@Res() res:Response) {
-    const label=process.env.NYX_SERVICE_NAME || 'NestNyx';
-    const title=nestNyxBrandVariant()==='development'?'NestNyx Development':'NestNyx';
+    const title=nestNyxBrandVariant()==='development'?'DevNestNyx':'NestNyx';
     res.setHeader('Cache-Control','public, max-age=3600');
     res.setHeader('X-Content-Type-Options','nosniff');
     res.type('application/manifest+json').send({
@@ -50,7 +49,7 @@ export class BrandingController {
   home(@Res() res:Response) {
     // Never advertise provider verification or commercial availability.
     const dev=nestNyxBrandVariant()==='development';
-    const title=dev?'NestNyx Development':'NestNyx';
+    const title=dev?'DevNestNyx':'NestNyx';
     res.setHeader('Cache-Control','public, max-age=3600');
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Security-Policy',"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
