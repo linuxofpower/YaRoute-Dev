@@ -459,7 +459,7 @@ export class McpService {
       'nyx_execute',
       {
         title: 'Execute a Nyx command',
-        description: 'Check current CLI authority, resolve its typed execution contract and load only required resources. Requires a private bootstrap locator. Initialization returns verified private FIF and files_to_paste.',
+        description: 'Check current CLI authority, resolve its typed execution contract and load only required resources. Requires a private bootstrap locator. Initialization returns FIF plus mandatory files_to_paste. Assistant MUST display each returned file verbatim to the user (in order); AWAITING_DELIVERY is not COMPLETE. Backend read receipts do not prove that the UI rendered the files.',
         inputSchema: z.object({
           command: z.string().min(1).max(64),
           args: z.array(z.string().min(1).max(64)).max(16).default([]),
@@ -482,7 +482,7 @@ export class McpService {
       'nyx_ini',
       {
         title: 'Initialize Nyx working context',
-        description: 'Compatibility wrapper for current CLI ini. Returns FIF receipt, files_to_paste and metadata. Reuse returned conversation_id as sessionId on subsequent calls; no heavy audit fallback.',
+        description: 'Compatibility wrapper for current CLI ini. Assistant MUST paste every files_to_paste entry visibly, verbatim, in order; the result remains AWAITING_DELIVERY until that happens. Source/FIF receipts verify reads only, not rendering. Reuse returned conversation_id as sessionId; no heavy audit fallback.',
         inputSchema: z.object({ target: z.string().min(1).max(1024).optional(), targets: z.array(z.string().min(1).max(64)).max(16).optional(), scope: z.enum(['local', 'global']).optional(), sessionId: z.string().uuid().optional(), depth: z.enum(['basic', 'normal', 'deep']).optional() }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
