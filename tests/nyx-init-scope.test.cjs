@@ -36,7 +36,7 @@ const locator = {
   paths: { basic: ref('paths.md'), normal: ref('n_paths.json'), deep: ref('d_paths.json') },
   canonical: { head: 'head.zip', body: 'body.zip', footer: 'footer.zip' },
 };
-const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs') };
+const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs'), 'Voice.state': ref('areas/Voice/0_state/state.json'), 'Voice.config': ref('areas/Voice/0_state/config.json') };
 const markdown = '# Nyx Paths\n\n| key | area | path |\n| --- | --- | --- |\n' + Object.entries(routes).map(([key, r]) => `| ${key} | ${r.area} | ${r.path} |`).join('\n') + '\n';
 
 class MemoryResources {
@@ -51,6 +51,9 @@ class MemoryResources {
       'todo.md': '# Todo\n',
       'todo_10.md': '# Todo 10\n',
       'toget.md': '# ToGet\n',
+      'areas/Voice/area_paths.json': JSON.stringify({ area: 'Voice', config: { file: '0_state/config.json' }, central_mutable_state: { file: '0_state/state.json' } }),
+      'areas/Voice/0_state/config.json': JSON.stringify({ area: 'Voice', rules: [] }),
+      'areas/Voice/0_state/state.json': JSON.stringify({ area: 'Voice', status: 'active' }),
     }));
     this.reads = []; this.writes = []; this.stats = 0;
   }
@@ -106,8 +109,10 @@ test('bare and Voice init return the agreed compact packet and store oLN in FIF'
   assert.deepEqual(bareFif.chat_config.current.access.external_context, ['chatgpt_library']);
 
   const voice = await e.execute({ command: 'ini', args: ['Voice'], conversationId: 'voice' });
-  assert.deepEqual(voice.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
-  assert.equal(voice.files_to_paste.some(x => /todo_30|state|config/i.test(x.name)), false);
+  assert.deepEqual(voice.files_to_paste.map(x => x.key), ['paths', 'maps', 'nyxcli', 'todo', 'todo_10', 'toget', 'Voice.area_paths', 'Voice.config', 'Voice.state']);
+  assert.equal(voice.status, 'AWAITING_DELIVERY');
+  assert.equal(voice.delivery.verified_by_backend, false);
+  assert.equal(voice.delivery.required_keys.length, 9);
 });
 
 test('Voice oGN is valid global Normal and standalone oGN is rejected', async () => {
@@ -148,8 +153,8 @@ test('NoteFlow Normal adds 30/90-day and empty togive files without changing Voi
   assert.equal(note.metadata.source_receipts.find(f => f.key === 'togive').bytes, 0);
   assert.equal(note.metadata.modifier, 'oGN');
   const voice = await e.execute({ command: 'ini', args: ['Voice'], conversationId: 'voice-extras' });
-  assert.deepEqual(voice.files_to_paste.map(f => f.name), [
-    'paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md',
+  assert.deepEqual(voice.files_to_paste.map(f => f.key), [
+    'paths', 'maps', 'nyxcli', 'todo', 'todo_10', 'toget', 'Voice.area_paths', 'Voice.config', 'Voice.state',
   ]);
   const bare = await e.execute({ command: 'ini', conversationId: 'bare-extras' });
   assert.deepEqual(bare.files_to_paste.map(f => f.name), ['paths.md', 'maps.md', 'nyxcli.md']);
@@ -180,4 +185,22 @@ test('++ and -- keep FIF identity, preserve depth and append scope history', asy
   assert.equal(down.fif.id, first.fif.id); assert.equal(down.metadata.modifier, 'oLN');
   fif = JSON.parse(r.files.get(down.fif.ref.path));
   assert.deepEqual(fif.chat_config.history.map(x => x.operation), ['++', '--']);
+});
+
+
+test('Voice fail-closes on missing manifest, config or state before FIF creation', async () => {
+  for (const missing of ['areas/Voice/area_paths.json', 'areas/Voice/0_state/config.json', 'areas/Voice/0_state/state.json']) {
+    const r = new MemoryResources();
+    r.files.delete(missing);
+    await assert.rejects(() => executor(r).execute({ command: 'ini', args: ['Voice'], conversationId: 'missing-voice' }), /REQUIRED_SOURCE_UNAVAILABLE:Voice/);
+    assert.deepEqual(r.writes, [], 'Voice must not checkpoint an incomplete initialization');
+  }
+});
+
+test('general init retains compact packet and must not claim delivered', async () => {
+  const r = new MemoryResources();
+  const out = await executor(r).execute({ command: 'ini' });
+  assert.equal(out.status, 'AWAITING_DELIVERY');
+  assert.equal(out.delivery.verified_by_backend, false);
+  assert.equal(out.delivery.required_keys.length, 3);
 });
