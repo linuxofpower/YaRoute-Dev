@@ -171,10 +171,19 @@ export class NyxCommandExecutor {
       source_refs: loaded.files.map(f => ({ key: f.key, ref: f.ref, sha256: f.sha256, bytes: f.bytes, returned: f.visible })),
       ...(chatState ? { chat_config: { initial: chatState, current: chatState, history: [] } } : {}),
     }) : undefined;
+    const toPaste = loaded.files.filter(file => file.visible);
     return {
-      schema: plan.contract.response, status: 'AWAITING_DELIVERY', conversation_id: fif?.conversationId,
+      schema: plan.contract.response, status: toPaste.length ? 'AWAITING_DELIVERY' : 'COMPLETE', conversation_id: fif?.conversationId,
       fif: fif ? { id: fif.id, kind: fif.kind, ref: fif.ref, sha256: fif.sha256, verified: fif.verified } : null,
-      files_to_paste: loaded.files.filter(f => f.visible).map(f => ({ name: f.ref.path.split('/').pop(), key: f.key, content: f.content, ref: f.ref, sha256: f.sha256 })),
+      files_to_paste: toPaste.map(f => ({ name: f.ref.path.split('/').pop(), key: f.key, content: f.content, ref: f.ref, sha256: f.sha256 })),
+      delivery: {
+        required: toPaste.length > 0,
+        status: toPaste.length ? 'AWAITING_USER_VISIBLE_RENDER' : 'NOT_REQUIRED',
+        required_keys: toPaste.map(f => f.key),
+        instruction: 'Display each files_to_paste item to the user, verbatim and in order. Do not claim initialization COMPLETE until user-visible delivery is performed.',
+        verified_by_backend: false,
+        note: 'A source read receipt or FIF readback is not evidence that ChatGPT rendered content to the user.',
+      },
       metadata: {
         command: plan.name, targets: plan.targets, depth: plan.depth,
         ...(plan.scope ? { scope: plan.scope, modifier: plan.modifier, modifier_source: plan.modifierSource } : {}),
