@@ -13,7 +13,9 @@ const store = { read: async () => JSON.stringify(locator) };
 
 test('bootstrap fails closed on configured canonical pointer drift', async () => {
  const old = process.env.NYX_EXPECTED_CANONICAL_HEAD;
+ const oldPath = process.env.NYX_BOOTSTRAP_PATH;
  try {
+   process.env.NYX_BOOTSTRAP_PATH = 'bootstrap.json';
    process.env.NYX_EXPECTED_CANONICAL_HEAD = 'head_db_v031.zip';
    await assert.rejects(() => new NyxBootstrapService(store).locate(), /CANONICAL_POINTER_STALE:head/);
    process.env.NYX_EXPECTED_CANONICAL_HEAD = 'head_db_v028.zip';
@@ -22,5 +24,7 @@ test('bootstrap fails closed on configured canonical pointer drift', async () =>
  } finally {
    if (old === undefined) delete process.env.NYX_EXPECTED_CANONICAL_HEAD;
    else process.env.NYX_EXPECTED_CANONICAL_HEAD = old;
+   if (oldPath === undefined) delete process.env.NYX_BOOTSTRAP_PATH;
+   else process.env.NYX_BOOTSTRAP_PATH = oldPath;
  }
 });
