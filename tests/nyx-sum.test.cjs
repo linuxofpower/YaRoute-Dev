@@ -53,7 +53,7 @@ const locator = {
   paths: { basic: ref('paths.md'), normal: ref('n_paths.json'), deep: ref('d_paths.json') },
   canonical: { head: 'head.zip', body: 'body.zip', footer: 'footer.zip' },
 };
-const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs') };
+const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs'), 'Voice.state': ref('areas/Voice/0_state/state.json'), 'Voice.config': ref('areas/Voice/0_state/config.json') };
 const markdown = '# Nyx Paths\n\n| key | area | path |\n| --- | --- | --- |\n' + Object.entries(routes).map(([key, r]) => `| ${key} | ${r.area} | ${r.path} |`).join('\n') + '\n';
 
 class MemoryResources {
