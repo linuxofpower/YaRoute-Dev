@@ -186,6 +186,7 @@ export class NyxCommandExecutor {
       },
       metadata: {
         command: plan.name, targets: plan.targets, depth: plan.depth,
+        canonical: locator.canonical,
         ...(plan.scope ? { scope: plan.scope, modifier: plan.modifier, modifier_source: plan.modifierSource } : {}),
         cli: { version: cli.version, sha256: hash, profile_sha256: profile.hash }, source_receipts: loaded.files.map(({ content, ...receipt }) => receipt), key_preflight: profile.keyReceipts ?? [], warnings: loaded.warnings,
       },
