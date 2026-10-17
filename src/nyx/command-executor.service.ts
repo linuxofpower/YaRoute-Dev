@@ -172,7 +172,7 @@ export class NyxCommandExecutor {
       ...(chatState ? { chat_config: { initial: chatState, current: chatState, history: [] } } : {}),
     }) : undefined;
     return {
-      schema: plan.contract.response, status: 'COMPLETE', conversation_id: fif?.conversationId,
+      schema: plan.contract.response, status: 'AWAITING_DELIVERY', conversation_id: fif?.conversationId,
       fif: fif ? { id: fif.id, kind: fif.kind, ref: fif.ref, sha256: fif.sha256, verified: fif.verified } : null,
       files_to_paste: loaded.files.filter(f => f.visible).map(f => ({ name: f.ref.path.split('/').pop(), key: f.key, content: f.content, ref: f.ref, sha256: f.sha256 })),
       metadata: {
