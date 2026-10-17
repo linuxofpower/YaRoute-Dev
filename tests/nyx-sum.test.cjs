@@ -68,6 +68,9 @@ class MemoryResources {
       'todo.md': '# Todo\n',
       'todo_10.md': '# Todo 10\n',
       'toget.md': '# ToGet\n',
+      'areas/Voice/area_paths.json': JSON.stringify({ area: 'Voice', config: { file: '0_state/config.json' }, central_mutable_state: { file: '0_state/state.json' } }),
+      'areas/Voice/0_state/config.json': JSON.stringify({ area: 'Voice', rules: [] }),
+      'areas/Voice/0_state/state.json': JSON.stringify({ area: 'Voice', status: 'active' }),
     }));
     this.reads = []; this.writes = []; this.stats = 0;
   }
