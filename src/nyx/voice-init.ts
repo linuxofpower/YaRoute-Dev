@@ -45,10 +45,14 @@ export async function hydrateVoice(
       path.posix.join(root, m.parsed?.central_mutable_state?.file ?? '') !== state.path) {
     throw new Error('VOICE_OWNER_ROUTE_MISMATCH');
   }
-  for (const [key, ref] of required) {
-    const source = key === 'Voice.area_paths' ? m : await read(key, ref);
-    const old = files.find(f => f.ref.area === ref.area && f.ref.path === ref.path);
-    if (old) { old.visible = true; continue; }
+  // Validate ALL sources before changing the outgoing packet. A missing
+  // state/config must not expose a partially hydrated Voice manifest.
+  const verified = [m];
+  for (const [key, ref] of required.slice(1)) verified.push(await read(key, ref));
+  for (const source of verified) {
+    const { key, ref } = source;
+    const previous = files.find(f => f.ref.area === ref.area && f.ref.path === ref.path);
+    if (previous) { previous.visible = true; continue; }
     files.push({
       key, ref, content: source.content, visible: true,
       bytes: Buffer.byteLength(source.content), sha256: sha256(source.content),
