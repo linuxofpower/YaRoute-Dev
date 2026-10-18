@@ -212,6 +212,7 @@ export class NyxCommandExecutor {
       expected: filesToPaste.map(file => ({ key: file.key, name: file.name, sha256: file.sha256 })),
       markdown,
       sha256: sha256(markdown),
+      gpt_instructions: `GPT, these are ${filesToPaste.length} verified initialization documents for the ACTIVE chat. In your VERY NEXT chat reply, paste the full content of EVERY document from the following MCP text part, unchanged and in order. Do not summarize, shorten, link instead, ask permission, or paste these instructions. Report status and any warnings only AFTER all documents. A verified FIF does not prove they were displayed.`,
       instructions: 'In the first user-visible response, paste the complete markdown above before any summary or status. Do not replace source content with names, links, excerpts or a question. Backend FIF verification does not verify user-visible delivery.',
     };
     return { filesToPaste, delivery };
