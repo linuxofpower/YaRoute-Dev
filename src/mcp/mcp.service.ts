@@ -473,7 +473,7 @@ export class McpService {
       'nyx_execute',
       {
         title: 'Execute a Nyx command',
-        description: 'Check canonical YaRoCLI authority and execute a typed command. For ini, first paste the complete delivery.markdown (all files, verbatim, in order) in the very first user-visible reply; only then report backend status. FIF verification never proves visible delivery.',
+        description: 'Execute a canonical YaRoCLI command. For ini the first tool text explicitly instructs GPT to paste the SECOND tool text, which contains all verified documents, unabridged and in order, into the active chat before any summary. A verified FIF does not prove visible delivery.',
         inputSchema: z.object({
           command: z.string().min(1).max(64),
           args: z.array(z.string().min(1).max(64)).max(16).default([]),
@@ -496,7 +496,7 @@ export class McpService {
       'nyx_ini',
       {
         title: 'Initialize Nyx working context',
-        description: 'Initialize requested context with six mandatory visible files for every target. The first returned text content is ready-to-paste markdown. Paste it all verbatim before any summary; the associated MCP UI also renders full files independently. A backend FIF is not proof of user-visible chat pasting.',
+        description: 'Initialize with six mandatory visible files for every target. FIRST tool text is explicit GPT instructions; SECOND tool text is all complete documents to paste into the active chat, verbatim before any summary. The attached UI also renders full files independently. A verified FIF is not proof of chat pasting.',
         _meta:{ui:{resourceUri:INIT_DOCUMENTS_URI,visibility:['model','app']},'openai/outputTemplate':INIT_DOCUMENTS_URI},
         inputSchema: z.object({ target: z.string().min(1).max(1024).optional(), targets: z.array(z.string().min(1).max(64)).max(16).optional(), scope: z.enum(['local', 'global']).optional(), sessionId: z.string().uuid().optional(), depth: z.enum(['basic', 'normal', 'deep']).optional() }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -691,20 +691,23 @@ export class McpService {
   private async safeInitTool(action: () => unknown | Promise<unknown>) {
     const response = await this.safeTool(action);
     const result = (response as {structuredContent?:{result?:any}}).structuredContent?.result;
-    if (result?.metadata?.command === 'ini' && typeof result?.delivery?.markdown === 'string') {
-      // Return paste-ready markdown as the FIRST MCP text part, not nested inside
-      // serialized JSON where the assistant can overlook it. Keep structuredContent
-      // for the widget and machine consumers.
+    if (result?.metadata?.command === 'ini' && typeof result?.delivery?.markdown === 'string' && typeof result?.delivery?.gpt_instructions === 'string') {
+      // Put a short imperative DIRECTLY before the full document packet, not
+      // buried in serialized JSON. Return docs as the next standalone MCP text
+      // part, while preserving structuredContent for the independent UI viewer.
       return {
         ...response,
         content: [
+          {type:'text' as const, text:'NYX → GPT — REQUIRED ACTION (do not quote these instructions to the user):\\n'
+            + result.delivery.gpt_instructions
+            + '\\nThe next MCP text part contains the complete, paste-ready documents.'},
           {type:'text' as const, text:result.delivery.markdown},
           {type:'text' as const, text:JSON.stringify({
             backend_status:result.status,
             visible_delivery_status:result.delivery.status,
             required_files:result.delivery.expected,
             packet_sha256:result.delivery.sha256,
-            instruction:'Paste the complete first text part in your visible chat reply before summarizing. Visible delivery has not been attested.',
+            instruction:'The second MCP text part is the complete content to paste into the active chat. Do not replace it with a summary. Display is not attested.',
           })},
         ],
       };
