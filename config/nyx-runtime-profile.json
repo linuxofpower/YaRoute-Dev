@@ -72,22 +72,58 @@
             "key": "todo",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "todo_10",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "toget",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
+          },
+          {
+            "key": "FileFilter.area_paths",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/area_paths.json"
+            }
+          },
+          {
+            "key": "FileFilter.state",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/state.json"
+            }
+          },
+          {
+            "key": "FileFilter.config",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/config.json"
+            }
           }
         ],
         "normal": [
@@ -109,21 +145,21 @@
             "key": "todo",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "todo_10",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "toget",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
@@ -161,6 +197,42 @@
               "area": "MAIN",
               "path": "Documents/Notepad/0_active/togive.md"
             }
+          },
+          {
+            "key": "FileFilter.area_paths",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/area_paths.json"
+            }
+          },
+          {
+            "key": "FileFilter.state",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/state.json"
+            }
+          },
+          {
+            "key": "FileFilter.config",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/config.json"
+            }
           }
         ],
         "deep": [
@@ -182,22 +254,58 @@
             "key": "todo",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "todo_10",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "toget",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
+          },
+          {
+            "key": "FileFilter.area_paths",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/area_paths.json"
+            }
+          },
+          {
+            "key": "FileFilter.state",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/state.json"
+            }
+          },
+          {
+            "key": "FileFilter.config",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/config.json"
+            }
           }
         ]
       },

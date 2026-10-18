@@ -18,6 +18,7 @@ import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { githubInstallationUrl } from '../connectors/github-app.service';
 import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
+import { INIT_DOCUMENTS_HTML, INIT_DOCUMENTS_URI } from './init-documents';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
 
 @Injectable()
@@ -123,6 +124,19 @@ export class McpService {
         text:CONNECTIONS_PANEL_HTML,
         _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
           'openai/widgetCSP':{redirect_domains:['https://github.com']},
+          'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
+      }]}),
+    );
+
+    // A deterministic MCP Apps document viewer is bound to the init tool itself.
+    // It does not depend on the assistant choosing to repeat the tool result.
+    server.registerResource(
+      'NYX Initialization Documents', INIT_DOCUMENTS_URI,
+      {mimeType:'text/html;profile=mcp-app'},
+      async () => ({contents:[{
+        uri:INIT_DOCUMENTS_URI, mimeType:'text/html;profile=mcp-app',
+        text:INIT_DOCUMENTS_HTML,
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}),
     );
@@ -459,7 +473,7 @@ export class McpService {
       'nyx_execute',
       {
         title: 'Execute a Nyx command',
-        description: 'Check current CLI authority, resolve its typed execution contract and load only required resources. Requires a private bootstrap locator. Initialization returns verified private FIF and files_to_paste.',
+        description: 'Execute a canonical YaRoCLI command. For ini the first tool text explicitly instructs GPT to paste the SECOND tool text, which contains all verified documents, unabridged and in order, into the active chat before any summary. A verified FIF does not prove visible delivery.',
         inputSchema: z.object({
           command: z.string().min(1).max(64),
           args: z.array(z.string().min(1).max(64)).max(16).default([]),
@@ -476,17 +490,18 @@ export class McpService {
         }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async input => this.safeTool(() => this.commands.execute(input, this.ownerContext.getStore())),
+      async input => this.safeInitTool(() => this.commands.execute(input, this.ownerContext.getStore())),
     );
     server.registerTool(
       'nyx_ini',
       {
         title: 'Initialize Nyx working context',
-        description: 'Compatibility wrapper for current CLI ini. Returns FIF receipt, files_to_paste and metadata. Reuse returned conversation_id as sessionId on subsequent calls; no heavy audit fallback.',
+        description: 'Initialize with six mandatory visible files for every target. FIRST tool text is explicit GPT instructions; SECOND tool text is all complete documents to paste into the active chat, verbatim before any summary. The attached UI also renders full files independently. A verified FIF is not proof of chat pasting.',
+        _meta:{ui:{resourceUri:INIT_DOCUMENTS_URI,visibility:['model','app']},'openai/outputTemplate':INIT_DOCUMENTS_URI},
         inputSchema: z.object({ target: z.string().min(1).max(1024).optional(), targets: z.array(z.string().min(1).max(64)).max(16).optional(), scope: z.enum(['local', 'global']).optional(), sessionId: z.string().uuid().optional(), depth: z.enum(['basic', 'normal', 'deep']).optional() }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async input => this.safeTool(() => this.init.initialize(input, this.ownerContext.getStore())),
+      async input => this.safeInitTool(() => this.init.initialize(input, this.ownerContext.getStore())),
     );
 
     server.registerTool(
@@ -671,6 +686,51 @@ export class McpService {
     const owner=this.ownerContext.getStore();
     if(!owner || !owner.startsWith('oauth:')) throw new Error('CONNECTOR_OWNER_REQUIRED');
     return owner;
+  }
+
+  private async safeInitTool(action: () => unknown | Promise<unknown>) {
+    const response = await this.safeTool(action);
+    const result = (response as {structuredContent?:{result?:any}}).structuredContent?.result;
+    if (result?.metadata?.command === 'ini') {
+      // A successful backend init must always provide all required sources AND
+      // the explicit GPT-facing instruction. Never silently regress to JSON-only.
+      const count = result?.delivery?.required_file_count;
+      if (typeof result?.delivery?.markdown !== 'string'
+        || !result.delivery.markdown.length
+        || typeof result.delivery.gpt_instructions !== 'string'
+        || !result.delivery.gpt_instructions.length
+        || !Array.isArray(result.files_to_paste)
+        || !Array.isArray(result.delivery.expected)
+        || !Number.isInteger(count)
+        || count < 6
+        || result.files_to_paste.length !== count
+        || result.delivery.expected.length !== count) {
+        return {
+          isError:true,
+          content:[{type:'text' as const,text:'INIT_DELIVERY_CONTRACT_MISSING'}],
+        };
+      }
+      // Put a short imperative DIRECTLY before the full document packet, not
+      // buried in serialized JSON. Return docs as the next standalone MCP text
+      // part, while preserving structuredContent for the independent UI viewer.
+      return {
+        ...response,
+        content: [
+          {type:'text' as const, text:'NYX → GPT — REQUIRED ACTION (do not quote these instructions to the user):\n'
+            + result.delivery.gpt_instructions
+            + '\nThe next MCP text part contains the complete, paste-ready documents.'},
+          {type:'text' as const, text:result.delivery.markdown},
+          {type:'text' as const, text:JSON.stringify({
+            backend_status:result.status,
+            visible_delivery_status:result.delivery.status,
+            required_files:result.delivery.expected,
+            packet_sha256:result.delivery.sha256,
+            instruction:'The second MCP text part is the complete content to paste into the active chat. Do not replace it with a summary. Display is not attested.',
+          })},
+        ],
+      };
+    }
+    return response;
   }
 
   private async safeTool(action: () => unknown | Promise<unknown>) {

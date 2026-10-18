@@ -18,9 +18,9 @@ const contract = () => ({
   scope: { default: 'local', localAreas: ['MAIN'], externalContext: ['chatgpt_library'], globalLabel: 'all_configured_nyx_drives' },
   arguments: { targets: true, maxTargets: 16 },
   sources: {
-    basic: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    normal: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    deep: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
+    basic: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    normal: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    deep: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
   },
   pathsVisible: true,
   mutation: 'conversation-artifact',
@@ -36,7 +36,7 @@ const locator = {
   paths: { basic: ref('paths.md'), normal: ref('n_paths.json'), deep: ref('d_paths.json') },
   canonical: { head: 'head.zip', body: 'body.zip', footer: 'footer.zip' },
 };
-const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs') };
+const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs'), 'Voice.state': ref('areas/Voice/0_state/state.json'), 'Voice.config': ref('areas/Voice/0_state/config.json') };
 const markdown = '# Nyx Paths\n\n| key | area | path |\n| --- | --- | --- |\n' + Object.entries(routes).map(([key, r]) => `| ${key} | ${r.area} | ${r.path} |`).join('\n') + '\n';
 
 class MemoryResources {
@@ -51,6 +51,8 @@ class MemoryResources {
       'todo.md': '# Todo\n',
       'todo_10.md': '# Todo 10\n',
       'toget.md': '# ToGet\n',
+      'areas/Voice/0_state/state.json': JSON.stringify({ area: 'Voice', state: {} }),
+      'areas/Voice/0_state/config.json': JSON.stringify({ area: 'Voice', rules: [] }),
     }));
     this.reads = []; this.writes = []; this.stats = 0;
   }
@@ -82,6 +84,9 @@ test('scoped ini defaults to oLN and treats modifiers as configuration, not targ
   assert.deepEqual({ targets: a.targets, scope: a.scope, depth: a.depth, modifier: a.modifier }, { targets: ['Voice'], scope: 'local', depth: 'normal', modifier: 'oLN' });
   const b = resolver.resolve(cli, { command: 'ini', args: ['Voice', 'OGN'] });
   assert.deepEqual({ targets: b.targets, scope: b.scope, depth: b.depth, modifier: b.modifier }, { targets: ['Voice'], scope: 'global', depth: 'normal', modifier: 'oGN' });
+  const inherited = resolver.resolve(cli, { command: 'ini', args: ['Voice', 'GNo'] });
+  assert.deepEqual({ targets: inherited.targets, modifier: inherited.modifier, source: inherited.modifierSource },
+    { targets: ['Voice'], modifier: 'oGN', source: 'inherited' });
   assert.throws(() => resolver.resolve(cli, { command: 'ini', args: ['oGN'] }), /MODIFIER_REQUIRES_TARGET/);
 });
 
@@ -95,7 +100,7 @@ test('scope upgrade and downgrade require an existing conversation identity', ()
 test('bare and Voice init return the agreed compact packet and store oLN in FIF', async () => {
   const r = new MemoryResources(); const e = executor(r);
   const bare = await e.execute({ command: 'ini', conversationId: 'bare' });
-  assert.deepEqual(bare.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md']);
+  assert.deepEqual(bare.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
   assert.equal(bare.metadata.modifier, 'oLN');
   assert.equal(bare.metadata.scope, 'local');
   assert.ok(r.reads.includes('n_paths.json'));
@@ -108,6 +113,24 @@ test('bare and Voice init return the agreed compact packet and store oLN in FIF'
   const voice = await e.execute({ command: 'ini', args: ['Voice'], conversationId: 'voice' });
   assert.deepEqual(voice.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
   assert.equal(voice.files_to_paste.some(x => /todo_30|state|config/i.test(x.name)), false);
+  const keys = voice.metadata.source_receipts.map(x => x.key);
+  assert.ok(keys.includes('Voice.state'));
+  assert.ok(keys.includes('Voice.config'));
+  assert.equal(voice.delivery.status, 'PENDING_USER_VISIBLE_RENDER');
+  assert.equal(voice.delivery.required_file_count, 6);
+  assert.equal(voice.delivery.order, 'FILES_FIRST_THEN_STATUS');
+  assert.equal(voice.delivery.sha256, sha256(voice.delivery.markdown));
+  assert.match(voice.delivery.gpt_instructions,/GPT, these are 6 verified initialization documents/);
+  assert.match(voice.delivery.gpt_instructions,/ACTIVE chat/);
+  assert.match(voice.delivery.gpt_instructions,/VERY NEXT chat reply/);
+  assert.equal(voice.delivery.markdown.includes('GPT, these are'), false);
+  let previous = -1;
+  for (const file of voice.files_to_paste) {
+    const offset = voice.delivery.markdown.indexOf('### ' + file.name);
+    assert.ok(offset > previous, 'Each required file is in visible delivery order');
+    assert.ok(voice.delivery.markdown.includes(file.content), 'Complete source content was included: ' + file.name);
+    previous = offset;
+  }
 });
 
 test('Voice oGN is valid global Normal and standalone oGN is rejected', async () => {
@@ -152,7 +175,7 @@ test('NoteFlow Normal adds 30/90-day and empty togive files without changing Voi
     'paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md',
   ]);
   const bare = await e.execute({ command: 'ini', conversationId: 'bare-extras' });
-  assert.deepEqual(bare.files_to_paste.map(f => f.name), ['paths.md', 'maps.md', 'nyxcli.md']);
+  assert.deepEqual(bare.files_to_paste.map(f => f.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
 });
 
 test('missing mandatory NoteFlow Normal file fails before any FIF checkpoint', async () => {
@@ -173,11 +196,64 @@ test('++ and -- keep FIF identity, preserve depth and append scope history', asy
   const r = new MemoryResources(); const e = executor(r);
   const first = await e.execute({ command: 'ini', args: ['Voice'], conversationId: 'same-chat' });
   const up = await e.execute({ command: 'ini', args: ['++'], conversationId: first.conversation_id });
-  assert.equal(up.fif.id, first.fif.id); assert.equal(up.metadata.modifier, 'oGN'); assert.equal(up.metadata.depth, 'normal'); assert.equal(up.files_to_paste.length, 0);
+  assert.equal(up.fif.id, first.fif.id); assert.equal(up.metadata.modifier, 'oGN'); assert.equal(up.metadata.depth, 'normal'); assert.equal(up.files_to_paste.length, 6); assert.equal(up.delivery.required_file_count, 6);
   let fif = JSON.parse(r.files.get(up.fif.ref.path));
   assert.equal(fif.chat_config.initial.modifier, 'oLN'); assert.equal(fif.chat_config.current.modifier, 'oGN'); assert.equal(fif.chat_config.history.at(-1).operation, '++');
   const down = await e.execute({ command: 'ini', args: ['--'], conversationId: first.conversation_id });
-  assert.equal(down.fif.id, first.fif.id); assert.equal(down.metadata.modifier, 'oLN');
+  assert.equal(down.fif.id, first.fif.id); assert.equal(down.metadata.modifier, 'oLN'); assert.equal(down.files_to_paste.length, 6);
   fif = JSON.parse(r.files.get(down.fif.ref.path));
   assert.deepEqual(fif.chat_config.history.map(x => x.operation), ['++', '--']);
+});
+
+test('unresolved skill/domain still gets six standard files with warning; missing required Voice owners fails', async () => {
+  const unknown = new MemoryResources();
+  const partial = await executor(unknown).execute({
+    command: 'ini', args: ['SKILLS'], conversationId: 'unresolved-domain',
+  });
+  assert.equal(partial.status, 'READY_WITH_WARNINGS');
+  assert.deepEqual(partial.files_to_paste.map(f=>f.name), [
+    'paths.md','maps.md','nyxcli.md','todo.md','todo_10.md','toget.md',
+  ]);
+  assert.ok(partial.metadata.warnings.includes('TARGET_OWNER_UNRESOLVED:SKILLS'));
+
+  for (const missing of ['state.json', 'config.json']) {
+    const r = new MemoryResources();
+    r.files.delete('areas/Voice/0_state/' + missing);
+    await assert.rejects(() => executor(r).execute({
+      command: 'ini', args: ['Voice', 'GNo'], conversationId: 'missing-' + missing,
+    }), new RegExp('REQUIRED_SOURCE_UNAVAILABLE:Voice\\.' + (missing === 'state.json' ? 'state' : 'config')));
+    assert.deepEqual(r.writes, []);
+  }
+});
+
+test('FileFilter explicit manifest/state/config and other area/skill types share mandatory packet', async () => {
+  const r=new MemoryResources();
+  const cli=makeCli();
+  for(const dep of ['basic','normal','deep']) {
+    for(const [key,path] of [
+      ['FileFilter.area_paths','areas/FileFilter/area_paths.json'],
+      ['FileFilter.state','areas/FileFilter/0_state/state.json'],
+      ['FileFilter.config','areas/FileFilter/0_state/config.json'],
+    ]) cli.commands.ini.execution.sources[dep].push({
+      key,required:true,visible:false,when:'targeted',perTarget:false,forTarget:'FileFilter',ref:ref(path)
+    });
+  }
+  r.files.set('authority.json',JSON.stringify(cli));
+  r.files.set('areas/FileFilter/area_paths.json',JSON.stringify({area:'FileFilter'}));
+  r.files.set('areas/FileFilter/0_state/state.json',JSON.stringify({area:'FileFilter',state:{}}));
+  r.files.set('areas/FileFilter/0_state/config.json',JSON.stringify({area:'FileFilter',rules:[]}));
+  const e=executor(r);
+  for(const name of ['FileFilter','Voice','WORK','SKILLS','Mental']) {
+    const out=await e.execute({command:'ini',args:[name],conversationId:'all-'+name});
+    assert.deepEqual(out.files_to_paste.map(x=>x.name),[
+      'paths.md','maps.md','nyxcli.md','todo.md','todo_10.md','toget.md'
+    ]);
+    if(name==='FileFilter'){
+      assert.equal(out.status,'COMPLETE');
+      assert.ok(out.metadata.source_receipts.some(x=>x.key==='FileFilter.state'));
+    } else if(name!=='Voice') {
+      assert.equal(out.status,'READY_WITH_WARNINGS');
+      assert.ok(out.metadata.warnings.includes('TARGET_OWNER_UNRESOLVED:'+name));
+    }
+  }
 });
