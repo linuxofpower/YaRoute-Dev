@@ -145,6 +145,11 @@ test('SUM mutates continuity and promotes FIF to FIB under the same identity', a
   assert.equal(summed.fif.id, initial.fif.id);
   assert.equal(summed.fif.kind, 'FIB');
   assert.equal(summed.summary.title, 'Voice continuity');
+  assert.equal(summed.ai_instructions.schema, 'nyx.ai_instruction.v1');
+  assert.equal(summed.ai_instructions.command, 'sum');
+  assert.deepEqual(summed.ai_instructions.required_outputs, ['checkpoint_summary']);
+  assert.equal(summed.ai_instructions.delivery.required, false);
+
   assert.equal(summed.summary.message_count, 12);
   const manifest = JSON.parse(r.files.get(summed.fif.ref.path));
   const fifEntry = manifest.files.find(x => x.ref.path.endsWith('/fif.json'));
