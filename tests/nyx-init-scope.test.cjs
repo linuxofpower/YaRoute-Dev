@@ -18,9 +18,9 @@ const contract = () => ({
   scope: { default: 'local', localAreas: ['MAIN'], externalContext: ['chatgpt_library'], globalLabel: 'all_configured_nyx_drives' },
   arguments: { targets: true, maxTargets: 16 },
   sources: {
-    basic: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    normal: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    deep: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
+    basic: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    normal: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    deep: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
   },
   pathsVisible: true,
   mutation: 'conversation-artifact',
@@ -100,7 +100,7 @@ test('scope upgrade and downgrade require an existing conversation identity', ()
 test('bare and Voice init return the agreed compact packet and store oLN in FIF', async () => {
   const r = new MemoryResources(); const e = executor(r);
   const bare = await e.execute({ command: 'ini', conversationId: 'bare' });
-  assert.deepEqual(bare.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md']);
+  assert.deepEqual(bare.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
   assert.equal(bare.metadata.modifier, 'oLN');
   assert.equal(bare.metadata.scope, 'local');
   assert.ok(r.reads.includes('n_paths.json'));
@@ -171,7 +171,7 @@ test('NoteFlow Normal adds 30/90-day and empty togive files without changing Voi
     'paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md',
   ]);
   const bare = await e.execute({ command: 'ini', conversationId: 'bare-extras' });
-  assert.deepEqual(bare.files_to_paste.map(f => f.name), ['paths.md', 'maps.md', 'nyxcli.md']);
+  assert.deepEqual(bare.files_to_paste.map(f => f.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
 });
 
 test('missing mandatory NoteFlow Normal file fails before any FIF checkpoint', async () => {
