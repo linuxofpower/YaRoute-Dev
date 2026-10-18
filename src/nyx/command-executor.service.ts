@@ -16,7 +16,7 @@ export class NyxCommandExecutor {
     const { cli, hash } = await this.registry.current(locator);
     const profile = await this.profiles.apply(locator, cli, hash);
     const plan = this.resolver.resolve(profile.cli, request);
-    const respond = <T extends { status: string; files_to_paste?: Array<{key: string;name: string;sha256: string;content: string}>; conversation_id?: string; fif?: {verified?:boolean;kind?:string}|null }>(packet: T) => attachAiInstructions(packet, {
+    const respond = <T extends { status: string; files_to_paste?: Array<{key: string;name?: string;sha256: string;content: string}> }>(packet: T) => attachAiInstructions(packet, {
       command: plan.name,
       adapter: plan.contract.adapter,
       cliSha256: hash,
