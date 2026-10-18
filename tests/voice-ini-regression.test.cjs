@@ -149,5 +149,6 @@ test('the backend must not claim ChatGPT actually rendered files', () => {
   assert.match(executor, /AWAITING_DELIVERY/);
   assert.match(executor, /verified_by_backend:\s*false/);
   assert.match(executor, /files_to_paste: toPaste\.map/);
-  assert.match(mcp, /MUST (?:paste|display)/i);
+  assert.match(mcp, /MUST (?:process|follow)/i);
+  assert.match(mcp, /visibly present required files_to_paste/);
 });
