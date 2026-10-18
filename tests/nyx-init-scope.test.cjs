@@ -192,21 +192,25 @@ test('++ and -- keep FIF identity, preserve depth and append scope history', asy
   const r = new MemoryResources(); const e = executor(r);
   const first = await e.execute({ command: 'ini', args: ['Voice'], conversationId: 'same-chat' });
   const up = await e.execute({ command: 'ini', args: ['++'], conversationId: first.conversation_id });
-  assert.equal(up.fif.id, first.fif.id); assert.equal(up.metadata.modifier, 'oGN'); assert.equal(up.metadata.depth, 'normal'); assert.equal(up.files_to_paste.length, 0);
+  assert.equal(up.fif.id, first.fif.id); assert.equal(up.metadata.modifier, 'oGN'); assert.equal(up.metadata.depth, 'normal'); assert.equal(up.files_to_paste.length, 6); assert.equal(up.delivery.required_file_count, 6);
   let fif = JSON.parse(r.files.get(up.fif.ref.path));
   assert.equal(fif.chat_config.initial.modifier, 'oLN'); assert.equal(fif.chat_config.current.modifier, 'oGN'); assert.equal(fif.chat_config.history.at(-1).operation, '++');
   const down = await e.execute({ command: 'ini', args: ['--'], conversationId: first.conversation_id });
-  assert.equal(down.fif.id, first.fif.id); assert.equal(down.metadata.modifier, 'oLN');
+  assert.equal(down.fif.id, first.fif.id); assert.equal(down.metadata.modifier, 'oLN'); assert.equal(down.files_to_paste.length, 6);
   fif = JSON.parse(r.files.get(down.fif.ref.path));
   assert.deepEqual(fif.chat_config.history.map(x => x.operation), ['++', '--']);
 });
 
-test('unknown target and missing Voice state/config reject before writing a FIF', async () => {
+test('unresolved skill/domain still gets six standard files with warning; missing required Voice owners fails', async () => {
   const unknown = new MemoryResources();
-  await assert.rejects(() => executor(unknown).execute({
-    command: 'ini', args: ['DoesNotExist'], conversationId: 'bad-target',
-  }), /UNKNOWN_TARGET:DoesNotExist/);
-  assert.deepEqual(unknown.writes, []);
+  const partial = await executor(unknown).execute({
+    command: 'ini', args: ['SKILLS'], conversationId: 'unresolved-domain',
+  });
+  assert.equal(partial.status, 'READY_WITH_WARNINGS');
+  assert.deepEqual(partial.files_to_paste.map(f=>f.name), [
+    'paths.md','maps.md','nyxcli.md','todo.md','todo_10.md','toget.md',
+  ]);
+  assert.ok(partial.metadata.warnings.includes('TARGET_OWNER_UNRESOLVED:SKILLS'));
 
   for (const missing of ['state.json', 'config.json']) {
     const r = new MemoryResources();
@@ -215,5 +219,37 @@ test('unknown target and missing Voice state/config reject before writing a FIF'
       command: 'ini', args: ['Voice', 'GNo'], conversationId: 'missing-' + missing,
     }), new RegExp('REQUIRED_SOURCE_UNAVAILABLE:Voice\\.' + (missing === 'state.json' ? 'state' : 'config')));
     assert.deepEqual(r.writes, []);
+  }
+});
+
+test('FileFilter explicit manifest/state/config and other area/skill types share mandatory packet', async () => {
+  const r=new MemoryResources();
+  const cli=makeCli();
+  for(const dep of ['basic','normal','deep']) {
+    for(const [key,path] of [
+      ['FileFilter.area_paths','areas/FileFilter/area_paths.json'],
+      ['FileFilter.state','areas/FileFilter/0_state/state.json'],
+      ['FileFilter.config','areas/FileFilter/0_state/config.json'],
+    ]) cli.commands.ini.execution.sources[dep].push({
+      key,required:true,visible:false,when:'targeted',perTarget:false,forTarget:'FileFilter',ref:ref(path)
+    });
+  }
+  r.files.set('authority.json',JSON.stringify(cli));
+  r.files.set('areas/FileFilter/area_paths.json',JSON.stringify({area:'FileFilter'}));
+  r.files.set('areas/FileFilter/0_state/state.json',JSON.stringify({area:'FileFilter',state:{}}));
+  r.files.set('areas/FileFilter/0_state/config.json',JSON.stringify({area:'FileFilter',rules:[]}));
+  const e=executor(r);
+  for(const name of ['FileFilter','Voice','WORK','SKILLS','Mental']) {
+    const out=await e.execute({command:'ini',args:[name],conversationId:'all-'+name});
+    assert.deepEqual(out.files_to_paste.map(x=>x.name),[
+      'paths.md','maps.md','nyxcli.md','todo.md','todo_10.md','toget.md'
+    ]);
+    if(name==='FileFilter'){
+      assert.equal(out.status,'COMPLETE');
+      assert.ok(out.metadata.source_receipts.some(x=>x.key==='FileFilter.state'));
+    } else if(name!=='Voice') {
+      assert.equal(out.status,'READY_WITH_WARNINGS');
+      assert.ok(out.metadata.warnings.includes('TARGET_OWNER_UNRESOLVED:'+name));
+    }
   }
 });
