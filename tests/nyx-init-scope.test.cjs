@@ -113,6 +113,14 @@ test('bare and Voice init return the agreed compact packet and store oLN in FIF'
   assert.equal(voice.status, 'AWAITING_DELIVERY');
   assert.equal(voice.delivery.verified_by_backend, false);
   assert.equal(voice.delivery.required_keys.length, 9);
+  assert.equal(voice.ai_instructions.schema, 'nyx.ai_instruction.v1');
+  assert.equal(voice.ai_instructions.audience, 'any_ai_mcp_client');
+  assert.equal(voice.ai_instructions.status, 'AWAITING_DELIVERY');
+  assert.deepEqual(voice.ai_instructions.delivery.files.map(x => x.key), voice.files_to_paste.map(x => x.key));
+  assert.equal(voice.ai_instructions.delivery.acknowledgment_received, false);
+  assert.equal(voice.ai_instructions.delivery.ui_render_verified, false);
+  assert.ok(voice.ai_instructions.instructions.some(x => x.includes('EVERY entry')));
+
 });
 
 test('Voice oGN is valid global Normal and standalone oGN is rejected', async () => {
