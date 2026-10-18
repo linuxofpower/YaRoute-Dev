@@ -10,7 +10,7 @@ export type InstructionAdapter =
   | 'context.summarize.v1'
   | 'context.help.v1';
 
-export type DeliveryFile = { key: string; name: string; sha256: string; content: string };
+export type DeliveryFile = { key: string; name?: string; sha256: string; content: string };
 
 export type AiInstructionContext = {
   command: string;
@@ -28,7 +28,6 @@ export type AiInstructionResult = {
   status: string;
   files_to_paste?: DeliveryFile[];
   conversation_id?: string;
-  fif?: { verified?: boolean; kind?: string } | null;
 };
 
 export function attachAiInstructions<T extends AiInstructionResult>(
@@ -36,7 +35,7 @@ export function attachAiInstructions<T extends AiInstructionResult>(
   ctx: AiInstructionContext,
 ) {
   const files = result.files_to_paste ?? [];
-  const visible = files.map(f => ({ key: f.key, name: f.name, sha256: f.sha256 }));
+  const visible = files.map(f => ({ key: f.key, name: f.name ?? f.key, sha256: f.sha256 }));
   const needsDelivery = visible.length > 0;
   const instructions: string[] = [];
   const requiredOutputs: string[] = [];
