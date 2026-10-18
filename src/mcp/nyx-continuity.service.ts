@@ -18,6 +18,12 @@ export class NyxContinuityService implements OnModuleInit, OnModuleDestroy {
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
     });
+    await this.ensureSchema();
+  }
+
+  // Reused by the isolated real-PostgreSQL integration test.
+  private async ensureSchema() {
+    if (!this.pool) throw new Error('NYX_TICK_DATABASE_REQUIRED');
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS nyx_conversation_ticks (
         owner_key text NOT NULL,
