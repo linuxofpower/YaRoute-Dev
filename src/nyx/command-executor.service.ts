@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { attachAiInstructions } from './ai-instruction-contract';
 import { NyxExecutionProfileService } from './execution-profile.service';
 import { CommandRequest } from './runtime.schema';
 import { NyxBootstrapService } from './bootstrap.service';
@@ -15,6 +16,17 @@ export class NyxCommandExecutor {
     const { cli, hash } = await this.registry.current(locator);
     const profile = await this.profiles.apply(locator, cli, hash);
     const plan = this.resolver.resolve(profile.cli, request);
+    const respond = <T extends { status: string; files_to_paste?: Array<{key: string;name: string;sha256: string;content: string}>; conversation_id?: string; fif?: {verified?:boolean;kind?:string}|null }>(packet: T) => attachAiInstructions(packet, {
+      command: plan.name,
+      adapter: plan.contract.adapter,
+      cliSha256: hash,
+      profileSha256: profile.hash,
+      canonical: locator.canonical,
+      targets: plan.targets,
+      scope: plan.scope,
+      depth: plan.depth,
+      scopeAction: plan.scopeAction,
+    });
 
     if (plan.contract.adapter === 'context.help.v1') {
       // Head/YaRoCLI is authoritative; this is only a read-only presentation.
@@ -71,7 +83,7 @@ export class NyxCommandExecutor {
         const value = (rules as Record<string, unknown>)[field];
         return typeof value === 'string' ? value.slice(0, 1200) : undefined;
       };
-      return {
+      return respond({
         schema: plan.contract.response,
         status: 'COMPLETE',
         canonical_command: 'hel',
@@ -104,13 +116,13 @@ export class NyxCommandExecutor {
           source: 'verified-current-head-cli',
           mutation: 'none',
         },
-      };
+      });
     }
 
     if (plan.contract.adapter === 'context.summarize.v1') {
       const handoffRef = await this.resources.resolveHandoffs(locator, plan);
       const fib = await this.handoffs.summarize(owner, plan.conversationId!, handoffRef, plan.payload!);
-      return {
+      return respond({
         schema: plan.contract.response,
         status: 'COMPLETE',
         conversation_id: fib.conversationId,
@@ -135,13 +147,13 @@ export class NyxCommandExecutor {
           upgraded: true,
           artifact_kind: fib.kind,
         },
-      };
+      });
     }
 
     if (plan.scopeAction) {
       const handoffs = await this.resources.resolveHandoffs(locator, plan);
       const changed = await this.handoffs.reconfigure(owner, plan.conversationId!, handoffs, plan.scopeAction);
-      return {
+      return respond({
         schema: plan.contract.response,
         status: 'COMPLETE',
         conversation_id: changed.conversationId,
@@ -158,7 +170,7 @@ export class NyxCommandExecutor {
           cli: { version: cli.version, sha256: hash, profile_sha256: profile.hash },
           source_receipts: [], key_preflight: profile.keyReceipts ?? [], warnings: [],
         },
-      };
+      });
     }
 
     const loaded = await this.resources.load(locator, plan);
@@ -172,7 +184,7 @@ export class NyxCommandExecutor {
       ...(chatState ? { chat_config: { initial: chatState, current: chatState, history: [] } } : {}),
     }) : undefined;
     const toPaste = loaded.files.filter(file => file.visible);
-    return {
+    return respond({
       schema: plan.contract.response, status: toPaste.length ? 'AWAITING_DELIVERY' : 'COMPLETE', conversation_id: fif?.conversationId,
       fif: fif ? { id: fif.id, kind: fif.kind, ref: fif.ref, sha256: fif.sha256, verified: fif.verified } : null,
       files_to_paste: toPaste.map(f => ({ name: f.ref.path.split('/').pop(), key: f.key, content: f.content, ref: f.ref, sha256: f.sha256 })),
@@ -190,7 +202,7 @@ export class NyxCommandExecutor {
         ...(plan.scope ? { scope: plan.scope, modifier: plan.modifier, modifier_source: plan.modifierSource } : {}),
         cli: { version: cli.version, sha256: hash, profile_sha256: profile.hash }, source_receipts: loaded.files.map(({ content, ...receipt }) => receipt), key_preflight: profile.keyReceipts ?? [], warnings: loaded.warnings,
       },
-    };
+    });
   }
 
   private chatState(plan: ReturnType<NyxCommandResolver['resolve']>): ChatConfigState | undefined {
