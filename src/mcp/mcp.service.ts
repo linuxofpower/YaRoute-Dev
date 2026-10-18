@@ -16,6 +16,7 @@ import { assessPotentialFinancialLoss } from '../connectors/financial-risk-prefl
 import { ConnectorsService } from '../connectors/connectors.service';
 import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
+import { NyxContinuityService } from './nyx-continuity.service';
 import { githubInstallationUrl } from '../connectors/github-app.service';
 import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
@@ -37,6 +38,7 @@ export class McpService {
     private readonly connections: ConnectorsService,
     private readonly github: GithubReadonlyConnector,
     private readonly githubWrites: GithubWriteConnector,
+    private readonly continuity: NyxContinuityService,
   ) {
     const handler = createMcpHandler(() => this.buildServer());
     this.nodeHandler = toNodeHandler(handler, {
@@ -445,6 +447,23 @@ export class McpService {
     }));
 
     server.registerTool(
+      'nyx_tick',
+      {
+        title: 'Save this NYX conversation message',
+        description: 'For each NEW user message in an initialized private NYX chat, call once before your reply. This explicitly stores submitted text in PostgreSQL and returns the count and whether canonical nyx_sum is due after five user messages. Use the conversation_id from nyx_ini as sessionId. Reuse the same unique messageId only when retrying the SAME content. Calls cannot be automatic; do not claim unsent messages were saved. Never submit credentials or secrets.',
+        inputSchema: z.object({
+          sessionId: z.string().uuid(),
+          messageId: z.string().min(1).max(128),
+          role: z.enum(['user','assistant']).default('user'),
+          content: z.string().min(1).max(16000),
+        }).strict(),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async ({ sessionId, messageId, role, content }) =>
+        this.safeTool(() => this.continuity.tick(this.connectorOwner(), sessionId, messageId, role, content)),
+    );
+
+    server.registerTool(
       'nyx_help',
       {
         title: 'Help: list canonical Yaro commands and live support',
@@ -476,7 +495,11 @@ export class McpService {
         }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async input => this.safeTool(() => this.commands.execute(input, this.ownerContext.getStore())),
+      async input => this.safeTool(() =>
+        input.command.toLowerCase() === 'sum' && input.conversationId
+          ? this.executeVerifiedSum(input.conversationId, () => this.commands.execute(input, this.ownerContext.getStore()))
+          : this.commands.execute(input, this.ownerContext.getStore())),
+
     );
     server.registerTool(
       'nyx_ini',
@@ -505,7 +528,7 @@ export class McpService {
         }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
-      async input => this.safeTool(() => this.commands.execute({
+      async input => this.safeTool(() => this.executeVerifiedSum(input.sessionId, () => this.commands.execute({
         command: 'sum',
         conversationId: input.sessionId,
         payload: {
@@ -516,7 +539,7 @@ export class McpService {
           urgentItems: input.urgentItems,
           nextAction: input.nextAction,
         },
-      }, this.ownerContext.getStore())),
+      }, this.ownerContext.getStore()))),
     );
 
     server.registerTool(
@@ -673,12 +696,31 @@ export class McpService {
     return owner;
   }
 
+  private async executeVerifiedSum(sessionId: string, action: () => Promise<unknown>) {
+    const owner = this.connectorOwner();
+    // Capture before the summary starts: messages arriving during a slow SUM remain pending.
+    const covered = await this.continuity.countUserMessages(owner, sessionId);
+    const result = await action();
+    const receipt = result as {status?: string; fif?: {verified?: boolean}};
+    if (receipt?.status === 'COMPLETE' && receipt.fif?.verified === true) {
+      await this.continuity.acknowledgeVerifiedSum(owner, sessionId, covered);
+    }
+    return result;
+  }
+
   private async safeTool(action: () => unknown | Promise<unknown>) {
     try {
       const result = await action();
+      // Preserve the historical result shape and append a separate advisory message.
+      // Structured consumers can read nyx_continuity; the model also sees text.
+      const hint = process.env.NYX_DEPLOYMENT_MODE === 'public'
+        ? undefined : this.continuity.reminder();
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
-        structuredContent: { result },
+        content: [
+          { type: 'text' as const, text: JSON.stringify(result) },
+          ...(hint ? [{ type: 'text' as const, text: JSON.stringify({nyx_continuity: hint}) }] : []),
+        ],
+        structuredContent: { result, ...(hint ? {nyx_continuity: hint} : {}) },
       };
     } catch (error) {
       const raw = error instanceof Error ? error.message : '';
