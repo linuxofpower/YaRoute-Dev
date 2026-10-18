@@ -4,7 +4,7 @@
  * never trusts a model-generated list of files or sends storage credentials.
  */
 export const INIT_DOCUMENTS_URI = 'ui://nestnyx/init-documents/v1.html';
-export const INIT_DOCUMENTS_HTML = String.raw\`<!doctype html>
+export const INIT_DOCUMENTS_HTML = String.raw`<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NYX Initialization Documents</title>
@@ -84,4 +84,4 @@ pre { margin:8px 0; padding:10px; white-space:pre-wrap; overflow-wrap:anywhere; 
     params:{appInfo:{name:'NYX mandatory initialization documents',version:'1.0.0'},
       appCapabilities:{},protocolVersion:'2026-01-26'}},'*');
 })();
-</script></body></html>\`;
+</script></body></html>`;
