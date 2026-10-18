@@ -72,21 +72,21 @@
             "key": "todo",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "todo_10",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "toget",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           }
         ],
@@ -109,21 +109,21 @@
             "key": "todo",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "todo_10",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "toget",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
@@ -182,21 +182,21 @@
             "key": "todo",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "todo_10",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           },
           {
             "key": "toget",
             "required": true,
             "visible": true,
-            "when": "targeted",
+            "when": "always",
             "perTarget": false
           }
         ]
