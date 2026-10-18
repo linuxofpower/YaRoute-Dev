@@ -36,7 +36,7 @@ const locator = {
   paths: { basic: ref('paths.md'), normal: ref('n_paths.json'), deep: ref('d_paths.json') },
   canonical: { head: 'head.zip', body: 'body.zip', footer: 'footer.zip' },
 };
-const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs') };
+const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs'), 'Voice.state': ref('areas/Voice/0_state/state.json'), 'Voice.config': ref('areas/Voice/0_state/config.json') };
 const markdown = '# Nyx Paths\n\n| key | area | path |\n| --- | --- | --- |\n' + Object.entries(routes).map(([key, r]) => `| ${key} | ${r.area} | ${r.path} |`).join('\n') + '\n';
 
 class MemoryResources {
@@ -51,6 +51,8 @@ class MemoryResources {
       'todo.md': '# Todo\n',
       'todo_10.md': '# Todo 10\n',
       'toget.md': '# ToGet\n',
+      'areas/Voice/0_state/state.json': JSON.stringify({ area: 'Voice', state: {} }),
+      'areas/Voice/0_state/config.json': JSON.stringify({ area: 'Voice', rules: [] }),
     }));
     this.reads = []; this.writes = []; this.stats = 0;
   }
@@ -82,6 +84,9 @@ test('scoped ini defaults to oLN and treats modifiers as configuration, not targ
   assert.deepEqual({ targets: a.targets, scope: a.scope, depth: a.depth, modifier: a.modifier }, { targets: ['Voice'], scope: 'local', depth: 'normal', modifier: 'oLN' });
   const b = resolver.resolve(cli, { command: 'ini', args: ['Voice', 'OGN'] });
   assert.deepEqual({ targets: b.targets, scope: b.scope, depth: b.depth, modifier: b.modifier }, { targets: ['Voice'], scope: 'global', depth: 'normal', modifier: 'oGN' });
+  const inherited = resolver.resolve(cli, { command: 'ini', args: ['Voice', 'GNo'] });
+  assert.deepEqual({ targets: inherited.targets, modifier: inherited.modifier, source: inherited.modifierSource },
+    { targets: ['Voice'], modifier: 'oGN', source: 'inherited' });
   assert.throws(() => resolver.resolve(cli, { command: 'ini', args: ['oGN'] }), /MODIFIER_REQUIRES_TARGET/);
 });
 
@@ -108,6 +113,20 @@ test('bare and Voice init return the agreed compact packet and store oLN in FIF'
   const voice = await e.execute({ command: 'ini', args: ['Voice'], conversationId: 'voice' });
   assert.deepEqual(voice.files_to_paste.map(x => x.name), ['paths.md', 'maps.md', 'nyxcli.md', 'todo.md', 'todo_10.md', 'toget.md']);
   assert.equal(voice.files_to_paste.some(x => /todo_30|state|config/i.test(x.name)), false);
+  const keys = voice.metadata.source_receipts.map(x => x.key);
+  assert.ok(keys.includes('Voice.state'));
+  assert.ok(keys.includes('Voice.config'));
+  assert.equal(voice.delivery.status, 'PENDING_USER_VISIBLE_RENDER');
+  assert.equal(voice.delivery.required_file_count, 6);
+  assert.equal(voice.delivery.order, 'FILES_FIRST_THEN_STATUS');
+  assert.equal(voice.delivery.sha256, sha256(voice.delivery.markdown));
+  let previous = -1;
+  for (const file of voice.files_to_paste) {
+    const offset = voice.delivery.markdown.indexOf('### ' + file.name);
+    assert.ok(offset > previous, 'Each required file is in visible delivery order');
+    assert.ok(voice.delivery.markdown.includes(file.content), 'Complete source content was included: ' + file.name);
+    previous = offset;
+  }
 });
 
 test('Voice oGN is valid global Normal and standalone oGN is rejected', async () => {
@@ -180,4 +199,21 @@ test('++ and -- keep FIF identity, preserve depth and append scope history', asy
   assert.equal(down.fif.id, first.fif.id); assert.equal(down.metadata.modifier, 'oLN');
   fif = JSON.parse(r.files.get(down.fif.ref.path));
   assert.deepEqual(fif.chat_config.history.map(x => x.operation), ['++', '--']);
+});
+
+test('unknown target and missing Voice state/config reject before writing a FIF', async () => {
+  const unknown = new MemoryResources();
+  await assert.rejects(() => executor(unknown).execute({
+    command: 'ini', args: ['DoesNotExist'], conversationId: 'bad-target',
+  }), /UNKNOWN_TARGET:DoesNotExist/);
+  assert.deepEqual(unknown.writes, []);
+
+  for (const missing of ['state.json', 'config.json']) {
+    const r = new MemoryResources();
+    r.files.delete('areas/Voice/0_state/' + missing);
+    await assert.rejects(() => executor(r).execute({
+      command: 'ini', args: ['Voice', 'GNo'], conversationId: 'missing-' + missing,
+    }), new RegExp('REQUIRED_SOURCE_UNAVAILABLE:Voice\\.' + (missing === 'state.json' ? 'state' : 'config')));
+    assert.deepEqual(r.writes, []);
+  }
 });
