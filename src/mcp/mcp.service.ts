@@ -691,7 +691,25 @@ export class McpService {
   private async safeInitTool(action: () => unknown | Promise<unknown>) {
     const response = await this.safeTool(action);
     const result = (response as {structuredContent?:{result?:any}}).structuredContent?.result;
-    if (result?.metadata?.command === 'ini' && typeof result?.delivery?.markdown === 'string' && typeof result?.delivery?.gpt_instructions === 'string') {
+    if (result?.metadata?.command === 'ini') {
+      // A successful backend init must always provide all required sources AND
+      // the explicit GPT-facing instruction. Never silently regress to JSON-only.
+      const count = result?.delivery?.required_file_count;
+      if (typeof result?.delivery?.markdown !== 'string'
+        || !result.delivery.markdown.length
+        || typeof result.delivery.gpt_instructions !== 'string'
+        || !result.delivery.gpt_instructions.length
+        || !Array.isArray(result.files_to_paste)
+        || !Array.isArray(result.delivery.expected)
+        || !Number.isInteger(count)
+        || count < 6
+        || result.files_to_paste.length !== count
+        || result.delivery.expected.length !== count) {
+        return {
+          isError:true,
+          content:[{type:'text' as const,text:'INIT_DELIVERY_CONTRACT_MISSING'}],
+        };
+      }
       // Put a short imperative DIRECTLY before the full document packet, not
       // buried in serialized JSON. Return docs as the next standalone MCP text
       // part, while preserving structuredContent for the independent UI viewer.
