@@ -88,6 +88,42 @@
             "visible": true,
             "when": "always",
             "perTarget": false
+          },
+          {
+            "key": "FileFilter.area_paths",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/area_paths.json"
+            }
+          },
+          {
+            "key": "FileFilter.state",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/state.json"
+            }
+          },
+          {
+            "key": "FileFilter.config",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/config.json"
+            }
           }
         ],
         "normal": [
@@ -161,6 +197,42 @@
               "area": "MAIN",
               "path": "Documents/Notepad/0_active/togive.md"
             }
+          },
+          {
+            "key": "FileFilter.area_paths",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/area_paths.json"
+            }
+          },
+          {
+            "key": "FileFilter.state",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/state.json"
+            }
+          },
+          {
+            "key": "FileFilter.config",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/config.json"
+            }
           }
         ],
         "deep": [
@@ -198,6 +270,42 @@
             "visible": true,
             "when": "always",
             "perTarget": false
+          },
+          {
+            "key": "FileFilter.area_paths",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/area_paths.json"
+            }
+          },
+          {
+            "key": "FileFilter.state",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/state.json"
+            }
+          },
+          {
+            "key": "FileFilter.config",
+            "required": true,
+            "visible": false,
+            "when": "targeted",
+            "perTarget": false,
+            "forTarget": "FileFilter",
+            "ref": {
+              "area": "MAIN",
+              "path": "🪼👁️📡YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/config.json"
+            }
           }
         ]
       },
