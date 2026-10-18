@@ -102,38 +102,63 @@ export class NyxResourceResolver {
     const seen = new Set(files.map(file => JSON.stringify(file.ref)));
     for (const target of plan.targets) {
       const manifestRef = this.route(resources, `${target}.area_paths`);
-      if (!manifestRef) continue;
-      this.assertScope(plan, manifestRef, `${target}.area_paths`);
-      let manifestText: string;
-      try { manifestText = await this.store.read(manifestRef); }
-      catch { throw new Error(`REQUIRED_SOURCE_UNAVAILABLE:${target}.area_paths`); }
-      const manifestFile: LoadedSource = {
-        key: `${target}.area_paths`, ref: manifestRef, content: manifestText,
-        sha256: sha256(manifestText), bytes: Buffer.byteLength(manifestText), visible: false,
-      };
-      if (!seen.has(JSON.stringify(manifestRef))) {
-        files.push(manifestFile); seen.add(JSON.stringify(manifestRef));
+      const direct = new Map<string, ResourceRef>();
+      for (const role of ['state', 'config']) {
+        const ref = this.route(resources, `${target}.${role}`);
+        if (ref) direct.set(role, ref);
       }
-      let manifest: any;
-      try { manifest = parseJson(manifestText); }
-      catch { throw new Error(`AREA_MANIFEST_INVALID:${target}`); }
-      const candidates = [
-        ['config', manifest?.config?.file ?? manifest?.configs?.file],
-        ['state', manifest?.central_mutable_state?.file ?? manifest?.main_state?.file],
-      ].filter((item): item is [string, string] => typeof item[1] === 'string' && item[1].length > 0);
-      const base = path.posix.dirname(manifestRef.path);
-      for (const [role, relative] of candidates) {
-        const ref = { ...manifestRef, path: path.posix.join(base, relative) };
-        this.assertScope(plan, ref, `${target}.${role}`);
-        const identity = JSON.stringify(ref);
-        if (seen.has(identity)) continue;
-        try {
-          const content = await this.store.read(ref);
-          files.push({ key: `${target}.${role}`, ref, content, sha256: sha256(content), bytes: Buffer.byteLength(content), visible: false });
-          seen.add(identity);
-        } catch {
-          warnings.push(`OPTIONAL_SOURCE_UNAVAILABLE:${target}.${role}`);
+      const declaredInContract = plan.contract.sources[plan.depth].some(source =>
+        source.forTarget?.toLowerCase() === target.toLowerCase());
+      // Previously any string (even a typo) could return COMPLETE and a verified
+      // FIF without a single target-specific read. That is not initialization.
+      if (!manifestRef && !direct.size && !declaredInContract) throw new Error(`UNKNOWN_TARGET:${target}`);
+
+      const roles = new Map<string, ResourceRef>();
+      if (manifestRef) {
+        this.assertScope(plan, manifestRef, `${target}.area_paths`);
+        let manifestText: string;
+        try { manifestText = await this.store.read(manifestRef); }
+        catch { throw new Error(`REQUIRED_SOURCE_UNAVAILABLE:${target}.area_paths`); }
+        if (!seen.has(JSON.stringify(manifestRef))) {
+          files.push({ key: `${target}.area_paths`, ref: manifestRef, content: manifestText,
+            sha256: sha256(manifestText), bytes: Buffer.byteLength(manifestText), visible: false });
+          seen.add(JSON.stringify(manifestRef));
         }
+        let manifest: any;
+        try { manifest = parseJson(manifestText); }
+        catch { throw new Error(`AREA_MANIFEST_INVALID:${target}`); }
+        if (!manifest || (typeof manifest.area === 'string' &&
+            manifest.area.toLowerCase() !== target.toLowerCase())) throw new Error(`AREA_MANIFEST_INVALID:${target}`);
+        const base = path.posix.dirname(manifestRef.path);
+        const candidates: Array<[string, unknown]> = [
+          ['state', manifest.central_mutable_state?.file ?? manifest.main_state?.file],
+          ['config', manifest.config?.file ?? manifest.configs?.file],
+        ];
+        for (const [role, relative] of candidates) {
+          if (typeof relative === 'string' && relative.length)
+            roles.set(role, { ...manifestRef, path: path.posix.join(base, relative) });
+        }
+      }
+      // Some live Areas (notably Voice) are routed in paths.md by explicit
+      // state/config keys but have no *.area_paths entry. Never silently skip them.
+      for (const [role, ref] of direct) {
+        if (roles.has(role) && JSON.stringify(roles.get(role)) !== JSON.stringify(ref))
+          throw new Error(`TARGET_ROUTE_CONFLICT:${target}.${role}`);
+        roles.set(role, ref);
+      }
+      if (manifestRef || direct.size) {
+        for (const role of ['state', 'config']) if (!roles.has(role))
+          throw new Error(`TARGET_ROUTE_INCOMPLETE:${target}.${role}`);
+      }
+      for (const [role, ref] of roles) {
+        this.assertScope(plan, ref, `${target}.${role}`);
+        if (seen.has(JSON.stringify(ref))) continue;
+        let content: string;
+        try { content = await this.store.read(ref); }
+        catch { throw new Error(`REQUIRED_SOURCE_UNAVAILABLE:${target}.${role}`); }
+        files.push({ key: `${target}.${role}`, ref, content, sha256: sha256(content),
+          bytes: Buffer.byteLength(content), visible: false });
+        seen.add(JSON.stringify(ref));
       }
     }
   }
