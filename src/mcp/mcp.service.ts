@@ -18,6 +18,7 @@ import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { githubInstallationUrl } from '../connectors/github-app.service';
 import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
+import { INIT_DOCUMENTS_HTML, INIT_DOCUMENTS_URI } from './init-documents';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
 
 @Injectable()
@@ -123,6 +124,19 @@ export class McpService {
         text:CONNECTIONS_PANEL_HTML,
         _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
           'openai/widgetCSP':{redirect_domains:['https://github.com']},
+          'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
+      }]}),
+    );
+
+    // A deterministic MCP Apps document viewer is bound to the init tool itself.
+    // It does not depend on the assistant choosing to repeat the tool result.
+    server.registerResource(
+      'NYX Initialization Documents', INIT_DOCUMENTS_URI,
+      {mimeType:'text/html;profile=mcp-app'},
+      async () => ({contents:[{
+        uri:INIT_DOCUMENTS_URI, mimeType:'text/html;profile=mcp-app',
+        text:INIT_DOCUMENTS_HTML,
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}),
     );
@@ -476,17 +490,18 @@ export class McpService {
         }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async input => this.safeTool(() => this.commands.execute(input, this.ownerContext.getStore())),
+      async input => this.safeInitTool(() => this.commands.execute(input, this.ownerContext.getStore())),
     );
     server.registerTool(
       'nyx_ini',
       {
         title: 'Initialize Nyx working context',
-        description: 'Compatibility wrapper for YaRoCLI ini. Mandatory: paste delivery.markdown COMPLETELY and FIRST in this response, not a summary, names, links or a question. Then provide status. delivery.status=PENDING_USER_VISIBLE_RENDER means backend cannot certify ChatGPT display. Reuse conversation_id as sessionId; no heavy audit.',
+        description: 'Initialize requested context with six mandatory visible files for every target. The first returned text content is ready-to-paste markdown. Paste it all verbatim before any summary; the associated MCP UI also renders full files independently. A backend FIF is not proof of user-visible chat pasting.',
+        _meta:{ui:{resourceUri:INIT_DOCUMENTS_URI,visibility:['model','app']},'openai/outputTemplate':INIT_DOCUMENTS_URI},
         inputSchema: z.object({ target: z.string().min(1).max(1024).optional(), targets: z.array(z.string().min(1).max(64)).max(16).optional(), scope: z.enum(['local', 'global']).optional(), sessionId: z.string().uuid().optional(), depth: z.enum(['basic', 'normal', 'deep']).optional() }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async input => this.safeTool(() => this.init.initialize(input, this.ownerContext.getStore())),
+      async input => this.safeInitTool(() => this.init.initialize(input, this.ownerContext.getStore())),
     );
 
     server.registerTool(
@@ -671,6 +686,30 @@ export class McpService {
     const owner=this.ownerContext.getStore();
     if(!owner || !owner.startsWith('oauth:')) throw new Error('CONNECTOR_OWNER_REQUIRED');
     return owner;
+  }
+
+  private async safeInitTool(action: () => unknown | Promise<unknown>) {
+    const response = await this.safeTool(action);
+    const result = (response as {structuredContent?:{result?:any}}).structuredContent?.result;
+    if (result?.metadata?.command === 'ini' && typeof result?.delivery?.markdown === 'string') {
+      // Return paste-ready markdown as the FIRST MCP text part, not nested inside
+      // serialized JSON where the assistant can overlook it. Keep structuredContent
+      // for the widget and machine consumers.
+      return {
+        ...response,
+        content: [
+          {type:'text' as const, text:result.delivery.markdown},
+          {type:'text' as const, text:JSON.stringify({
+            backend_status:result.status,
+            visible_delivery_status:result.delivery.status,
+            required_files:result.delivery.expected,
+            packet_sha256:result.delivery.sha256,
+            instruction:'Paste the complete first text part in your visible chat reply before summarizing. Visible delivery has not been attested.',
+          })},
+        ],
+      };
+    }
+    return response;
   }
 
   private async safeTool(action: () => unknown | Promise<unknown>) {
