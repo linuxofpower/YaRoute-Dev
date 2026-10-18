@@ -51,7 +51,13 @@ export class NyxCommandResolver {
     const modifierSource = explicit ? 'explicit' : (request.scope || request.depth) ? 'request' : contract.scope ? 'default' : undefined;
 
     if ((!contract.arguments.targets && targetArgs.length) || targetArgs.length > contract.arguments.maxTargets) throw new Error('ARGUMENTS_NOT_ALLOWED');
-    const targets = Array.from(new Map(targetArgs.map(a => [a.toLowerCase(), a])).values());
+    // Deduplicate case-insensitively while keeping the user's FIRST spelling.
+    // Map(...values()) directly would silently replace "Voice" with later "voice".
+    const uniqueTargets = new Map<string, string>();
+    for (const target of targetArgs) {
+      if (!uniqueTargets.has(target.toLowerCase())) uniqueTargets.set(target.toLowerCase(), target);
+    }
+    const targets = [...uniqueTargets.values()];
 
     if (operations.length) {
       if (contract.adapter !== 'context.initialize.v1' || !contract.scope) throw new Error('CONFIG_OPERATION_NOT_SUPPORTED');
