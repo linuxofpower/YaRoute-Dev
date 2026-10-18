@@ -459,7 +459,7 @@ export class McpService {
       'nyx_execute',
       {
         title: 'Execute a Nyx command',
-        description: 'Check current CLI authority, resolve its typed execution contract and load only required resources. Requires a private bootstrap locator. Initialization returns verified private FIF and files_to_paste.',
+        description: 'Check canonical YaRoCLI authority and execute a typed command. For ini, first paste the complete delivery.markdown (all files, verbatim, in order) in the very first user-visible reply; only then report backend status. FIF verification never proves visible delivery.',
         inputSchema: z.object({
           command: z.string().min(1).max(64),
           args: z.array(z.string().min(1).max(64)).max(16).default([]),
@@ -482,7 +482,7 @@ export class McpService {
       'nyx_ini',
       {
         title: 'Initialize Nyx working context',
-        description: 'Compatibility wrapper for current CLI ini. Returns FIF receipt, files_to_paste and metadata. Reuse returned conversation_id as sessionId on subsequent calls; no heavy audit fallback.',
+        description: 'Compatibility wrapper for YaRoCLI ini. Mandatory: paste delivery.markdown COMPLETELY and FIRST in this response, not a summary, names, links or a question. Then provide status. delivery.status=PENDING_USER_VISIBLE_RENDER means backend cannot certify ChatGPT display. Reuse conversation_id as sessionId; no heavy audit.',
         inputSchema: z.object({ target: z.string().min(1).max(1024).optional(), targets: z.array(z.string().min(1).max(64)).max(16).optional(), scope: z.enum(['local', 'global']).optional(), sessionId: z.string().uuid().optional(), depth: z.enum(['basic', 'normal', 'deep']).optional() }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
