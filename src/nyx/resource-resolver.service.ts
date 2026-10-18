@@ -111,7 +111,13 @@ export class NyxResourceResolver {
         source.forTarget?.toLowerCase() === target.toLowerCase());
       // Previously any string (even a typo) could return COMPLETE and a verified
       // FIF without a single target-specific read. That is not initialization.
-      if (!manifestRef && !direct.size && !declaredInContract) throw new Error(`UNKNOWN_TARGET:${target}`);
+      if (!manifestRef && !direct.size && !declaredInContract) {
+        // Domain/skill names may not yet have a backend Area owner route. The
+        // universal six-file baseline still must be returned, but do not claim
+        // this target's specialized state or knowledge was initialized.
+        warnings.push(`TARGET_OWNER_UNRESOLVED:${target}`);
+        continue;
+      }
 
       const roles = new Map<string, ResourceRef>();
       if (manifestRef) {
