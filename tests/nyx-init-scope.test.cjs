@@ -120,6 +120,10 @@ test('bare and Voice init return the agreed compact packet and store oLN in FIF'
   assert.equal(voice.delivery.required_file_count, 6);
   assert.equal(voice.delivery.order, 'FILES_FIRST_THEN_STATUS');
   assert.equal(voice.delivery.sha256, sha256(voice.delivery.markdown));
+  assert.match(voice.delivery.gpt_instructions,/GPT, these are 6 verified initialization documents/);
+  assert.match(voice.delivery.gpt_instructions,/ACTIVE chat/);
+  assert.match(voice.delivery.gpt_instructions,/VERY NEXT chat reply/);
+  assert.equal(voice.delivery.markdown.includes('GPT, these are'), false);
   let previous = -1;
   for (const file of voice.files_to_paste) {
     const offset = voice.delivery.markdown.indexOf('### ' + file.name);
