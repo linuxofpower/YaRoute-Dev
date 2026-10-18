@@ -25,7 +25,8 @@ For `nyx_ini` and the `ini` variant of `nyx_execute`:
 
 - Backend validates all mandatory reads and SHA-256 source receipts before writing the FIF; no missing required source may be omitted silently.
 - Backend returns `files_to_paste`, `delivery.markdown` and `delivery.expected`, including exact file names, source keys, SHA-256 hashes, count and order.
-- The **FIRST MCP text part** is `delivery.markdown` with all six complete source bodies. Tool results must not bury the payload inside serialized JSON.
+- The **FIRST MCP text part** is a short, explicit GPT-facing directive to paste the verified documents into the active chat. The **SECOND MCP text part** is `delivery.markdown`, containing all six complete source bodies in order. Do not bury either instruction or documents inside serialized JSON.
+- The same short directive is present as `delivery.gpt_instructions` in structured output; it tells GPT not to quote the directive itself, to paste without shortening, and to report status afterward. The document packet's contents and SHA-256 remain unchanged.
 - The model must put the full `delivery.markdown` into the **FIRST user-visible assistant reply**, before any status, summary, TODO list, or question. No names-only or links-only substitutes.
 - The `nyx_ini` MCP Apps resource separately renders the complete received documents, independently of prose generation, so the host can show user-visible content even if the model neglects to paste it.
 - The backend cannot attest that text was actually pasted into the ChatGPT message or that a specific client displayed the component. `PENDING_USER_VISIBLE_RENDER` is truthful until a client-verifiable acknowledgment exists. A verified FIF does not constitute that acknowledgment.
@@ -34,7 +35,7 @@ For `nyx_ini` and the `ini` variant of `nyx_execute`:
 
 ## GPT Project instruction (copy into NYX project guidance)
 
-> On **every** successful YaRoCLI `Nyx ini` command, show the complete six-file standard packet returned by NestNyx. Copy the entire first MCP text part / `delivery.markdown` into the **first visible assistant reply**, in the returned order, **before** any commentary, summary or readiness claims. Do not merely list file names, link to files, truncate document contents, claim delivery based on a verified FIF, or ask whether to paste. Render extra target-specific files when marked visible. If required source bytes are absent, say initialization is incomplete. Report unresolved target-owner warnings without inventing Area/skill/domain state. If a ChatGPT display limit prevents complete pasting, state explicitly that the delivery requirement failed; the MCP document widget is a separate fallback, not a proof of chat text delivery.
+> On **every** successful YaRoCLI `Nyx ini` command, show the complete six-file standard packet returned by NestNyx. Follow the short GPT-facing instruction in the **first** MCP text part, and copy the entire **second** MCP text part (`delivery.markdown`) into the **first visible assistant reply**, in the returned order, **before** any commentary, summary or readiness claims. Do not merely list file names, link to files, truncate document contents, claim delivery based on a verified FIF, or ask whether to paste. Render extra target-specific files when marked visible. If required source bytes are absent, say initialization is incomplete. Report unresolved target-owner warnings without inventing Area/skill/domain state. If a ChatGPT display limit prevents complete pasting, state explicitly that the delivery requirement failed; the MCP document widget is a separate fallback, not a proof of chat text delivery.
 
 ## Acceptance criteria
 
@@ -42,7 +43,7 @@ For `nyx_ini` and the `ini` variant of `nyx_execute`:
 2. Invoke `Nyx ini Voice`, `Mental`, `FileFilter`, `NoteFlow`, `WORK`, `TECH`, and `SKILLS`. All deliver the six baseline sources; only actual owner reads count as target-specific initialization. NoteFlow Normal appends its three extra visible files.
 3. Reconfiguration `Nyx ini ++` and `Nyx ini --` also return the six files without changing FIF identity.
 4. Verify source-read failure is fail-closed; verify a target without owner routing is clearly marked `READY_WITH_WARNINGS` and cannot claim the requested specialized context.
-5. Verify the MCP text **first part**, structured response, and MCP Apps widget each carry/render unabridged file content.
+5. Verify the MCP **first text part** explicitly directs GPT to paste into the active chat, the **second text part** holds unabridged file content, `delivery.gpt_instructions` repeats the directive in structured output, and the MCP Apps widget renders the same complete files.
 6. Real ChatGPT client acceptance requires checking the **visible assistant reply** and, separately, the rendered MCP widget; unit tests alone cannot certify these external surfaces.
 
 ## Syntax note
