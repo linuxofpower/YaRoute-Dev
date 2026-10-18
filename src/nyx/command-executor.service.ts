@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sha256 } from './resource-store.service';
 import { NyxExecutionProfileService } from './execution-profile.service';
 import { CommandRequest } from './runtime.schema';
 import { NyxBootstrapService } from './bootstrap.service';
@@ -171,10 +172,31 @@ export class NyxCommandExecutor {
       source_refs: loaded.files.map(f => ({ key: f.key, ref: f.ref, sha256: f.sha256, bytes: f.bytes, returned: f.visible })),
       ...(chatState ? { chat_config: { initial: chatState, current: chatState, history: [] } } : {}),
     }) : undefined;
+    const filesToPaste = loaded.files.filter(f => f.visible).map(f => ({
+      name: f.ref.path.split('/').pop()!, key: f.key, content: f.content, ref: f.ref, sha256: f.sha256,
+    }));
+    // A verified FIF is not evidence that ChatGPT actually displayed these files.
+    // Supply a single mandatory first-response payload with each full source in
+    // the canonical order. Delivery remains unverified until the client renders it.
+    const markdown = filesToPaste.map(file => {
+      const runs = file.content.match(/~+/g) ?? [];
+      const fence = '~'.repeat(Math.max(4, ...runs.map(run => run.length + 1)));
+      return `### ${file.name}\n\n${fence}text\n${file.content}${file.content.endsWith('\n') ? '' : '\n'}${fence}`;
+    }).join('\n\n');
+    const delivery = {
+      status: filesToPaste.length ? 'PENDING_USER_VISIBLE_RENDER' : 'NO_VISIBLE_SOURCES',
+      order: 'FILES_FIRST_THEN_STATUS',
+      required_file_count: filesToPaste.length,
+      expected: filesToPaste.map(file => ({ key: file.key, name: file.name, sha256: file.sha256 })),
+      markdown,
+      sha256: sha256(markdown),
+      instructions: 'In the first user-visible response, paste the complete markdown above before any summary or status. Do not replace source content with names, links, excerpts or a question. Backend FIF verification does not verify user-visible delivery.',
+    };
     return {
       schema: plan.contract.response, status: 'COMPLETE', conversation_id: fif?.conversationId,
       fif: fif ? { id: fif.id, kind: fif.kind, ref: fif.ref, sha256: fif.sha256, verified: fif.verified } : null,
-      files_to_paste: loaded.files.filter(f => f.visible).map(f => ({ name: f.ref.path.split('/').pop(), key: f.key, content: f.content, ref: f.ref, sha256: f.sha256 })),
+      files_to_paste: filesToPaste,
+      delivery,
       metadata: {
         command: plan.name, targets: plan.targets, depth: plan.depth,
         ...(plan.scope ? { scope: plan.scope, modifier: plan.modifier, modifier_source: plan.modifierSource } : {}),
