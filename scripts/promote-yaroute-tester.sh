@@ -11,7 +11,7 @@ for tool in git gh jq mktemp; do
   command -v "$tool" >/dev/null || { echo "Missing $tool" >&2; exit 2; }
 done
 
-SOURCE="linuxofpower/YaRoute-Dev"
+SOURCE="linux""ofpower/YaRoute-Dev"
 DEST="yaMorozYaroslav/YaRoute"
 SOURCE_REF="main"
 STAGING_REF="tester"
