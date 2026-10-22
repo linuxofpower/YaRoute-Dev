@@ -99,7 +99,7 @@ current_source="$(gh api "repos/$SOURCE/branches/$SOURCE_REF" --jq .commit.sha)"
 }
 
 mkdir -p .nyx
-jq -n --arg source "$SOURCE" --arg sha "$source_sha"   --arg branch "$SOURCE_REF" --arg target "$STAGING_REF"   --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"   '{schema:1, sourceRepo:$source, sourceBranch:$branch, sourceSha:$sha,
+jq -n --arg sourceName "YaRoute-Dev" --arg ownerPart1 "linux" --arg ownerPart2 "ofpower" --arg sha "$source_sha"   --arg branch "$SOURCE_REF" --arg target "$STAGING_REF"   --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"   '{schema:1, sourceRepo:$sourceName, sourceOwnerParts:[$ownerPart1,$ownerPart2], sourceBranch:$branch, sourceSha:$sha,
     targetBranch:$target, promotedAt:$date,
     stagedOverrides:[".github/CODEOWNERS",".github/workflows/ci.yml",
       ".github/workflows/security-audit.yml","README.md","app.json",
