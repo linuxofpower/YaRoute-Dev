@@ -92,6 +92,66 @@ export class GithubWriteConnector {
     if(created?.ref!=='refs/heads/'+branch)throw new Error('GITHUB_BRANCH_RESPONSE_INVALID');
     return {repo,branch,from:base,baseSha:sha,created:true};
   }
+  /**
+   * Create a review branch from an exact non-default, non-protected branch tip.
+   * Never rewrites its source branch. Fail closed if staging moved since review.
+   */
+  async createFromNonDefault(owner:string,id:string,repo:string,branch:string,
+    baseBranch:string,expectedBaseSha:string) {
+    this.workingBranch(branch);
+    this.workingBranch(baseBranch);
+    if(!branch.startsWith('nyx/') || branch===baseBranch)
+      throw new Error('GITHUB_REVIEW_BRANCH_REQUIRED');
+    if(!/^[a-f0-9]{40}$/.test(expectedBaseSha))
+      throw new Error('GITHUB_BASE_SHA_INVALID');
+    const defaultRef=await this.defaultBranch(owner,id,repo,'contents:write',{branch});
+    if(branch===defaultRef || baseBranch===defaultRef)
+      throw new Error('GITHUB_DEFAULT_BRANCH_WRITE_FORBIDDEN');
+    const source=await this.call(owner,id,repo,'contents:write','GET',
+      '/git/ref/heads/'+encodeURIComponent(baseBranch),undefined,{branch:baseBranch});
+    const actualSha=source?.object?.sha;
+    if(typeof actualSha!=='string'||!/^[a-f0-9]{40}$/.test(actualSha))
+      throw new Error('GITHUB_BASE_SHA_INVALID');
+    if(actualSha!==expectedBaseSha)throw new Error('GITHUB_STAGING_BASE_CHANGED');
+    // Metadata only: enforce provider-reported non-protected source.
+    const details=await this.call(owner,id,repo,'contents:write','GET',
+      '/branches/'+encodeURIComponent(baseBranch),undefined,{branch:baseBranch});
+    if(details?.name!==baseBranch || details?.protected!==false)
+      throw new Error('GITHUB_SOURCE_PROTECTION_UNVERIFIED');
+    const created=await this.call(owner,id,repo,'contents:write','POST','/git/refs',
+      {ref:'refs/heads/'+branch,sha:actualSha},{branch});
+    if(created?.ref!=='refs/heads/'+branch)
+      throw new Error('GITHUB_BRANCH_RESPONSE_INVALID');
+    return {repo,branch,from:baseBranch,baseSha:actualSha,created:true,
+      defaultBranchUntouched:true};
+  }
+
+  /**
+   * Prepare a DRAFT review into a verified non-default branch (e.g. tester).
+   * No merge, workflow dispatch, deployment or default-branch changes.
+   */
+  async draftPullToNonDefault(owner:string,id:string,repo:string,branch:string,
+    baseBranch:string,title:string,body='') {
+    this.workingBranch(branch);
+    this.workingBranch(baseBranch);
+    if(!branch.startsWith('nyx/') || branch===baseBranch)
+      throw new Error('GITHUB_REVIEW_BRANCH_REQUIRED');
+    if(typeof title!=='string'||!title.trim()||title.length>200 ||
+       typeof body!=='string'||body.length>10000)
+      throw new Error('GITHUB_PULL_INPUT_INVALID');
+    const defaultRef=await this.defaultBranch(owner,id,repo,'pulls:write',{branch});
+    if(branch===defaultRef || baseBranch===defaultRef)
+      throw new Error('GITHUB_DEFAULT_BRANCH_WRITE_FORBIDDEN');
+    const data=await this.call(owner,id,repo,'pulls:write','POST','/pulls',{
+      head:branch,base:baseBranch,title:title.trim(),body,draft:true,
+      maintainer_can_modify:false,
+    },{branch});
+    if(data?.draft!==true||!Number.isSafeInteger(data?.number)||
+       data?.base?.ref!==baseBranch || data?.head?.ref!==branch)
+      throw new Error('GITHUB_PULL_RESPONSE_INVALID');
+    return {repo,number:data.number,url:data.html_url,branch,base:baseBranch,draft:true};
+  }
+
   /** Create/update exactly one text file with GitHub's optimistic SHA check. */
   async commitFile(owner:string,id:string,repo:string,branch:string,
     path:string,content:string,message:string,sha?:string) {
