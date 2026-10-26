@@ -91,3 +91,28 @@ test('connection UI and MCP list endpoint are read-only, owner-scoped and flag-g
  assert.match(panel,/nyx_storage_connection_list_files/);
  assert.match(panel,/ul\.append\(el\('li'/);
 });
+
+
+test('public multi-user boot refuses legacy Rclone credentials instead of mixing accounts',async(t)=>{
+ const vars=['NYX_MULTIUSER_RCLONE_ENABLED','NYX_DEPLOYMENT_MODE',
+  'NYX_PUBLIC_CONNECTORS_ENABLED','RCLONE_CONFIG_B64','RCLONE_CONFIG_PATH',
+  'RCLONE_CONFIG','NYX_SHARED_ROOTS_JSON'];
+ const originals=Object.fromEntries(vars.map(key=>[key,process.env[key]]));
+ t.after(()=>{for(const key of vars){
+  if(originals[key]===undefined)delete process.env[key];
+  else process.env[key]=originals[key];
+ }});
+ process.env.NYX_MULTIUSER_RCLONE_ENABLED='true';
+ process.env.NYX_DEPLOYMENT_MODE='public';
+ process.env.NYX_PUBLIC_CONNECTORS_ENABLED='true';
+ for(const forbidden of ['RCLONE_CONFIG_B64','RCLONE_CONFIG_PATH',
+                          'RCLONE_CONFIG','NYX_SHARED_ROOTS_JSON']){
+  for(const key of ['RCLONE_CONFIG_B64','RCLONE_CONFIG_PATH',
+                    'RCLONE_CONFIG','NYX_SHARED_ROOTS_JSON'])delete process.env[key];
+  process.env[forbidden]='legacy-placeholder-not-a-secret';
+  const {svc}=fixture();
+  await assert.rejects(()=>svc.onModuleInit(),/TENANT_RCLONE_PRIVATE_CONFIG_PRESENT/);
+  assert.equal(svc.pool,undefined);
+  assert.equal(svc.encryptionKey,undefined);
+ }
+});
