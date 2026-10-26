@@ -230,6 +230,10 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     if (!['google-drive','mega'].includes(connection.provider)) {
       throw new Error('CONNECTOR_PROVIDER_DISABLED');
     }
+    // Initial MEGA pilot verifies one exact user-owned root per connection.
+    // Empty selection is permitted to revoke access, but not to enroll.
+    if (connection.provider === 'mega' && Array.isArray(resources) && resources.length > 1)
+      throw new Error('TENANT_MEGA_SINGLE_ROOT_REQUIRED');
     if (!Array.isArray(resources) || resources.length > 10 ||
         resources.some(r => !r || r.kind !== (connection.provider === 'mega' ? 'mega-root' : 'drive') ||
           !Array.isArray(r.capabilities) || r.capabilities.some(c => c !== 'storage:list') ||
