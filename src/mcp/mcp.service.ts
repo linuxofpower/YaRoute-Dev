@@ -90,7 +90,15 @@ export class McpService {
           ini: { tool: 'nyx_ini', status: 'registered' },
           sum: { tool: 'nyx_sum', status: 'registered' },
         },
-        auxiliaryTools: process.env.NYX_DEPLOYMENT_MODE === 'public' ? ['nyx_connections_home','nyx_connections_panel','nyx_connections_list','nyx_risk_preview'] : ['nyx_mega_accounts', 'nyx_mega_list', 'nyx_mega_stat', 'nyx_mega_capacity', 'nyx_global_index', 'nyx_copy_file', 'nyx_risk_preview','nyx_connections_home','nyx_connections_panel','nyx_rclone_connections_list','nyx_head_status','nyx_areas','nyx_list','nyx_stat','nyx_capacity','nyx_job_status'],
+        auxiliaryTools: process.env.NYX_DEPLOYMENT_MODE === 'public' ?
+          ['nyx_connections_home','nyx_connections_panel','nyx_connections_list','nyx_risk_preview',
+           ...(process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true' &&
+               process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true' ?
+            ['nyx_storage_connections_list','nyx_storage_connection_create',
+             'nyx_storage_connection_permissions','nyx_storage_connection_roots',
+             'nyx_storage_connection_begin_google','nyx_storage_connection_begin_mega',
+             'nyx_storage_connection_test_pending','nyx_storage_connection_activate',
+             'nyx_storage_connection_test_active','nyx_storage_connection_list_files'] : [])] : ['nyx_mega_accounts', 'nyx_mega_list', 'nyx_mega_stat', 'nyx_mega_capacity', 'nyx_global_index', 'nyx_copy_file', 'nyx_risk_preview','nyx_connections_home','nyx_connections_panel','nyx_rclone_connections_list','nyx_head_status','nyx_areas','nyx_list','nyx_stat','nyx_capacity','nyx_job_status'],
         note: 'This inventory does not assert that a backend command is executable; use backend command resolution and verified receipts.',
       })),
     );
@@ -145,14 +153,21 @@ export class McpService {
         schema:'nyx.connections.panel.v1',
         ownerId,
         connections:await this.connections.list(ownerId),
-        providers:[{id:'github',availability:'oauth_ready_if_configured'}],
+        providers:[{id:'github',availability:'oauth_ready_if_configured'},
+          ...(process.env.NYX_DEPLOYMENT_MODE === 'public' &&
+              process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true' &&
+              process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true'
+            ? [{id:'mega',availability:'isolated_read_only_pilot'},
+               {id:'google-drive',availability:'isolated_read_only_pilot'}] : [])],
         note:'GitHub authorization is required. Refresh ChatGPT plugin discovery after deployment.',
       };
     });
 
     server.registerTool('nyx_connections_panel',{
       title:'☁️ NestNyx Connections',
-      description:'Open the NestNyx connections conversation tab. Production supports authenticated GitHub connections only; Google Drive and MEGA migration remains under separate review.',
+      description:process.env.NYX_DEPLOYMENT_MODE === 'public' && process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true' ?
+         'Open connections for GitHub and isolated user-owned MEGA/Google Drive read-only pilot. Credentials are entered only in first-party provider flows.' :
+         'Open the private NestNyx GitHub connection manager. MEGA and Google Drive use the existing private storage backend.',
       inputSchema:z.object({}),
       _meta:{
         ui:{resourceUri:CONNECTIONS_PANEL_URI,visibility:['model','app']},
@@ -164,7 +179,7 @@ export class McpService {
 
     server.registerTool('nyx_connections_home',{
       title:'☁️ NestNyx',
-      description:'Open NestNyx Connections from the global ChatGPT sidebar. Same owner-scoped GitHub panel; no provider authorization or storage mutation.',
+      description:'Open authenticated NestNyx Connections from the sidebar. Isolated storage onboarding appears only in the separately deployed public tenant pilot; no credentials are entered in ChatGPT.',
       inputSchema:z.object({}),
       _meta:{
         ui:{resourceUri:CONNECTIONS_PANEL_URI,visibility:['model','app']},
