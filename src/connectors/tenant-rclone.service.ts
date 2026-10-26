@@ -187,11 +187,30 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     return { provider, profile, packed: r.rows[0].encrypted_profile as string };
   }
 
-  /** Only verifies read connectivity, never infers provider OAuth scopes or write access. */
-  async probePending(ownerId: string, connectionId: string): Promise<ReadProbeResult> {
-    await this.owned(ownerId, connectionId);
+  /**
+   * Read-only credential verification must target the exact selected root.
+   * Verifying an account root does not establish that a user-selected subfolder
+   * exists or is readable. Fail closed on ambiguous MEGA root grants.
+   */
+  async probePending(ownerId: string, connectionId: string,
+                     expectedMegaRoot?: string): Promise<ReadProbeResult> {
+    const item = await this.owned(ownerId, connectionId);
     const candidate = await this.profile(ownerId, connectionId, 'pending');
-    const status = await this.probe(candidate.profile, '');
+    if (candidate.provider !== item.provider)
+      throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
+    let relativePath = '';
+    if (candidate.provider === 'mega') {
+      const roots = (item.resources || []).filter(r =>
+        r.kind === 'mega-root' && r.capabilities.includes('storage:list'));
+      if (roots.length !== 1 || typeof roots[0].id !== 'string')
+        throw new Error('TENANT_MEGA_EXACT_ROOT_REQUIRED');
+      if (expectedMegaRoot !== undefined && expectedMegaRoot !== roots[0].id)
+        throw new Error('TENANT_MEGA_SELECTED_ROOT_CHANGED');
+      relativePath = roots[0].id === 'MEGA_ROOT' ? '' : tenantRclonePath(roots[0].id);
+    } else if (expectedMegaRoot !== undefined) {
+      throw new Error('TENANT_MEGA_EXPECTED_PROVIDER_INVALID');
+    }
+    const status = await this.probe(candidate.profile, relativePath);
     if (status === 'verified') {
       await this.db().query(`UPDATE nyx_rclone_tenant_credentials_v2 SET
           read_verified_at=now() WHERE owner_id=$1 AND connection_id=$2
