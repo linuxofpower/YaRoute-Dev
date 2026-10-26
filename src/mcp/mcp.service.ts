@@ -441,6 +441,18 @@ export class McpService {
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true},
       }, async ({id}) => this.safeTool(() =>
         this.tenantRclone.activate(this.connectorOwner(),id)));
+      server.registerTool('nyx_storage_connection_test_active', {
+        title: 'Verify read access to my active isolated storage root',
+        description: 'Read-only Rclone probe using only the authenticated owner, one activated connection and its exact selected root. Never uses private global Rclone configuration or returns file names.',
+        inputSchema: z.object({
+          id:z.string().uuid(),provider:z.enum(['google-drive','mega']),
+          rootId:z.string().min(1).max(256),
+          path:z.string().max(2048).optional(),
+        }),
+        annotations: {readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+      }, async ({id,provider,rootId,path}) => this.safeTool(() =>
+        this.tenantRclone.probeAuthorizedRoot(
+          this.connectorOwner(),id,provider,rootId,path || '')));
     }
 
     // Public multi-user connector mode deliberately omits all legacy global
