@@ -329,6 +329,30 @@ export class McpService {
     },async({id,repo,branch})=>this.safeTool(()=>
       this.limitedConnectionApi(id,()=>this.githubWrites.createBranch(this.connectorOwner(),id,repo,branch))));
 
+    // SHA-guarded staging workflow: changes only a fresh nyx/* review branch.
+    // Both base and target refuse master/main/default. No direct protected writes.
+    server.registerTool('nyx_connection_github_branch_from_ref',{
+      title:'Create a SHA-guarded review branch from tester or another non-default branch',
+      description:'Create a nyx/* branch from the exact verified tip of a non-protected, non-default branch. Requires expectedBaseSha; never modifies the source branch.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200),
+        branch:z.string().min(5).max(100),baseBranch:z.string().min(1).max(100),
+        expectedBaseSha:z.string().regex(/^[a-f0-9]{40}$/)}),
+      annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+    },async({id,repo,branch,baseBranch,expectedBaseSha})=>this.safeTool(()=>
+      this.limitedConnectionApi(id,()=>this.githubWrites.createFromNonDefault(
+        this.connectorOwner(),id,repo,branch,baseBranch,expectedBaseSha))));
+
+    server.registerTool('nyx_connection_github_draft_pr_to_ref',{
+      title:'Open an unmerged draft PR to tester or another non-default branch',
+      description:'Open a DRAFT PR from a nyx/* review branch to a non-default branch. Never merges, deploys, dispatches workflows or targets protected main/master.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200),
+        branch:z.string().min(5).max(100),baseBranch:z.string().min(1).max(100),
+        title:z.string().min(1).max(200),body:z.string().max(10000).optional()}),
+      annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+    },async({id,repo,branch,baseBranch,title,body})=>this.safeTool(()=>
+      this.limitedConnectionApi(id,()=>this.githubWrites.draftPullToNonDefault(
+        this.connectorOwner(),id,repo,branch,baseBranch,title,body))));
+
     server.registerTool('nyx_connection_github_commit_file',{
       title:'Commit one file on a NYX review branch',
       description:'Create or update one UTF-8 file on an existing nyx/* branch; requires GitHub Contents write. Workflow, hosting, CI script, credential and deployment files are blocked.',
