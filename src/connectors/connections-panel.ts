@@ -311,6 +311,27 @@ function renderTenant(connections){
     show('Storage connection: '+String(result.status));
     await refreshTenantStorage();
    }));
+   if(item.status==='active'){
+    const filePanel=el('div');filePanel.setAttribute('aria-live','polite');
+    box.append(button('Browse selected folder (read only)',async()=>{
+     const rootId=root.value.trim();
+     if(!rootId || !(item.resources||[]).some(r=>r.kind===kind&&r.id===rootId))
+      throw Error('Select and save the granted root first');
+     const data=await call('nyx_storage_connection_list_files',{
+      id:item.id,provider,rootId,path:''
+     });
+     if(!data||!Array.isArray(data.items)||typeof data.truncated!=='boolean')
+      throw Error('Storage listing not available');
+     filePanel.replaceChildren(el('p',data.items.length+' items'+(data.truncated?' (additional items hidden)':'')));
+     const ul=el('ul');
+     for(const entry of data.items.slice(0,100)){
+      if(!entry||typeof entry.path!=='string')continue;
+      ul.append(el('li',(entry.isDir?'📁 ':'📄 ')+entry.path));
+     }
+     filePanel.append(ul);
+    }));
+    box.append(filePanel);
+   }
    host.append(box);
   }
  }
