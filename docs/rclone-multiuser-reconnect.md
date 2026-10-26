@@ -145,10 +145,12 @@ This is not a single shared Rclone remote.
 
 **Migration:** first run the public tenant model on DevNestNyx while
 NestNyxPro remains private (separate app/binary only temporarily for rollback).
-Do not remove Dev's current private config until the combined connector code is
-deployed, backup/rollback is verified, and real two-user provider login succeeds.
-Then switch Dev atomically to public mode, remove the process-global legacy
-config vars from Dev and leave only the public tenant encrypted vault. The
+Do not remove Dev's current private config until the combined connector code,
+backups, dedicated tenant database and rollback procedure are independently
+verified. Then convert Dev in a single planned release: switch Dev to public
+mode and remove process-global legacy Rclone config variables from Dev.
+Immediately test two authenticated users' real provider enrollments; roll back
+Dev if acceptance fails, keeping Pro's private remotes working throughout. The
 production private Rclone configuration stays intact until its own separately
 approved migration. Local Arch `~/.config/rclone/rclone.conf` is not needed by
 Heroku if remote connections use their own encrypted tenant profiles; delete
