@@ -66,6 +66,7 @@ test('isolated subprocess reads only one per-user config and discards inherited 
  ].join('\n')+'\n';
  fs.writeFileSync(executable,script,{mode:0o700});
  const {svc}=fixture();
+ svc.listIsolated=TenantRcloneService.prototype.listIsolated.bind(svc);
  svc.binary=executable;
  const previous=process.env.NYX_TEST_LEAK_MARKER;
  process.env.NYX_TEST_LEAK_MARKER='should-never-inherit';
