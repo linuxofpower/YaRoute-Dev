@@ -18,6 +18,7 @@ function fixture(roots=['TeamDocs']) {
    return item;
  }};
  const svc=new TenantRcloneService(connectors);
+ svc.encryptionKey=Buffer.alloc(32,7);
  svc.profile=async()=>({provider:'mega',profile,packed:'sealed-placeholder'});
  svc.probe=async(_p,path)=>{traces.push(path);return path==='TeamDocs'?'verified':'failed';};
  svc.pool={query:async(sql,p)=>{traces.push({sql,params:p});return {rowCount:1}}};
@@ -64,7 +65,7 @@ test('traversal, colon and invalid MEGA selected roots are refused',async()=>{
 });
 test('wrong provider or foreign owner cannot probe MEGA pending credential',async()=>{
  const {svc,traces,item}=fixture();
- await assert.rejects(()=>svc.probePending('oauth:bob',id),/FOREIGN_TENANT_DENIED/);
+ await assert.rejects(()=>svc.probePending('oauth:bob',id),/TENANT_RCLONE_CONNECTION_FORBIDDEN/);
  item.provider='google-drive';
  await assert.rejects(()=>svc.probePending(owner,id),/TENANT_RCLONE_PROVIDER_MISMATCH/);
  assert.equal(traces.length,0);
@@ -109,7 +110,7 @@ test('MEGA enrollment cannot accept changed root or failed selected-root read',a
  en.pool={query:async()=>({rowCount:1,rows:[{owner_id:owner,connection_id:id,root_path:'Original'}]})};
  en.obscure=async()=> 'obscured';
  await assert.rejects(()=>en.complete('a'.repeat(45),TEST_EMAIL,'pw'),
-   /TENANT_MEGA_ROOT_NOT_SELECTED|TENANT_MEGA_SELECTED_ROOT_CHANGED/);
+   /TENANT_MEGA_CONNECTION_CHANGED|TENANT_MEGA_SELECTED_ROOT_CHANGED/);
  assert.equal(confirmed.length,0);
 });
 test('isolated MEGA root selection accepts one and rejects multiple',async()=>{
