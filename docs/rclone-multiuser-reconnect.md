@@ -126,3 +126,36 @@ requiring an additional 2FA prompt are not yet supported by the browser
 enrollment; do not disable account 2FA to test. No new tenant write, move,
 copy or delete operations are enabled. Retire private Rclone credentials only
 in a **later, separately reviewed cutover** after independent proof.
+
+
+## One Rclone engine, independently authenticated users — 2026-10-27
+
+**Target architecture:** one public NestNyx backend with one installed Rclone
+executable. A local Arch Linux Rclone setup is **not** required to connect users.
+Multiple independent MEGA/Google Drive users are isolated by their authenticated
+OAuth subject and immutable connection ID, not by sharing a global config.
+
+On each operation the backend reads one encrypted user profile from its vault,
+creates one short-lived private `rclone.conf` (mode 0600) in a unique temp
+directory (0700), invokes that single installed Rclone binary with `--config`
+pointing to that temp file and a sanitized environment, then deletes the temp
+file. Concurrent users invoke the same executable with separate ephemeral
+processes/configs; they NEVER share a live credential file or provider token.
+This is not a single shared Rclone remote.
+
+**Migration:** first run the public tenant model on DevNestNyx while
+NestNyxPro remains private (separate app/binary only temporarily for rollback).
+Do not remove Dev's current private config until the combined connector code is
+deployed, backup/rollback is verified, and real two-user provider login succeeds.
+Then switch Dev atomically to public mode, remove the process-global legacy
+config vars from Dev and leave only the public tenant encrypted vault. The
+production private Rclone configuration stays intact until its own separately
+approved migration. Local Arch `~/.config/rclone/rclone.conf` is not needed by
+Heroku if remote connections use their own encrypted tenant profiles; delete
+local credentials only after all intended operations are verified, and retain
+a safe off-site recovery path.
+
+**Public rollout is not complete:** MEGA 2FA and Google provider consent remain
+real-world blockers. Only `storage:list` is implemented; do not advertise
+upload/move/delete until tenant-scoped authorization, proof, recoverable
+deletion, rate limits and audit are implemented and tested.
