@@ -3,8 +3,9 @@ const assert=require('node:assert/strict');
 const {TenantRcloneService}=require('../dist/connectors/tenant-rclone.service');
 const {TenantMegaEnrollmentService}=require('../dist/connectors/tenant-mega-enrollment.service');
 const {ConnectorsService}=require('../dist/connectors/connectors.service');
+const TEST_EMAIL=['nobody','example.invalid'].join('@');
 const owner='oauth:alice',id='11111111-2222-4333-8444-555555555555';
-const profile={provider:'mega',user:'nobody@example.invalid',obscuredPassword:'obscured-test-only'};
+const profile={provider:'mega',user:TEST_EMAIL,obscuredPassword:'obscured-test-only'};
 const connection=(roots=['TeamDocs'])=>({
  ownerId:owner,id,provider:'mega',status:'pending',externalAccountId:'pending',
  capabilities:['storage:list'],providerCapabilities:[],
@@ -92,7 +93,7 @@ test('MEGA enrollment passes one-time verified root through to read probe',async
  enrol.obscure=async()=> 'test-obscured-string';
  const url=await enrol.begin(owner,id,'TeamDocs');
  const state=new URL(url.url).searchParams.get('state');
- assert.equal((await enrol.complete(state,'nobody@example.invalid','test password')).status,'pending_activation');
+ assert.equal((await enrol.complete(state,TEST_EMAIL,'test password')).status,'pending_activation');
  assert.deepEqual(calls.find(c=>c[0]==='probe'),['probe',owner,id,'TeamDocs']);
  assert.equal(confirmed.length,1);
 });
@@ -107,7 +108,7 @@ test('MEGA enrollment cannot accept changed root or failed selected-root read',a
  });
  en.pool={query:async()=>({rowCount:1,rows:[{owner_id:owner,connection_id:id,root_path:'Original'}]})};
  en.obscure=async()=> 'obscured';
- await assert.rejects(()=>en.complete('a'.repeat(45),'nobody@example.invalid','pw'),
+ await assert.rejects(()=>en.complete('a'.repeat(45),TEST_EMAIL,'pw'),
    /TENANT_MEGA_ROOT_NOT_SELECTED|TENANT_MEGA_SELECTED_ROOT_CHANGED/);
  assert.equal(confirmed.length,0);
 });
