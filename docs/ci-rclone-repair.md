@@ -14,13 +14,13 @@ On production-repository `tester` commit `04a229a6c017049da5dbfa4695239b4d26bb10
 
 ## Verification
 
-- First repair CI run [40271428431](https://github.com/linuxofpower/YaRoute-Dev/actions/runs/40271428431) passed `npm ci`, security checks, and build, but failed one real-Rclone test due to the missing binary.
-- Follow-up CI run [40271587347](https://github.com/linuxofpower/YaRoute-Dev/actions/runs/40271587347) passed install, security checks, NestJS build, Rclone installation, and **170/170 tests**.
-- Review draft Dev [PR #30](https://github.com/linuxofpower/YaRoute-Dev/pull/30). Do not merge or promote without review.
+- First repair CI run 40271428431 (GitHub Actions) passed `npm ci`, security checks, and build, but failed one real-Rclone test due to the missing binary.
+- Follow-up CI run 40271587347 (GitHub Actions) passed install, security checks, NestJS build, Rclone installation, and **170/170 tests**.
+- Review draft Dev PR #30. Do not merge or promote without review.
 
 ## Release constraints
 
-1. This branch belongs to `linuxofpower/YaRoute-Dev`; production repository `tester` is separate and has not received this fix.
+1. This branch belongs to `YaRoute-Dev`; production repository `tester` is separate and has not received this fix.
 2. A staging-port branch must start from **production `tester`**, not `master`. Reconcile only the intended two-file changes; do not wholesale replace tester with Dev.
 3. NestNyx's currently exposed GitHub writer is restricted to `nyx/*` branches based on default HEAD and blocks workflow/CI file changes. Safe, reviewed branch-aware staging capabilities must be added and proven before an automated tester-port.
 4. Protect every production `master` branch and require an approved PR and green checks for promotions.
