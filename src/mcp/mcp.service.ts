@@ -441,6 +441,19 @@ export class McpService {
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true},
       }, async ({id}) => this.safeTool(() =>
         this.tenantRclone.activate(this.connectorOwner(),id)));
+      server.registerTool('nyx_storage_connection_list_files', {
+        title:'List my MEGA or Google Drive folder from my independent connection',
+        description:'Read-only: lists up to 100 names from the exact owner-authorized root. Uses an isolated per-connection Rclone config, never private legacy credentials. Does not read file contents, copy, modify or delete.',
+        inputSchema:z.object({
+          id:z.string().uuid(),provider:z.enum(['google-drive','mega']),
+          rootId:z.string().min(1).max(256),
+          path:z.string().max(2048).optional(),
+        }),
+        annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+      },async({id,provider,rootId,path})=>this.safeTool(()=>
+        this.tenantRclone.listAuthorizedRoot(
+          this.connectorOwner(),id,provider,rootId,path||'')));
+
       server.registerTool('nyx_storage_connection_test_active', {
         title: 'Verify read access to my active isolated storage root',
         description: 'Read-only Rclone probe using only the authenticated owner, one activated connection and its exact selected root. Never uses private global Rclone configuration or returns file names.',
