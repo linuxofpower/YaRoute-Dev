@@ -60,3 +60,5 @@ Only fully merged, no-longer-referenced branches qualify for deletion after appr
 - [ ] History/contribution audit complete before any deletion.
 
 **Authority:** Working implementation contract only. The canonical Head/Body/Footer state may be advanced solely through NYX's verified one-bundle-at-a-time generation, next Footer, transaction snapshot, and explicit diff process.
+
+**Implemented preflight in this Dev review branch:** `src/release/release-gates.ts` plus `tests/release-gates.test.cjs` (SHA-pinned manifest, isolated environment evidence, protected production gate, and branch deletion eligibility). Pure review logic only: the Nest staging writer and Heroku provider adapter are not implemented, and production must not be deployed from this PR.
