@@ -86,6 +86,13 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
         process.env.NYX_PUBLIC_CONNECTORS_ENABLED !== 'true') {
       throw new Error('TENANT_RCLONE_REQUIRES_PUBLIC_CONNECTOR_ISOLATION');
     }
+    // A public tenant runtime must NOT carry any legacy private operator storage
+    // configuration. Keep the existing private Rclone app online in PARALLEL;
+    // never migrate by mixing secrets into one public tenant process.
+    if (['RCLONE_CONFIG_B64','RCLONE_CONFIG_PATH','RCLONE_CONFIG',
+         'NYX_SHARED_ROOTS_JSON'].some(name => Boolean(process.env[name]?.trim()))) {
+      throw new Error('TENANT_RCLONE_PRIVATE_CONFIG_PRESENT');
+    }
     const encoded = process.env.NYX_STORAGE_ENCRYPTION_KEY || '';
     if (!/^[A-Za-z0-9+/]{43}=$/.test(encoded) || !process.env.DATABASE_URL) {
       throw new Error('TENANT_RCLONE_VAULT_UNAVAILABLE');
