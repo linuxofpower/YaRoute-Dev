@@ -55,7 +55,9 @@ export class GithubWriteConnector {
     if(!token)throw new Error('GITHUB_CREDENTIAL_UNAVAILABLE');
     // Empty suffix is the safe GET repository-metadata endpoint only.
     if((suffix==='' && method!=='GET') ||
-       (suffix!=='' && !suffix.startsWith('/')) || suffix.includes('..') ||
+       (suffix!=='' && !suffix.startsWith('/')) ||
+       (suffix.includes('..') && !(method==='GET' &&
+         /^\/compare\/(?:main|master)\.\.\.tester$/.test(suffix))) ||
        /[?#]/.test(suffix)) throw new Error('GITHUB_API_PATH_INVALID');
     const response=await this.http('https://api.github.com/repos/'+repo+suffix,{
       method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json',
