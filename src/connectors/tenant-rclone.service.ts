@@ -262,9 +262,10 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     return { status: 'active' as const, connectionId };
   }
 
-  /** Actual access also requires a user-selected resource boundary, never just a token. */
-  async probeAuthorizedRoot(ownerId: string, connectionId: string, provider: TenantRcloneProvider,
-                            resourceId: string, relativePath = ''): Promise<ReadProbeResult> {
+  /** Resolve a single authenticated connection + exact grant before any subprocess. */
+  private async authorizedTarget(ownerId: string, connectionId: string,
+                                 provider: TenantRcloneProvider, resourceId: string,
+                                 relativePath: string) {
     const clean = tenantRclonePath(relativePath);
     await this.owned(ownerId, connectionId, provider);
     const authorization = await this.connectors.registryPolicy().requireResource(
@@ -275,15 +276,86 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     if (active.provider !== provider) throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
     if (provider === 'google-drive') {
       if (active.profile.provider !== 'google-drive' ||
-          active.profile.rootFolderId !== resourceId) {
-        throw new Error('TENANT_RCLONE_ROOT_FORBIDDEN');
-      }
-      return this.probe(active.profile, clean);
+          active.profile.rootFolderId !== resourceId) throw new Error('TENANT_RCLONE_ROOT_FORBIDDEN');
+      return {profile:active.profile, path:clean};
     }
-    // MEGA resource IDs are bounded root paths (not rclone remote names).
     const root = resourceId === 'MEGA_ROOT' ? '' : tenantRclonePath(resourceId);
-    const absolute = tenantRclonePath([root, clean].filter(Boolean).join('/'));
-    return this.probe(active.profile, absolute);
+    return {profile:active.profile, path:tenantRclonePath([root,clean].filter(Boolean).join('/'))};
+  }
+
+  /** Read-only status; neither returns names nor touches private/global remotes. */
+  async probeAuthorizedRoot(ownerId: string, connectionId: string, provider: TenantRcloneProvider,
+                            resourceId: string, relativePath = ''): Promise<ReadProbeResult> {
+    const target = await this.authorizedTarget(ownerId,connectionId,provider,resourceId,relativePath);
+    return this.probe(target.profile,target.path);
+  }
+
+  /**
+   * First actual per-user storage read API: list at most 100 entries at depth one.
+   * Rclone runs with a unique config containing one tenant's encrypted-vault profile.
+   * No shared/local Rclone configuration, inherited provider credentials, or write operations.
+   */
+  async listAuthorizedRoot(ownerId:string, connectionId:string, provider:TenantRcloneProvider,
+                           resourceId:string, relativePath='') {
+    const target=await this.authorizedTarget(ownerId,connectionId,provider,resourceId,relativePath);
+    return this.listIsolated(target.profile,target.path);
+  }
+
+  private async listIsolated(profile:TenantRcloneProfile, relativePath:string) {
+    const directory=await fs.mkdtemp(path.join(os.tmpdir(),'nyx-tenant-rclone-'));
+    const config=path.join(directory,'rclone.conf');
+    try {
+      await fs.chmod(directory,0o700);
+      await fs.writeFile(config,tenantRcloneConfig(profile),{mode:0o600,flag:'wx'});
+      const target='tenant:'+tenantRclonePath(relativePath);
+      const raw=await new Promise<string>((resolve,reject)=>{
+        let done=false,stdout='',outputBytes=0;
+        const child=spawn(this.binary,[
+          '--config',config,'lsjson',target,'--max-depth','1',
+        ],{
+          env:{PATH:process.env.PATH||'',HOME:directory,TMPDIR:directory,
+            XDG_CONFIG_HOME:directory},
+          stdio:['ignore','pipe','pipe'],
+        });
+        const finish=(error?:Error)=>{
+          if(done)return;
+          done=true;clearTimeout(timer);
+          if(error)reject(error);else resolve(stdout);
+        };
+        const timer=setTimeout(()=>{
+          child.kill('SIGKILL');finish(new Error('TENANT_RCLONE_LIST_TIMEOUT'));
+        },25000);
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data',(chunk:string)=>{
+          if(done)return;
+          outputBytes+=Buffer.byteLength(chunk);
+          if(outputBytes>512*1024){
+            child.kill('SIGKILL');finish(new Error('TENANT_RCLONE_LIST_TOO_LARGE'));
+            return;
+          }
+          stdout+=chunk;
+        });
+        child.stderr.on('data',()=>{}); // Never return remote error text or credentials.
+        child.once('error',()=>finish(new Error('TENANT_RCLONE_LIST_FAILED')));
+        child.once('close',code=>finish(code===0?undefined:new Error('TENANT_RCLONE_LIST_FAILED')));
+      });
+      let decoded:unknown;
+      try{decoded=JSON.parse(raw);}catch{throw new Error('TENANT_RCLONE_LIST_INVALID');}
+      if(!Array.isArray(decoded) || decoded.length>10000)
+        throw new Error('TENANT_RCLONE_LIST_INVALID');
+      const items=decoded.map(value=>{
+        if(!value || typeof value!=='object')throw new Error('TENANT_RCLONE_LIST_INVALID');
+        const item=value as Record<string,unknown>;
+        if(typeof item.Path!=='string' || item.Path.length>1024 ||
+           typeof item.IsDir!=='boolean')throw new Error('TENANT_RCLONE_LIST_INVALID');
+        return {path:item.Path,isDir:item.IsDir,
+          size:typeof item.Size==='number' && Number.isSafeInteger(item.Size)
+            && item.Size>=0 ? item.Size:null};
+      });
+      return {items:items.slice(0,100),truncated:items.length>100,readOnly:true};
+    }finally{
+      await fs.rm(directory,{recursive:true,force:true});
+    }
   }
 
   /** Only one isolated config file per invocation; old shared config is never read or written. */
