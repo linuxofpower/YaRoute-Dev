@@ -74,3 +74,55 @@ Disable `NYX_MULTIUSER_RCLONE_ENABLED` in DEV, or revert this draft PR. No legac
 against current Dev `main`, and exercise two real independently authenticated
 ChatGPT owners before enabling general onboarding. Grant storage:list only until
 provider-scoped write operations and audit/recovery controls are developed.
+
+
+## Parallel migration: keep private Rclone while launching public multi-user connectors (2026-10-26)
+
+**Run separate app instances in parallel.** Keep the existing private DevNestNyx and
+NestNyxPro instances and their legacy operator Rclone configuration unchanged.
+For public MEGA and Google Drive onboarding use an **isolated new pilot app** with
+an independent database, AES-256-GCM encryption key, OIDC validation settings,
+and Google OAuth consent configuration. Never flip the existing private app
+to public mode just to enable this pilot.
+
+The pilot now includes owner-scoped storage connection creation, user-controlled
+read-only grants, separate MEGA browser enrollment or Google OAuth/PKCE,
+encrypted pending/active credentials, one-use per-invocation private Rclone
+configs, exact selected-root verification, active root checks, and
+`nyx_storage_connection_list_files`: bounded read-only folder listing through
+the authenticated user's own credential and selected root. The connections UI
+includes a plain-text, read-only browser for activated accounts. Public health
+checks report the Rclone **binary** version without opening operator secrets.
+Public connector capability discovery advertises the tenant tools only when
+the relevant feature gates are on.
+
+Public tenant mode now **rejects** `RCLONE_CONFIG_B64`, `RCLONE_CONFIG_PATH`,
+`RCLONE_CONFIG`, and `NYX_SHARED_ROOTS_JSON` in its environment. Keep those
+only in private legacy apps. Do not reuse the private app's database, storage
+key, provider credential cache, or global Rclone config.
+
+### New independent pilot deployment — not yet performed
+
+Deploy the reviewed, reconciled Dev code to a **separate** HTTPS Heroku pilot
+with distinct `DATABASE_URL`, `NYX_STORAGE_ENCRYPTION_KEY` (fresh random
+32-byte base64 AES key), `NYX_PUBLIC_URL`, a properly scoped OIDC JWT issuer/
+audience, and separate Google Drive OAuth client credentials/callback
+(`https://PILOT_HOST/connect/google/callback`). Register Google Drive
+read-only OAuth consent. Install Rclone binary, but do **not** configure
+legacy shared remotes. Only on this pilot set:
+`NYX_DEPLOYMENT_MODE=public`,
+`NYX_PUBLIC_CONNECTORS_ENABLED=true`,
+`NYX_MULTIUSER_RCLONE_ENABLED=true`.
+
+### Required live acceptance before production or retiring legacy
+
+Verify pilot `/health`, source commit and plugin discovery; connect two
+distinct ChatGPT OAuth subjects with separate MEGA and Google Drive accounts;
+test owner/root grants, provider callback, read-only pending and active
+probes and bounded folder listings, denied cross-user access, restarting the
+service with encrypted credentials, and isolated rollback. Existing private
+MEGA/Drive endpoints must continue working during this test. MEGA accounts
+requiring an additional 2FA prompt are not yet supported by the browser
+enrollment; do not disable account 2FA to test. No new tenant write, move,
+copy or delete operations are enabled. Retire private Rclone credentials only
+in a **later, separately reviewed cutover** after independent proof.
