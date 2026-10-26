@@ -25,7 +25,7 @@ For additional paired projects, use the same sequence with their own repository/
 
 ## NestNyx CLI / connector implementation gaps
 
-Current advertised GitHub write tools can only create `nyx/*` branches from default HEAD, commit ordinary files to `nyx/*), and create draft PRs to default. They block CI/workflow/hosting credential files. These constraints mean a real staging-branch sync **is not implemented yet**.
+Current advertised GitHub write tools can only create `nyx/*` branches from default HEAD, commit ordinary files to `nyx/*`, and create draft PRs to default. They block CI/workflow/hosting credential files. These constraints mean a real staging-branch sync **is not implemented yet**.
 
 Implement a separate reviewed workflow for:
 - bounded SHA-guarded staging branch creation with selectable **nonprotected** base `tester`;
