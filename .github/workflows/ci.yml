@@ -22,6 +22,8 @@ jobs:
       - name: Reject Heroku deployment credentials in GitHub Actions
         run: node scripts/guard-no-heroku-actions.mjs
       - name: Install dependencies
+        env:
+          NYX_SKIP_RCLONE_INSTALL: '1'
         run: npm ci
       - name: Security check
         run: npm run security:check
