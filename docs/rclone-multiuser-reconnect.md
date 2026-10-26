@@ -39,3 +39,38 @@
 ## Rollback
 
 Disable `NYX_MULTIUSER_RCLONE_ENABLED` in DEV, or revert this draft PR. No legacy Rclone remote, `RCLONE_CONFIG_B64`, `NYX_SHARED_ROOTS_JSON`, production storage credential, or Head/Body/Footer file has been altered by this PR. No old credential is deleted by V2 staging.
+
+
+## Additional Dev hardening — 2026-10-26
+
+- MEGA read verification now **requires exactly one selected MEGA root** per new
+  pilot connection. Selecting a subfolder tests that subfolder itself; success at
+  account root alone is no longer accepted as proof of subfolder authorization.
+- A 10-minute MEGA enrollment state pins the root selected when the flow started.
+  If connection permissions or the selected root change before submission, the
+  pending probe fails closed. An explicit `MEGA_ROOT` selection probes the account
+  root, with no implied access to other tenants.
+- `nyx_storage_connection_test_active` provides an authenticated, read-only
+  post-activation probe of the exact authorized root/subfolder. It delegates to
+  `TenantRcloneService.probeAuthorizedRoot`, which checks owner identity,
+  connection id, provider, capability and resource id and does not invoke the
+  legacy/global Rclone config. The tool reports only connectivity status.
+- Regression tests added in `tests/tenant-mega-root-security.test.cjs` and
+  `tests/tenant-active-root.test.cjs`. They cover foreign-owner denial,
+  selected-root mismatch, unavailable subfolder, root traversal, single-root
+  selection, state handoff, and active-root authorization.
+- **Existing live private endpoints tested independently**: both DevNestNyx and
+  NestNyxPro successfully listed both legacy MEGA roots, resolved one item through
+  `nyx_mega_stat` per account, and returned capacity for two MEGA accounts.
+  A relative path traversal attempt was refused. Those checks do not exercise
+  the new user-specific endpoints and do not justify enabling the feature on
+  the existing private Heroku instances.
+- Real two-user onboarding, distinct MEGA provider sign-ins, 2FA behavior,
+  independently isolated hosting, restarts, rollback and user-visible
+  provider integration **remain unverified**. Do not remove old storage
+  configuration and do not flip public mode on an operating private plugin.
+
+**Release gate:** use a dedicated isolated pilot deployment, review the changes
+against current Dev `main`, and exercise two real independently authenticated
+ChatGPT owners before enabling general onboarding. Grant storage:list only until
+provider-scoped write operations and audit/recovery controls are developed.
