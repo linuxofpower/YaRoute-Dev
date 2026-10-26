@@ -152,6 +152,72 @@ export class GithubWriteConnector {
     return {repo,number:data.number,url:data.html_url,branch,base:baseBranch,draft:true};
   }
 
+  /**
+   * Review-only release PR from the current non-default tester branch to a
+   * GitHub-protected default (main/master). Never updates either ref.
+   * The accepted source commit must be rechecked immediately before PR create.
+   */
+  async draftTesterRelease(owner:string,id:string,repo:string,
+                           expectedTesterSha:string,title:string,body='') {
+    const source='tester';
+    if(!/^[a-f0-9]{40}$/.test(expectedTesterSha) ||
+       typeof title!=='string'||!title.trim()||title.length>200 ||
+       typeof body!=='string'||body.length>10000)
+      throw new Error('GITHUB_RELEASE_INPUT_INVALID');
+    const base=await this.defaultBranch(owner,id,repo,'pulls:write',{branch:source});
+    if(!['main','master'].includes(base) || base===source)
+      throw new Error('GITHUB_RELEASE_DEFAULT_BRANCH_UNSUPPORTED');
+    const inspect=async(branch:string)=>{
+      const item=await this.call(owner,id,repo,'resources:read','GET',
+        '/branches/'+encodeURIComponent(branch),undefined,{branch:source});
+      const sha=item?.commit?.sha;
+      if(item?.name!==branch || typeof sha!=='string'||!/^[a-f0-9]{40}$/.test(sha))
+        throw new Error('GITHUB_RELEASE_BRANCH_UNVERIFIED');
+      return {sha,protected:item.protected};
+    };
+    const dest=await inspect(base);
+    if(dest.protected!==true)throw new Error('GITHUB_RELEASE_BASE_NOT_PROTECTED');
+    const src=await inspect(source);
+    if(src.protected!==false)throw new Error('GITHUB_RELEASE_SOURCE_PROTECTED');
+    if(src.sha!==expectedTesterSha)throw new Error('GITHUB_RELEASE_SOURCE_CHANGED');
+    const comparison=await this.call(owner,id,repo,'resources:read','GET',
+      '/compare/'+encodeURIComponent(base)+'...'+encodeURIComponent(source),
+      undefined,{branch:source});
+    if(comparison?.status!=='ahead' || !Number.isSafeInteger(comparison.ahead_by) ||
+       comparison.ahead_by<1 || comparison.behind_by!==0 ||
+       !Array.isArray(comparison.files) || !comparison.files.length ||
+       comparison.files.length>100)
+      throw new Error('GITHUB_RELEASE_DIFF_UNVERIFIED');
+    // Avoid duplicate open PRs; refuse when first page cannot prove uniqueness.
+    const existing=await this.call(owner,id,repo,'pulls:read','GET','/pulls',
+      undefined,{branch:source});
+    if(!Array.isArray(existing) || existing.length>=30)
+      throw new Error('GITHUB_RELEASE_PR_INVENTORY_INCOMPLETE');
+    const current=existing.find(pr=>pr?.state==='open' &&
+      pr?.head?.ref===source && pr?.base?.ref===base);
+    if(current){
+      if(!Number.isSafeInteger(current.number)||typeof current.html_url!=='string')
+        throw new Error('GITHUB_RELEASE_PR_RESPONSE_INVALID');
+      return {repo,number:current.number,url:current.html_url,branch:source,
+        base,draft:current.draft===true,alreadyOpen:true,
+        sourceSha:src.sha,changedFiles:comparison.files.length};
+    }
+    if((await inspect(source)).sha!==expectedTesterSha)
+      throw new Error('GITHUB_RELEASE_SOURCE_CHANGED');
+    const result=await this.call(owner,id,repo,'pulls:write','POST','/pulls',{
+      head:source,base,title:title.trim(),body,draft:true,
+      maintainer_can_modify:false,
+    },{branch:source});
+    if(!Number.isSafeInteger(result?.number)||result?.draft!==true||
+       result?.head?.ref!==source||result?.base?.ref!==base ||
+       result?.head?.sha!==expectedTesterSha ||
+       typeof result?.html_url!=='string')
+      throw new Error('GITHUB_RELEASE_PR_RESPONSE_INVALID');
+    return {repo,number:result.number,url:result.html_url,branch:source,
+      base,draft:true,alreadyOpen:false,sourceSha:expectedTesterSha,
+      changedFiles:comparison.files.length};
+  }
+
   /** Create/update exactly one text file with GitHub's optimistic SHA check. */
   async commitFile(owner:string,id:string,repo:string,branch:string,
     path:string,content:string,message:string,sha?:string) {
