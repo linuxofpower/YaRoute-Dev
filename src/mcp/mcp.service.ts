@@ -384,7 +384,7 @@ export class McpService {
       this.safeTool(()=>this.limitedConnectionApi(destinationConnectionId,()=>
         this.githubWrites.stageTesterFromDev(this.connectorOwner(),
           sourceConnectionId,destinationConnectionId,sourceRepo,destinationRepo,
-          sourceBranch,expectedSourceSha,expectedTesterSha,reviewBranch,paths)))));
+          sourceBranch,expectedSourceSha,expectedTesterSha,reviewBranch,paths))));
 
     server.registerTool('nyx_connection_github_draft_pr_to_ref',{
       title:'Open an unmerged draft PR to tester or another non-default branch',
