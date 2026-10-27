@@ -59,7 +59,8 @@ export class GithubWriteConnector {
        (suffix.includes('..') && !(method==='GET' &&
          /^\/compare\/(?:main|master)\.\.\.tester$/.test(suffix))) ||
        (/[?#]/.test(suffix) && !(method==='GET' &&
-         /^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(suffix))))
+         (/^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(suffix) ||
+          /^\/actions\/runs\?head_sha=[a-f0-9]{40}&per_page=10$/.test(suffix)))))
       throw new Error('GITHUB_API_PATH_INVALID');
     const response=await this.http('https://api.github.com/repos/'+repo+suffix,{
       method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json',
@@ -352,6 +353,73 @@ export class GithubWriteConnector {
       sourceRepo,sourceSha:expectedSourceSha,testerSha:expectedTesterSha,
       reviewSha:committed.sha,fileCount:files.length,
       next:'nyx_connection_github_draft_pr_to_ref',merged:false};
+  }
+
+  /**
+   * Explicit reviewed promotion ONLY to an unprotected non-default branch.
+   * Require an exact head SHA, exact current base SHA, non-draft same-repository
+   * PR, and successful GitHub Actions CI for that head. No admin bypass,
+   * force-push, deployment dispatch or background auto-merge.
+   */
+  async mergeReviewedNonDefault(owner:string,id:string,repo:string,
+    number:number,expectedHeadSha:string,expectedBaseSha:string) {
+    if(!Number.isSafeInteger(number)||number<1||number>1000000||
+       !/^[a-f0-9]{40}$/.test(expectedHeadSha)||
+       !/^[a-f0-9]{40}$/.test(expectedBaseSha))
+      throw new Error('GITHUB_REVIEW_MERGE_INPUT_INVALID');
+    const pr=await this.call(owner,id,repo,'pulls:read','GET','/pulls/'+number);
+    const head=pr?.head?.ref,base=pr?.base?.ref;
+    this.workingBranch(head);this.workingBranch(base);
+    if(!head.startsWith('nyx/') || head===base ||
+       pr?.state!=='open' || pr?.draft!==false ||
+       pr?.head?.sha!==expectedHeadSha ||
+       pr?.base?.sha!==expectedBaseSha ||
+       pr?.head?.repo?.full_name!==repo ||
+       pr?.base?.repo?.full_name!==repo ||
+       pr?.mergeable!==true)
+      throw new Error('GITHUB_REVIEW_MERGE_UNVERIFIED');
+    const meta=await this.call(owner,id,repo,'resources:read','GET','',
+      undefined,{branch:base});
+    if(meta?.default_branch===base)
+      throw new Error('GITHUB_DEFAULT_BRANCH_WRITE_FORBIDDEN');
+    const branch=await this.call(owner,id,repo,'resources:read','GET',
+      '/branches/'+encodeURIComponent(base),undefined,{branch:base});
+    if(branch?.name!==base || branch?.protected!==false ||
+       branch?.commit?.sha!==expectedBaseSha)
+      throw new Error('GITHUB_REVIEW_BASE_CHANGED_OR_PROTECTED');
+    const runs=await this.call(owner,id,repo,'ci:read','GET',
+      '/actions/runs?head_sha='+expectedHeadSha+'&per_page=10',
+      undefined,{branch:head});
+    if(!Array.isArray(runs?.workflow_runs) ||
+       runs.workflow_runs.length>=10 ||
+       !runs.workflow_runs.some((run:any)=>
+         run?.head_sha===expectedHeadSha &&
+         run?.head_branch===head &&
+         run?.name==='CI' && run?.status==='completed' &&
+         run?.conclusion==='success') ||
+       runs.workflow_runs.some((run:any)=>
+         run?.head_sha===expectedHeadSha &&
+         run?.head_branch===head &&
+         ['queued','in_progress'].includes(run.status)))
+      throw new Error('GITHUB_REVIEW_CI_UNVERIFIED');
+    // One last server-side base ref and PR SHA check before the sole mutation.
+    const again=await this.call(owner,id,repo,'pulls:read','GET',
+      '/pulls/'+number,undefined,{branch:base});
+    const latest=await this.call(owner,id,repo,'resources:read','GET',
+      '/branches/'+encodeURIComponent(base),undefined,{branch:base});
+    if(again?.state!=='open'||again?.draft!==false||
+       again?.head?.sha!==expectedHeadSha||
+       again?.base?.sha!==expectedBaseSha||
+       latest?.commit?.sha!==expectedBaseSha||
+       latest?.protected!==false)
+      throw new Error('GITHUB_REVIEW_MERGE_STALE');
+    const result=await this.call(owner,id,repo,'pulls:write','PUT',
+      '/pulls/'+number+'/merge',
+      {sha:expectedHeadSha,merge_method:'merge'},{branch:base});
+    if(result?.merged!==true || !/^[a-f0-9]{40}$/.test(result.sha))
+      throw new Error('GITHUB_REVIEW_MERGE_RESPONSE_INVALID');
+    return {repo,pr:number,base,head,merged:true,mergeCommitSha:result.sha,
+      production:false,sourceSha:expectedHeadSha};
   }
 
   /** Create/update exactly one text file with GitHub's optimistic SHA check. */
