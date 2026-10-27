@@ -72,3 +72,38 @@ test('MCP release tooling has safe nondefault merge but no generic production me
  assert.match(s,/mergeReviewedNonDefault/);
  assert.doesNotMatch(s,/server\.registerTool\('nyx_connection_github_merge'/);
 });
+
+test('ready-for-review PR creation targets only verified unprotected nondefault branches',async()=>{
+ const calls=[];
+ const registry={requireResource:async()=>({provider:'github',installationId:'1'})};
+ const http=async(url,options)=>{
+  const p=url.split('/repos/owner/repo')[1];
+  calls.push({p,method:options.method,body:options.body?JSON.parse(options.body):null});
+  let result;
+  if(options.method==='GET'&&p==='')result={default_branch:'master'};
+  else if(options.method==='GET'&&p==='/branches/tester')
+   result={name:'tester',protected:false,commit:{sha:BASE}};
+  else if(options.method==='GET'&&p==='/branches/nyx/review')
+   result={name:'nyx/review',protected:false,commit:{sha:HEAD}};
+  else if(options.method==='POST'&&p==='/pulls')
+   result={number:37,draft:false,head:{ref:'nyx/review',sha:HEAD},
+     base:{ref:'tester'},html_url:'https://github.com/owner/repo/pull/37'};
+  else throw Error('unexpected '+p);
+  return {ok:true,status:200,text:async()=>JSON.stringify(result)};
+ };
+ const t=new GithubWriteConnector(registry,{tokenFor:async()=> 'synthetic'},http);
+ const result=await t.openReviewedNonDefault('oauth:owner','connection',repo,
+  'nyx/review','tester','Review verified change','',HEAD,BASE);
+ assert.equal(result.readyForReview,true);
+ assert.equal(result.merged,false);
+ assert.deepEqual(calls.filter(x=>x.method==='POST').map(x=>x.body),[
+  {head:'nyx/review',base:'tester',title:'Review verified change',
+   body:'',draft:false,maintainer_can_modify:false},
+ ]);
+ await assert.rejects(()=>t.openReviewedNonDefault('oauth:owner','connection',repo,
+  'nyx/review','master','bad','',HEAD,BASE));
+ assert.equal(calls.filter(x=>x.method==='POST').length,1);
+ const mcp=fs.readFileSync('src/mcp/mcp.service.ts','utf8');
+ assert.match(mcp,/nyx_connection_github_reviewed_pr_to_ref/);
+ assert.match(mcp,/openReviewedNonDefault/);
+});
