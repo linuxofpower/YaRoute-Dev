@@ -280,3 +280,61 @@ The owner does NOT want to remove the old private Rclone configuration values fr
 7. Only after a separately accepted rollout should production be considered. Retirement of operator credentials requires another explicit accepted transaction. The *Rclone executable* remains installed: user-specific credentials exist only as encrypted records and temporary per-operation config files.
 
 **Live readiness requires actual deployed \`YaRoute/tester\` commit verification, a successful HTTPS \`/health\`, authenticated \`nyx_storage_connection_create\` exposure, and real provider flows.** Mock CI passing in the Dev repo alone is not a live acceptance receipt.
+
+
+## Public MEGA sign-in and NYX-managed tester promotion — October 27, 2026
+
+**MEGA-first Dev pilot (experimental; no real login acceptance yet):**
+
+- The user selects one root, creates a pending MEGA storage connection and
+  opens a 10-minute first-party HTTPS setup link via
+  `nyx_storage_connection_begin_mega`.
+- The secure page accepts MEGA email, password and an **optional six-digit
+  authenticator code**. No secrets belong in chat, URLs, the GitHub repository
+  or HTTP logs.
+- Rclone's documented MEGA `2fa` option is used for the one-time read probe
+  through a private 0600 temporary config. Codes are explicitly forbidden in
+  any durable encrypted tenant profile.
+- For MFA accounts, activation requires the backend to capture Rclone's
+  reusable `session_id` and `master_key` from that private temporary
+  config, seal them under the owner and connection AAD, and prove the
+  selected read-only root. If Rclone does not persist the session to that file,
+  or validation fails, **MFA login fails closed**. This behavior still
+  requires real provider tests; synthetic CI tests cannot prove it.
+- One Rclone executable on Heroku serves independent users through separate
+  processes and per-operation ephemeral configs. No user's local Rclone
+  executable/config is involved. The Pro Heroku app remains private.
+- Use `NYX_DEPLOYMENT_MODE=public`, `NYX_PUBLIC_CONNECTORS_ENABLED=true`
+  and `NYX_MULTIUSER_RCLONE_ENABLED=true` **only on the reviewed tester
+  deployment**, with the independent PostgreSQL encrypted vault and trusted
+  JWT setup. Old Dev Heroku stored private config remains temporarily for
+  rollback; the public Node process quarantines it before module import,
+  and refuses leftover files. This is **not** strong infrastructure
+  isolation and must not be treated as generally public-ready.
+
+**GitHub deployment control via authenticated NYX:**
+
+- `nyx_connection_github_stage_tester_from_dev` imports only explicitly
+  selected, bounded src/docs/tests UTF-8 files from an exact Dev source SHA
+  into a new `nyx/*` branch based on an exact tester SHA. It requires two
+  separately owner-authorized GitHub App connections, and does not update
+  tester or protected production.
+- `nyx_connection_github_reviewed_pr_to_ref` opens a **non-draft review PR**
+  from a verified `nyx/*` branch into a verified unprotected non-default
+  base (for example tester). It never targets main/master.
+- `nyx_connection_github_merge_reviewed_nondefault` is an **explicit**
+  separate operation requiring source and target SHA checks, a same-repo,
+  non-draft PR, successful exact-head CI and an unprotected non-default
+  destination. No administrator bypass, force-push or production merge.
+- The same NYX branch-create/commit/file tools apply to other explicitly
+  authorized non-default branches. No merge into main/master exists in NYX.
+- The NYX GitHub App owner connection must be installed on both source and
+  destination repositories and retain Contents read/write, Pull requests
+  read/write and Actions read grants as applicable. A **different**
+  first-party GitHub integration may have separate repository selection.
+
+**Readiness sequence:** Dev PR CI success → human source review → tester
+promotion review PR → tester CI → authorized tester merge → Dev Heroku
+deployment of the exact tester SHA → HTTPS health and OAuth policy probe →
+two independently authenticated MEGA users and cross-owner denial →
+restart/reauthorization/revoke tests. No production release is implied.
