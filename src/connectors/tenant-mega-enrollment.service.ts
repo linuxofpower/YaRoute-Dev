@@ -143,8 +143,9 @@ export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestro
     await this.storage.stageCredential(ownerId,connectionId,
       {provider:'mega',user:normalized,obscuredPassword:pass});
     // Prove the exact one-time, owner-selected MEGA root—not merely the account root.
-    const check = await this.storage.probePending(ownerId,connectionId,root,
-      twoFactorCode || undefined);
+    const check = twoFactorCode
+      ? await this.storage.probePending(ownerId,connectionId,root,twoFactorCode)
+      : await this.storage.probePending(ownerId,connectionId,root);
     if (check !== 'verified') throw new Error('TENANT_MEGA_READ_PROBE_FAILED');
     await this.connections.confirmStorageProvider(ownerId,connectionId,'mega',normalized);
     return {status:'pending_activation',provider:'mega'};
