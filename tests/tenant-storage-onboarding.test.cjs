@@ -47,7 +47,7 @@ test('public tenants do not load or run the legacy process-wide rclone config',a
  process.env.RCLONE_CONFIG_B64=Buffer.from('[legacy]\ntype = drive\n').toString('base64');
  delete process.env.NYX_SHARED_ROOTS_JSON;
  const old=new RcloneService();
- old.onModuleInit();
+ assert.throws(()=>old.onModuleInit(),/PUBLIC_STORAGE_PRIVATE_CONFIG_PRESENT/);
  await assert.rejects(()=>old.run(['listremotes']),/PRIVATE_RCLONE_CONNECTIONS_ONLY/);
  assert.deepEqual(new SharedRootsService().listAreas(),[]);
 });
