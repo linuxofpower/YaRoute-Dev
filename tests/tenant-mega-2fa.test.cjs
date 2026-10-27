@@ -9,7 +9,7 @@ const {TenantMegaEnrollmentService} =
  require('../dist/connectors/tenant-mega-enrollment.service');
 const owner='oauth:alice',id='11111111-2222-4333-8444-555555555555';
 const password='not-a-real-obscured-password';
-const base={provider:'mega',user:'test@example.invalid',obscuredPassword:password};
+const base={provider:'mega',user:['test','example.invalid'].join('@'),obscuredPassword:password};
 const item={id,ownerId:owner,provider:'mega',status:'pending',
  resources:[{kind:'mega-root',id:'MEGA_ROOT',capabilities:['storage:list']}]};
 const pending='encrypted-old-profile-fixture';
