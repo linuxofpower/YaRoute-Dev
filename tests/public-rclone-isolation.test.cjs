@@ -136,6 +136,8 @@ test('public bootstrap is idempotent and does not mutate source values',()=>{
 test('bootstrap invokes quarantine before constructing Nest application',()=>{
  const source=fs.readFileSync('src/main.ts','utf8');
  const guard=source.indexOf('  preparePublicRcloneEnvironment();');
+ const loaded=source.indexOf("await import('./app.module')");
  const nest=source.indexOf('  const app = await NestFactory.create(AppModule);');
- assert.ok(guard>0 && nest>guard);
+ assert.ok(guard>0 && loaded>guard && nest>loaded);
+ assert.doesNotMatch(source,/^import\s*\{\s*AppModule\s*\}\s*from/m);
 });
