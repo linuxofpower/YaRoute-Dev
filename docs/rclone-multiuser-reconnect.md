@@ -263,3 +263,20 @@ defines the early fail-closed runtime guard, also called by
 export or delete credential files. `tests/public-rclone-isolation.test.cjs`
 covers private-env detection, stale config detection and preserved private
 startup. This Dev PR is not automatically deployed or promoted.
+
+
+## DevNestNyx pilot with existing Heroku private config vars — transitional only (2026-10-27)
+
+Deployment pipeline remains **YaRoute-Dev source and CI → reviewed YaRoute/tester → DevNestNyx Heroku**. NestNyxPro deploys only the separately approved YaRoute/master. Do not point the Dev Heroku app directly to the YaRoute-Dev repository.
+
+The owner does NOT want to remove the old private Rclone configuration values from Heroku while the replacement is being tested. The public Dev process now has a deliberately explicit compatibility path:
+
+1. Leave the existing Heroku *stored* private values available solely for rollback. Preserve a verified private recovery path and leave Pro's operator-owned Rclone unchanged.
+2. Configure only Dev with an independent tenant PostgreSQL database, a new 32-byte base64 AES vault key, trusted JWT issuer/audience/JWKS, its exact \`NYX_PUBLIC_URL\`, read-only Google OAuth client with exact callback, and secure first-party MEGA setup page.
+3. On Dev's planned public deployment, enable \`NYX_DEPLOYMENT_MODE=public\`, \`NYX_PUBLIC_CONNECTORS_ENABLED=true\`, \`NYX_MULTIUSER_RCLONE_ENABLED=true\`. The new entrypoint invokes \`preparePublicRcloneEnvironment\` **before dynamically importing AppModule and constructing Nest providers**. It clears process-local \`RCLONE_CONFIG*\` and \`NYX_SHARED_ROOTS_JSON\` while leaving the Heroku application's **stored** values untouched. Both the tenant vault and private Rclone service independently refuse unsanitized private settings. Public mode excludes all legacy global storage tools.
+4. Startup fails closed if a private config is present on disk at a configured path, the old \`/tmp/rclone.conf\`, or the home Rclone default. It does not read, disclose, or delete these files. Test and resolve the file-access boundary before allowing public users.
+5. Do **not** treat process-local scrubbing as a strong security boundary. A compromised Heroku configuration API token, control plane or privileged code could still recover the stored operator secrets. Never claim this design is ready for general untrusted users until the stored private credentials are removed from the public app or the private credentials are moved to an isolated service/account.
+6. Test two unrelated ChatGPT OAuth subjects with distinct accounts in Dev only: MEGA and Google provider consent, expected scope/folder, no alternate-root or cross-owner access, session refresh, restart, revocation and separate Pro fallback. Never ask for provider secrets in ChatGPT. MEGA separate 2FA challenge remains unsupported.
+7. Only after a separately accepted rollout should production be considered. Retirement of operator credentials requires another explicit accepted transaction. The *Rclone executable* remains installed: user-specific credentials exist only as encrypted records and temporary per-operation config files.
+
+**Live readiness requires actual deployed \`YaRoute/tester\` commit verification, a successful HTTPS \`/health\`, authenticated \`nyx_storage_connection_create\` exposure, and real provider flows.** Mock CI passing in the Dev repo alone is not a live acceptance receipt.
