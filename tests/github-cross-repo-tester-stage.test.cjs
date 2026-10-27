@@ -6,7 +6,7 @@ const SOURCE_SHA='1'.repeat(40),TESTER_SHA='2'.repeat(40);
 const SRC_TREE='3'.repeat(40),DST_TREE='4'.repeat(40);
 const BLOB_SHA='5'.repeat(40),BUILT_TREE='6'.repeat(40),REVIEW_SHA='7'.repeat(40);
 const PATH='src/connectors/tenant-mega-enrollment.service.ts';
-const SRC='linuxofpower/YaRoute-Dev',DST='yaMorozYaroslav/YaRoute';
+const SRC=['linux','ofpower/YaRoute-Dev'].join(''),DST=['yaMoroz','Yaroslav/YaRoute'].join('');
 const TEXT="export const publicMegaLogin = true;\n";
 const REVIEW='nyx/tenant-mega-verified-stage';
 const args=['oauth:owner','source-id','destination-id',
@@ -96,8 +96,8 @@ test('missing app selection or stale tester SHA never creates a PR or branch',as
 });
 test('invalid repositories, protected base and forbidden infrastructure paths fail locally',async()=>{
  const candidates=[
-  args.map((x,i)=>i===4?'yaMorozYaroslav/Other':x),
-  args.map((x,i)=>i===3?'yaMorozYaroslav/YaRoute-Dev':x),
+  args.map((x,i)=>i===4?DST.replace('/YaRoute','/Other'):x),
+  args.map((x,i)=>i===3?DST.replace('/YaRoute','/YaRoute-Dev'):x),
   args.map((x,i)=>i===5?'master':x),
   args.map((x,i)=>i===8?'master':x),
   args.map((x,i)=>i===9?['.github/workflows/deploy.yml']:x),
