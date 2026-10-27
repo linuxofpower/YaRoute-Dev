@@ -208,3 +208,58 @@ Source-to-runtime promotion remains: `YaRoute-Dev` review PR -> explicitly
 reviewed `YaRoute:tester` -> DevNestNyx; protected `YaRoute:master` ->
 NestNyxPro only on accepted production PR. Do not deploy the Dev repository's
 main branch directly to Dev Heroku.
+
+
+## Accepted release and credential-retirement gates — 2026-10-27
+
+### Three review stages, only two Heroku apps
+
+1. **YaRoute-Dev** (`linuxofpower/YaRoute-Dev`): implement, review,
+   build and inspect all changes in feature PRs and CI. This repository is
+   a source/CI staging area, NOT a third Heroku instance or an automatic
+   deployment. PR #19 must be reconciled and CI-tested together with
+   the changes already merged from Dev PR #32.
+2. **YaRoute/tester** (`yaMorozYaroslav/YaRoute:tester`): promote only an
+   accepted Dev candidate through an explicit verified promotion; deploy to
+   the existing **DevNestNyx Heroku** application; verify its exact commit,
+   runtime health, OAuth and two independently authenticated user accounts.
+   The first public-user trial happens here, not in NestNyxPro.
+3. **YaRoute/master** (`yaMorozYaroslav/YaRoute:master`): promote only
+   specifically accepted tester releases through a protected draft PR.
+   Deploy to **NestNyxPro Heroku** after owner approval and production
+   rollback verification. NOT every tester commit is a production release.
+
+### Private fallback during public testing
+
+The current code intentionally does NOT support serving public tenant traffic
+and legacy private operator storage from the SAME process. This is an
+authorization isolation control, not a requirement to permanently destroy the
+operator credentials. On a planned DevNestNyx public rollout:
+
+- First preserve a secure, access-restricted backup of the Dev private
+  Rclone configuration outside the public runtime and verify recovery.
+- Keep the existing NestNyxPro **private Rclone** functioning throughout the
+  trial; no Pro app config or credentials are changed during tester experiments.
+- Convert DevNestNyx in one controlled release to public connector mode with
+  a separate tenant credential vault, fresh encryption key and no legacy Rclone
+  env or default on-disk config. Public boot FAILS CLOSED if it detects any of
+  `RCLONE_CONFIG_B64`, `RCLONE_CONFIG_PATH`, `RCLONE_CONFIG`,
+  `NYX_SHARED_ROOTS_JSON` or a leftover `/tmp/rclone.conf`.
+- Run two-user MEGA and Google Drive access probes, cross-owner denial,
+  OAuth refresh, restart and rollback checks after deployment. If any fail,
+  roll Dev back without affecting the private Pro fallback.
+- Only after complete evidence, a separate explicit acceptance and a proven
+  recovery plan may legacy operator credentials be **retired**. The single
+  shared Rclone executable remains; each user gets only an ephemeral per-
+  invocation config derived from their encrypted, owner-scoped vault record.
+
+Never copy a private Rclone config into a public environment, put passwords
+in ChatGPT/GitHub logs or pretend CI mocks are live provider verification.
+No MEGA 2FA challenge handling, public writes or deletes are released yet.
+
+**Implementation receipt:** `src/storage/public-rclone-isolation.ts`
+defines the early fail-closed runtime guard, also called by
+`RcloneService.onModuleInit`. The preflight guard does not read, modify,
+export or delete credential files. `tests/public-rclone-isolation.test.cjs`
+covers private-env detection, stale config detection and preserved private
+startup. This Dev PR is not automatically deployed or promoted.
