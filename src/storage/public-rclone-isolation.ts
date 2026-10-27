@@ -61,7 +61,8 @@ export function preparePublicRcloneEnvironment(
   // remains accessible as an on-disk file, even if process.env is scrubbed.
   const configuredPaths = [
     '/tmp/rclone.conf', env.RCLONE_CONFIG_PATH, env.RCLONE_CONFIG,
-  ].filter((value): value is string => !!value && value.startsWith('/'));
+    env.HOME ? env.HOME + '/.config/rclone/rclone.conf' : undefined,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0);
   if (configuredPaths.some(filePath => exists(filePath))) {
     throw new Error('PUBLIC_STORAGE_PRIVATE_CONFIG_FILE_PRESENT');
   }
