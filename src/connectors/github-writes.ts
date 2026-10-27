@@ -158,6 +158,48 @@ export class GithubWriteConnector {
   }
 
   /**
+   * Open a review-ready, non-draft PR ONLY between two verified unprotected
+   * non-default branches. Exact SHA requirements prevent stale submissions.
+   * Actual merges require a separate explicit CI-verified NYX tool call.
+   */
+  async openReviewedNonDefault(owner:string,id:string,repo:string,
+    head:string,base:string,title:string,body:string,
+    expectedHeadSha:string,expectedBaseSha:string) {
+    this.workingBranch(head);this.workingBranch(base);
+    if(!head.startsWith('nyx/') || head===base ||
+       !/^[a-f0-9]{40}$/.test(expectedHeadSha) ||
+       !/^[a-f0-9]{40}$/.test(expectedBaseSha) ||
+       typeof title!=='string'||!title.trim()||title.length>200||
+       typeof body!=='string'||body.length>10000)
+      throw new Error('GITHUB_REVIEW_OPEN_INPUT_INVALID');
+    const def=await this.defaultBranch(owner,id,repo,'pulls:write',{branch:head});
+    if(head===def||base===def)
+      throw new Error('GITHUB_DEFAULT_BRANCH_WRITE_FORBIDDEN');
+    const inspect=async(ref:string)=>{
+      const result=await this.call(owner,id,repo,'resources:read','GET',
+        '/branches/'+encodeURIComponent(ref),undefined,{branch:ref});
+      if(result?.name!==ref||result?.protected!==false||
+         !/^[a-f0-9]{40}$/.test(result?.commit?.sha))
+        throw new Error('GITHUB_REVIEW_BRANCH_UNVERIFIED');
+      return result.commit.sha as string;
+    };
+    if((await inspect(head))!==expectedHeadSha ||
+       (await inspect(base))!==expectedBaseSha)
+      throw new Error('GITHUB_REVIEW_BRANCH_CHANGED');
+    const result=await this.call(owner,id,repo,'pulls:write','POST','/pulls',{
+      head,base,title:title.trim(),body,draft:false,maintainer_can_modify:false,
+    },{branch:head});
+    if(result?.draft!==false||!Number.isSafeInteger(result.number) ||
+       result?.head?.ref!==head||result?.base?.ref!==base ||
+       result?.head?.sha!==expectedHeadSha||
+       typeof result?.html_url!=='string')
+      throw new Error('GITHUB_REVIEW_PR_RESPONSE_INVALID');
+    return {repo,head,base,pr:result.number,url:result.html_url,
+      readyForReview:true,merged:false,headSha:expectedHeadSha,
+      baseSha:expectedBaseSha};
+  }
+
+  /**
    * Review-only release PR from the current non-default tester branch to a
    * GitHub-protected default (main/master). Never updates either ref.
    * The accepted source commit must be rechecked immediately before PR create.
