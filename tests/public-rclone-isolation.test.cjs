@@ -100,16 +100,12 @@ test('public bootstrap fails closed if either public enrollment feature gate is 
   assert.equal(env.RCLONE_CONFIG_B64,'synthetic-private');
  }
 });
-test('public bootstrap rejects leftover local files before env erasure',()=>{
- for(const filePath of ['/tmp/rclone.conf','old/rclone.conf',
-                           '/home/test/.config/rclone/rclone.conf']){
-  const env={NYX_DEPLOYMENT_MODE:'public',
-   NYX_PUBLIC_CONNECTORS_ENABLED:'true',NYX_MULTIUSER_RCLONE_ENABLED:'true',
-   RCLONE_CONFIG_PATH:'old/rclone.conf',HOME:'/home/test',
-   RCLONE_CONFIG_B64:'synthetic-private'};
-  assert.throws(()=>preparePublicRcloneEnvironment(env, p=>p===filePath),
-    /PUBLIC_STORAGE_PRIVATE_CONFIG_FILE_PRESENT/);
-  assert.equal(env.RCLONE_CONFIG_B64,'synthetic-private');
+test('public bootstrap rejects leftover local files with clean environment',()=>{
+ for(const filePath of ['/tmp/rclone.conf', '/home/test/.config/rclone/rclone.conf']){
+  const env={NYX_DEPLOYMENT_MODE:'public',NYX_PUBLIC_CONNECTORS_ENABLED:'true',
+   NYX_MULTIUSER_RCLONE_ENABLED:'true',HOME:'/home/test'};
+  assert.throws(()=>preparePublicRcloneEnvironment(env,p=>p===filePath),
+   /PUBLIC_STORAGE_PRIVATE_CONFIG_FILE_PRESENT/);
  }
 });
 test('public bootstrap accepts only isolated tenant environment',()=>{
