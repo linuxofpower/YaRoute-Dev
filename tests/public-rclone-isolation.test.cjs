@@ -74,25 +74,13 @@ test('private RcloneService keeps an existing local config without rewriting it'
 });
 
 
-test('explicit public bootstrap conceals inherited Heroku storage env in memory',()=>{
- const env={
-  NYX_DEPLOYMENT_MODE:'public',
-  NYX_PUBLIC_CONNECTORS_ENABLED:'true',
-  NYX_MULTIUSER_RCLONE_ENABLED:'true',
-  RCLONE_CONFIG_B64:'synthetic-operator-credential',
-  RCLONE_CONFIG_HOME_PASS:'synthetic-remote-credential',
-  RCLONE_CONFIG_PATH:'custom-legacy-location',
-  NYX_SHARED_ROOTS_JSON:'synthetic-roots',
-  NYX_STORAGE_ENCRYPTION_KEY:'synthetic-tenant-vault-key',
- };
- const result=preparePublicRcloneEnvironment(env,()=>false);
- assert.deepEqual(result,{publicMode:true,clearedCount:4});
- assert.equal(env.RCLONE_CONFIG_B64,undefined);
- assert.equal(env.RCLONE_CONFIG_HOME_PASS,undefined);
- assert.equal(env.RCLONE_CONFIG_PATH,undefined);
- assert.equal(env.NYX_SHARED_ROOTS_JSON,undefined);
- assert.equal(env.NYX_STORAGE_ENCRYPTION_KEY,'synthetic-tenant-vault-key');
- assert.doesNotThrow(()=>assertPublicRcloneIsolation(env,()=>false));
+test('public bootstrap refuses inherited private config without mutating it',()=>{
+ const env={NYX_DEPLOYMENT_MODE:'public',NYX_PUBLIC_CONNECTORS_ENABLED:'true',
+  NYX_MULTIUSER_RCLONE_ENABLED:'true',RCLONE_CONFIG_B64:'synthetic-private',
+  NYX_STORAGE_ENCRYPTION_KEY:'synthetic-tenant-key'};
+ assert.throws(()=>preparePublicRcloneEnvironment(env,()=>false),
+  /PUBLIC_STORAGE_PRIVATE_CONFIG_PRESENT/);
+ assert.equal(env.RCLONE_CONFIG_B64,'synthetic-private');
 });
 test('the Heroku private config remains untouched when not in public mode',()=>{
  const env={NYX_DEPLOYMENT_MODE:'private',
@@ -124,12 +112,11 @@ test('public bootstrap rejects leftover local files before env erasure',()=>{
   assert.equal(env.RCLONE_CONFIG_B64,'synthetic-private');
  }
 });
-test('public bootstrap is idempotent and does not mutate source values',()=>{
- const env={NYX_DEPLOYMENT_MODE:'public',
-  NYX_PUBLIC_CONNECTORS_ENABLED:'true',NYX_MULTIUSER_RCLONE_ENABLED:'true',
-  RCLONE_CONFIG:'config-file-not-present'};
+test('public bootstrap accepts only isolated tenant environment',()=>{
+ const env={NYX_DEPLOYMENT_MODE:'public',NYX_PUBLIC_CONNECTORS_ENABLED:'true',
+  NYX_MULTIUSER_RCLONE_ENABLED:'true'};
  assert.deepEqual(preparePublicRcloneEnvironment(env,()=>false),
-  {publicMode:true,clearedCount:1});
+  {publicMode:true,clearedCount:0});
  assert.deepEqual(preparePublicRcloneEnvironment(env,()=>false),
   {publicMode:true,clearedCount:0});
 });
