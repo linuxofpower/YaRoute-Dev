@@ -397,6 +397,18 @@ export class McpService {
       this.limitedConnectionApi(id,()=>this.githubWrites.draftPullToNonDefault(
         this.connectorOwner(),id,repo,branch,baseBranch,title,body))));
 
+    server.registerTool('nyx_connection_github_merge_reviewed_nondefault',{
+      title:'Merge a CI-verified NYX review PR into an unprotected non-default branch',
+      description:'Explicit merge only of same-repo nyx/* review PR. Checks precise head and base SHAs, protected status and completed successful CI. Cannot merge master/main/default and never invokes Heroku.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200),
+        prNumber:z.number().int().min(1).max(1000000),
+        expectedHeadSha:z.string().regex(/^[a-f0-9]{40}$/),
+        expectedBaseSha:z.string().regex(/^[a-f0-9]{40}$/)}),
+      annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},
+    },async({id,repo,prNumber,expectedHeadSha,expectedBaseSha})=>this.safeTool(()=>
+      this.limitedConnectionApi(id,()=>this.githubWrites.mergeReviewedNonDefault(
+        this.connectorOwner(),id,repo,prNumber,expectedHeadSha,expectedBaseSha))));
+
     server.registerTool('nyx_connection_github_tester_release_pr',{
       title:'Prepare a reviewed draft tester-to-master release PR',
       description:'Only creates a DRAFT PR from an exact approved tester commit to a verified protected main/master. Detects existing PRs. Never changes branches, merges, dispatches CI or deploys.',
