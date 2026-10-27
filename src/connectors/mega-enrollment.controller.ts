@@ -33,18 +33,23 @@ export class MegaEnrollmentController {
       '<input type="hidden" name="state" value="'+state+'">' +
       '<label>MEGA account email<br><input required type="email" name="email" maxlength="200" autocomplete="username"></label>' +
       '<br><br><label>MEGA password<br><input required type="password" name="password" maxlength="1024" autocomplete="current-password"></label>' +
+      '<br><br><label>Six-digit MEGA authenticator code (if enabled)<br>' +
+      '<input type="text" name="twoFactorCode" inputmode="numeric" pattern="[0-9]{6}" ' +
+      'maxlength="6" minlength="6" autocomplete="one-time-code"></label>' +
       '<br><br><button type="submit">Verify read-only connection</button></form>' +
-      '<p>This flow does not currently handle separate MEGA 2FA challenges. Do not disable 2FA to connect.</p></main>'
+      '<p>If MFA is enabled, enter a fresh code when submitting. Your code is never stored. ' +
+      'Enrollment requires a reusable MEGA session after verification.</p></main>'
     );
   }
 
   @Post('complete')
-  async complete(@Body() body: {state?:string;email?:string;password?:string},@Res() res:Response) {
+  async complete(@Body() body: {state?:string;email?:string;password?:string;twoFactorCode?:string},@Res() res:Response) {
     noCache(res);
     try {
       if (!body || typeof body.state!=='string' || typeof body.email!=='string' ||
           typeof body.password!=='string') throw new Error('TENANT_MEGA_FORM_INVALID');
-      await this.enrollment.complete(body.state,body.email,body.password);
+      await this.enrollment.complete(body.state,body.email,body.password,
+        body.twoFactorCode || undefined);
       return res.status(200).type('html').send(
         '<!doctype html><meta charset="utf-8"><h1>MEGA read access verified</h1>' +
         '<p>Return to NestNyx to activate your separate connection. No old account was replaced.</p>'
@@ -53,7 +58,7 @@ export class MegaEnrollmentController {
       return res.status(400).type('html').send(
         '<!doctype html><meta charset="utf-8"><h1>MEGA connection not completed</h1>' +
         '<p>Verification failed or the one-time link expired. Your existing connections are unchanged.' +
-        ' Return to NestNyx for a fresh link. Do not disable account 2FA.</p>'
+        ' Return to NestNyx for a fresh link and authenticator code if needed. Do not disable 2FA.</p>'
       );
     }
   }
