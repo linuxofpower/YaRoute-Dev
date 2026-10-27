@@ -426,14 +426,15 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Only one isolated config file per invocation; old shared config is never read or written. */
-  private async probe(profile: TenantRcloneProfile, relativePath: string): Promise<ReadProbeResult> {
+  private async probe(profile: TenantRcloneProfile, relativePath: string,
+    captureSession?: (configPath: string) => Promise<boolean>): Promise<ReadProbeResult> {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'nyx-tenant-rclone-'));
     const config = path.join(directory, 'rclone.conf');
     try {
       await fs.chmod(directory, 0o700);
       await fs.writeFile(config, tenantRcloneConfig(profile), { mode: 0o600, flag: 'wx' });
       const target = 'tenant:' + tenantRclonePath(relativePath);
-      return await new Promise<ReadProbeResult>((resolve) => {
+      const status=await new Promise<ReadProbeResult>((resolve) => {
         let settled = false;
         let seen = 0;
         const child = spawn(this.binary, [
@@ -460,6 +461,11 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
         child.once('error', () => finish('failed'));
         child.once('close', code => finish(code === 0 ? 'verified' : 'failed'));
       });
+      if (status === 'verified' && captureSession) {
+        try {return await captureSession(config) ? 'verified' : 'failed';}
+        catch {return 'failed';}
+      }
+      return status;
     } finally {
       await fs.rm(directory, {recursive: true, force: true});
     }
