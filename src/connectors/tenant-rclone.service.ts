@@ -272,10 +272,17 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     if (status === 'verified' && oneTimeMegaCode && !refreshedProfile)
       return 'failed';
     if (status === 'verified') {
-      await this.db().query(`UPDATE nyx_rclone_tenant_credentials_v2 SET
-          read_verified_at=now() WHERE owner_id=$1 AND connection_id=$2
+      // Replace a one-time 2FA code with reusable, encrypted session keys.
+      // Never retain the OTP in a pending or active credential row.
+      const durableProfile = refreshedProfile || candidate.profile;
+      const packed = refreshedProfile
+        ? this.seal(ownerId, connectionId, durableProfile) : candidate.packed;
+      const updated = await this.db().query(`UPDATE nyx_rclone_tenant_credentials_v2 SET
+          encrypted_profile=$4, read_verified_at=now()
+          WHERE owner_id=$1 AND connection_id=$2
           AND state='pending' AND encrypted_profile=$3`,
-        [ownerId, connectionId, candidate.packed]);
+        [ownerId, connectionId, candidate.packed, packed]);
+      if (updated.rowCount!==1) return 'failed';
     }
     return status;
   }
