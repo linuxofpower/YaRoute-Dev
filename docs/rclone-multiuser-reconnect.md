@@ -214,17 +214,17 @@ main branch directly to Dev Heroku.
 
 ### Three review stages, only two Heroku apps
 
-1. **YaRoute-Dev** (`linuxofpower/YaRoute-Dev`): implement, review,
+1. **YaRoute-Dev** (`YaRoute-Dev` repository): implement, review,
    build and inspect all changes in feature PRs and CI. This repository is
    a source/CI staging area, NOT a third Heroku instance or an automatic
    deployment. PR #19 must be reconciled and CI-tested together with
    the changes already merged from Dev PR #32.
-2. **YaRoute/tester** (`yaMorozYaroslav/YaRoute:tester`): promote only an
+2. **YaRoute/tester** (`YaRoute:tester`): promote only an
    accepted Dev candidate through an explicit verified promotion; deploy to
    the existing **DevNestNyx Heroku** application; verify its exact commit,
    runtime health, OAuth and two independently authenticated user accounts.
    The first public-user trial happens here, not in NestNyxPro.
-3. **YaRoute/master** (`yaMorozYaroslav/YaRoute:master`): promote only
+3. **YaRoute/master** (`YaRoute:master`): promote only
    specifically accepted tester releases through a protected draft PR.
    Deploy to **NestNyxPro Heroku** after owner approval and production
    rollback verification. NOT every tester commit is a production release.
