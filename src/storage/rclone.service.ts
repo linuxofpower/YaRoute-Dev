@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { assertPublicRcloneIsolation } from './public-rclone-isolation';
 
 @Injectable()
 export class RcloneService implements OnModuleInit {
@@ -12,6 +13,7 @@ export class RcloneService implements OnModuleInit {
     // A process-wide rclone.conf contains one operator's storage credentials.
     // Never start a public multi-user service with that configuration.
     if (process.env.NYX_DEPLOYMENT_MODE === 'public') {
+      assertPublicRcloneIsolation();
       // Public tenant storage uses ephemeral owner-scoped configs exclusively.
       // Never read, decode or overwrite RCLONE_CONFIG_B64/RCLONE_CONFIG_PATH here.
       if (process.env.NYX_PUBLIC_CONNECTORS_ENABLED !== 'true') {
