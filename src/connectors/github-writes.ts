@@ -238,7 +238,8 @@ export class GithubWriteConnector {
        sourceRepo===destinationRepo ||
        sourceRepo.split('/')[0].toLowerCase()===destinationRepo.split('/')[0].toLowerCase())
       throw new Error('GITHUB_TESTER_REPOSITORY_PAIR_INVALID');
-    this.workingBranch(sourceBranch);this.workingBranch(reviewBranch);
+    if(sourceBranch!=='main')this.workingBranch(sourceBranch);
+    this.workingBranch(reviewBranch);
     if(sourceBranch!=='main' && !sourceBranch.startsWith('nyx/'))
       throw new Error('GITHUB_TESTER_SOURCE_BRANCH_FORBIDDEN');
     if(!reviewBranch.startsWith('nyx/') ||
