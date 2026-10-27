@@ -161,3 +161,50 @@ a safe off-site recovery path.
 real-world blockers. Only `storage:list` is implemented; do not advertise
 upload/move/delete until tenant-scoped authorization, proof, recoverable
 deletion, rate limits and audit are implemented and tested.
+
+
+## Accepted deployment intent — both private and public remain available until acceptance (2026-10-27)
+
+This section supersedes any earlier wording that appears to demand deleting
+the private Rclone credentials as a prerequisite for proving public access.
+
+**Two existing Heroku apps; no third app and no new Google Cloud project:**
+- `DevNestNyx` deploys only `yaMorozYaroslav/YaRoute:tester`.
+  Its target during acceptance is a public, JWT-authenticated **tenant**
+  connector pilot for MEGA and Google Drive. An isolated tenant's credentials
+  are encrypted and materialized only into a per-request ephemeral config,
+  passed to one installed Rclone executable.
+- `NestNyxPro` deploys only `yaMorozYaroslav/YaRoute:master`.
+  It keeps private operator-owned Rclone aliases and global configuration
+  strictly private and operational as a **live rollback fallback**.
+
+**No private credential retirement until acceptance.** Store the existing
+private configuration in its authorized, protected location and preserve
+a tested recovery copy before changing Dev's hosting environment. Converting
+Dev to public mode requires REMOVING its legacy credential variables from the
+*public process environment* because the prototype deliberately refuses
+mixed-credential startup; this is a runtime isolation step, NOT permission
+to destroy the underlying recovery copy or Pro's working private credentials.
+The existing Pro private Rclone is not removed or disabled during pilot.
+If preserving private operations in the SAME Dev process is required instead,
+the current code does not support it; that would need a separately designed
+and security-reviewed hybrid-authorization implementation.
+
+**Public acceptance gate before retiring even one remaining private
+credential:** Real provider sign-ins from two different authenticated ChatGPT
+user subjects; distinct encrypted vault identities; MEGA and Drive read-only
+listings under each selected root; cross-owner and cross-root denial;
+logout/revocation and OAuth refresh; safe restarts; recoverability/rollback;
+audit without secrets. MEGA accounts requiring separate 2FA need additional
+enrollment support first. No public writes, move or delete until independent
+permission, approval and recovery tests.
+
+Retire old private operator credentials only in a separate approved,
+reversible operation after all of the above. The Rclone executable remains
+necessary as the backend storage engine; only shared credential files and
+aliases are migration targets.
+
+Source-to-runtime promotion remains: `YaRoute-Dev` review PR -> explicitly
+reviewed `YaRoute:tester` -> DevNestNyx; protected `YaRoute:master` ->
+NestNyxPro only on accepted production PR. Do not deploy the Dev repository's
+main branch directly to Dev Heroku.
