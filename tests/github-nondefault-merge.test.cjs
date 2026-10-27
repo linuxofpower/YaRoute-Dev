@@ -83,7 +83,7 @@ test('ready-for-review PR creation targets only verified unprotected nondefault 
   if(options.method==='GET'&&p==='')result={default_branch:'master'};
   else if(options.method==='GET'&&p==='/branches/tester')
    result={name:'tester',protected:false,commit:{sha:BASE}};
-  else if(options.method==='GET'&&p==='/branches/nyx/review')
+  else if(options.method==='GET'&&p==='/branches/nyx%2Freview')
    result={name:'nyx/review',protected:false,commit:{sha:HEAD}};
   else if(options.method==='POST'&&p==='/pulls')
    result={number:37,draft:false,head:{ref:'nyx/review',sha:HEAD},
