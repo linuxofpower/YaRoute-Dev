@@ -366,6 +366,26 @@ export class McpService {
       this.limitedConnectionApi(id,()=>this.githubWrites.createFromNonDefault(
         this.connectorOwner(),id,repo,branch,baseBranch,expectedBaseSha))));
 
+    server.registerTool('nyx_connection_github_stage_tester_from_dev',{
+      title:'Stage reviewed Dev source files as a draft-ready tester review branch',
+      description:'Copy up to 40 exact reviewed src/docs/tests files from a selected YaRoute-Dev commit into a NEW nyx/* review branch based on a verified YaRoute tester SHA. Uses two owner-scoped GitHub App connections. Never updates tester/master, creates deployment files, merges, or deploys. Call draft_pr_to_ref separately after inspecting staged changes.',
+      inputSchema:z.object({
+        sourceConnectionId:z.string().uuid(),destinationConnectionId:z.string().uuid(),
+        sourceRepo:z.string().min(3).max(200),destinationRepo:z.string().min(3).max(200),
+        sourceBranch:z.string().min(1).max(100),
+        expectedSourceSha:z.string().regex(/^[a-f0-9]{40}$/),
+        expectedTesterSha:z.string().regex(/^[a-f0-9]{40}$/),
+        reviewBranch:z.string().min(5).max(100),
+        paths:z.array(z.string().min(1).max(400)).min(1).max(40),
+      }),
+      annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+    },async({sourceConnectionId,destinationConnectionId,sourceRepo,destinationRepo,
+       sourceBranch,expectedSourceSha,expectedTesterSha,reviewBranch,paths})=>
+      this.safeTool(()=>this.limitedConnectionApi(destinationConnectionId,()=>
+        this.githubWrites.stageTesterFromDev(this.connectorOwner(),
+          sourceConnectionId,destinationConnectionId,sourceRepo,destinationRepo,
+          sourceBranch,expectedSourceSha,expectedTesterSha,reviewBranch,paths)))));
+
     server.registerTool('nyx_connection_github_draft_pr_to_ref',{
       title:'Open an unmerged draft PR to tester or another non-default branch',
       description:'Open a DRAFT PR from a nyx/* review branch to a non-default branch. Never merges, deploys, dispatches workflows or targets protected main/master.',
