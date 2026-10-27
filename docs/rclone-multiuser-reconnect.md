@@ -338,3 +338,10 @@ promotion review PR → tester CI → authorized tester merge → Dev Heroku
 deployment of the exact tester SHA → HTTPS health and OAuth policy probe →
 two independently authenticated MEGA users and cross-owner denial →
 restart/reauthorization/revoke tests. No production release is implied.
+
+
+## Strict Dev public-mode cutover — 2026-10-27
+
+The accepted Dev implementation no longer scrubs inherited private Rclone settings from process memory. In public mode, startup **fails closed** if any `RCLONE_CONFIG*` or `NYX_SHARED_ROOTS_JSON` variable is present, or a legacy Rclone config file is detected. Remove these settings from the **Dev Heroku app's stored config** before public startup; a secure independent recovery backup and the working private NestNyxPro app are the rollback path. The earlier transitional in-process quarantine procedure above is superseded by this strict rule. Do not modify Pro's settings.
+
+Release remains gated on PR review, CI, promotion to `YaRoute:tester`, exact deployed commit and health checks, separate tenant vault and OAuth configuration, and two real independently authenticated users with cross-owner denial. No public write or delete capability is authorized.
