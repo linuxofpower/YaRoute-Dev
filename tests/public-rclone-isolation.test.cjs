@@ -14,6 +14,14 @@ test('public runtime rejects every legacy private Rclone environment variable',(
     /PUBLIC_STORAGE_PRIVATE_CONFIG_PRESENT/);
  }
 });
+test('public runtime rejects Rclone remote secrets supplied as environment options',()=>{
+ for(const key of ['RCLONE_CONFIG_MYMEGA_PASS','RCLONE_CONFIG_DRIVE_TOKEN',
+                    'RCLONE_CONFIG_MYDRIVE_CLIENT_SECRET']){
+  assert.throws(()=>assertPublicRcloneIsolation({[key]:'synthetic'},()=>false),
+    /PUBLIC_STORAGE_PRIVATE_CONFIG_PRESENT/);
+ }
+});
+
 test('public runtime rejects old private default config file without opening it',()=>{
  const checked=[];
  assert.throws(()=>assertPublicRcloneIsolation({},p=>{
