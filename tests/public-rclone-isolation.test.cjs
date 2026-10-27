@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {assertPublicRcloneIsolation,LEGACY_RCLONE_ENV_KEYS}=
+const {assertPublicRcloneIsolation,preparePublicRcloneEnvironment,LEGACY_RCLONE_ENV_KEYS}=
   require('../dist/storage/public-rclone-isolation');
 const {RcloneService}=require('../dist/storage/rclone.service');
 
@@ -71,4 +71,71 @@ test('private RcloneService keeps an existing local config without rewriting it'
  delete process.env.RCLONE_CONFIG_B64;
  assert.doesNotThrow(()=>new RcloneService().onModuleInit());
  assert.equal(fs.readFileSync(file,'utf8'),marker);
+});
+
+
+test('explicit public bootstrap conceals inherited Heroku storage env in memory',()=>{
+ const env={
+  NYX_DEPLOYMENT_MODE:'public',
+  NYX_PUBLIC_CONNECTORS_ENABLED:'true',
+  NYX_MULTIUSER_RCLONE_ENABLED:'true',
+  RCLONE_CONFIG_B64:'synthetic-operator-credential',
+  RCLONE_CONFIG_HOME_PASS:'synthetic-remote-credential',
+  RCLONE_CONFIG_PATH:'custom-legacy-location',
+  NYX_SHARED_ROOTS_JSON:'synthetic-roots',
+  NYX_STORAGE_ENCRYPTION_KEY:'synthetic-tenant-vault-key',
+ };
+ const result=preparePublicRcloneEnvironment(env,()=>false);
+ assert.deepEqual(result,{publicMode:true,clearedCount:4});
+ assert.equal(env.RCLONE_CONFIG_B64,undefined);
+ assert.equal(env.RCLONE_CONFIG_HOME_PASS,undefined);
+ assert.equal(env.RCLONE_CONFIG_PATH,undefined);
+ assert.equal(env.NYX_SHARED_ROOTS_JSON,undefined);
+ assert.equal(env.NYX_STORAGE_ENCRYPTION_KEY,'synthetic-tenant-vault-key');
+ assert.doesNotThrow(()=>assertPublicRcloneIsolation(env,()=>false));
+});
+test('the Heroku private config remains untouched when not in public mode',()=>{
+ const env={NYX_DEPLOYMENT_MODE:'private',
+  RCLONE_CONFIG_B64:'synthetic-operator-credential'};
+ assert.deepEqual(preparePublicRcloneEnvironment(env,()=>true),
+   {publicMode:false,clearedCount:0});
+ assert.equal(env.RCLONE_CONFIG_B64,'synthetic-operator-credential');
+});
+test('public bootstrap fails closed if either public enrollment feature gate is off',()=>{
+ for(const key of ['NYX_PUBLIC_CONNECTORS_ENABLED','NYX_MULTIUSER_RCLONE_ENABLED']){
+  const env={NYX_DEPLOYMENT_MODE:'public',
+   NYX_PUBLIC_CONNECTORS_ENABLED:'true',NYX_MULTIUSER_RCLONE_ENABLED:'true',
+   RCLONE_CONFIG_B64:'synthetic-private'};
+  env[key]='false';
+  assert.throws(()=>preparePublicRcloneEnvironment(env,()=>false),
+    /PUBLIC_STORAGE_FEATURE_FLAGS_REQUIRED/);
+  assert.equal(env.RCLONE_CONFIG_B64,'synthetic-private');
+ }
+});
+test('public bootstrap rejects leftover local files before env erasure',()=>{
+ for(const filePath of ['/tmp/rclone.conf','old/rclone.conf',
+                           '/home/test/.config/rclone/rclone.conf']){
+  const env={NYX_DEPLOYMENT_MODE:'public',
+   NYX_PUBLIC_CONNECTORS_ENABLED:'true',NYX_MULTIUSER_RCLONE_ENABLED:'true',
+   RCLONE_CONFIG_PATH:'old/rclone.conf',HOME:'/home/test',
+   RCLONE_CONFIG_B64:'synthetic-private'};
+  assert.throws(()=>preparePublicRcloneEnvironment(env, p=>p===filePath),
+    /PUBLIC_STORAGE_PRIVATE_CONFIG_FILE_PRESENT/);
+  assert.equal(env.RCLONE_CONFIG_B64,'synthetic-private');
+ }
+});
+test('public bootstrap is idempotent and does not mutate source values',()=>{
+ const env={NYX_DEPLOYMENT_MODE:'public',
+  NYX_PUBLIC_CONNECTORS_ENABLED:'true',NYX_MULTIUSER_RCLONE_ENABLED:'true',
+  RCLONE_CONFIG:'config-file-not-present'};
+ assert.deepEqual(preparePublicRcloneEnvironment(env,()=>false),
+  {publicMode:true,clearedCount:1});
+ assert.deepEqual(preparePublicRcloneEnvironment(env,()=>false),
+  {publicMode:true,clearedCount:0});
+});
+test('bootstrap invokes quarantine before constructing Nest application',()=>{
+ const source=fs.readFileSync('src/main.ts','utf8');
+ const guard=source.indexOf('  preparePublicRcloneEnvironment();');
+ const nest=source.indexOf('  const app = await NestFactory.create(AppModule);');
+ assert.ok(guard>0 && nest>guard);
 });
