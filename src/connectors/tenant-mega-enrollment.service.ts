@@ -17,7 +17,8 @@ function publicBase() {
 /**
  * Secure MEGA handoff: passwords are submitted only to a first-party HTTPS form,
  * never to ChatGPT/MCP. No password is placed in an argv, URL or log.
- * The current version supports accounts without a separate MEGA 2FA prompt.
+ * An optional user-entered 2FA code is consumed for initial Rclone login only.
+ * A reusable session must be captured or the enrollment fails closed.
  */
 @Injectable()
 export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestroy {
@@ -115,11 +116,13 @@ export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestro
   }
 
   /** Consumes a one-time capability; verifies MEGA read access before granting it. */
-  async complete(state: string, email: string, password: string) {
+  async complete(state: string, email: string, password: string, twoFactorCode?: string) {
     if (!/^[A-Za-z0-9_-]{40,100}$/.test(state) ||
         typeof email !== 'string' || !/^[^\s@\x00-\x1f]{1,100}@[^\s@\x00-\x1f]{1,100}$/.test(email) ||
         typeof password !== 'string' || !password || password.length > 1024 ||
-        /[\r\n\x00]/.test(password)) {
+        /[\r\n\x00]/.test(password) ||
+        (twoFactorCode !== undefined && twoFactorCode !== '' &&
+         !/^[0-9]{6}$/.test(twoFactorCode))) {
       throw new Error('TENANT_MEGA_ENROLLMENT_INVALID');
     }
     const normalized = email.trim().toLowerCase();
@@ -140,7 +143,8 @@ export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestro
     await this.storage.stageCredential(ownerId,connectionId,
       {provider:'mega',user:normalized,obscuredPassword:pass});
     // Prove the exact one-time, owner-selected MEGA root—not merely the account root.
-    const check = await this.storage.probePending(ownerId,connectionId,root);
+    const check = await this.storage.probePending(ownerId,connectionId,root,
+      twoFactorCode || undefined);
     if (check !== 'verified') throw new Error('TENANT_MEGA_READ_PROBE_FAILED');
     await this.connections.confirmStorageProvider(ownerId,connectionId,'mega',normalized);
     return {status:'pending_activation',provider:'mega'};
