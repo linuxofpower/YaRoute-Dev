@@ -58,7 +58,9 @@ export class GithubWriteConnector {
        (suffix!=='' && !suffix.startsWith('/')) ||
        (suffix.includes('..') && !(method==='GET' &&
          /^\/compare\/(?:main|master)\.\.\.tester$/.test(suffix))) ||
-       /[?#]/.test(suffix)) throw new Error('GITHUB_API_PATH_INVALID');
+       (/[?#]/.test(suffix) && !(method==='GET' &&
+         /^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(suffix))))
+      throw new Error('GITHUB_API_PATH_INVALID');
     const response=await this.http('https://api.github.com/repos/'+repo+suffix,{
       method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json',
         'Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
@@ -218,6 +220,137 @@ export class GithubWriteConnector {
     return {repo,number:result.number,url:result.html_url,branch:source,
       base,draft:true,alreadyOpen:false,sourceSha:expectedTesterSha,
       changedFiles:comparison.files.length};
+  }
+
+  /**
+   * Stage an exact, reviewed Dev source snapshot on a *new* NYX review branch
+   * forked from the verified current tester commit. No tester/master updates.
+   * Read-only source GitHub installation and separate write-scoped destination
+   * installation; never cross-copy secrets, binaries or workflow config.
+   */
+  async stageTesterFromDev(owner:string,sourceId:string,destinationId:string,
+    sourceRepo:string,destinationRepo:string,sourceBranch:string,
+    expectedSourceSha:string,expectedTesterSha:string,
+    reviewBranch:string,paths:string[]) {
+    this.repoName(sourceRepo);this.repoName(destinationRepo);
+    if(!sourceRepo.endsWith('/YaRoute-Dev') ||
+       !destinationRepo.endsWith('/YaRoute') ||
+       sourceRepo===destinationRepo ||
+       sourceRepo.split('/')[0].toLowerCase()===destinationRepo.split('/')[0].toLowerCase())
+      throw new Error('GITHUB_TESTER_REPOSITORY_PAIR_INVALID');
+    this.workingBranch(sourceBranch);this.workingBranch(reviewBranch);
+    if(sourceBranch!=='main' && !sourceBranch.startsWith('nyx/'))
+      throw new Error('GITHUB_TESTER_SOURCE_BRANCH_FORBIDDEN');
+    if(!reviewBranch.startsWith('nyx/') ||
+       !/^[a-f0-9]{40}$/.test(expectedSourceSha) ||
+       !/^[a-f0-9]{40}$/.test(expectedTesterSha) ||
+       !Array.isArray(paths)||paths.length<1||paths.length>40||
+       new Set(paths).size!==paths.length)
+      throw new Error('GITHUB_TESTER_PROMOTION_INPUT_INVALID');
+    for(const p of paths) {
+      this.writablePath(p);
+      if(!/^(src|tests|docs)\//.test(p))throw new Error('GITHUB_TESTER_PROMOTION_PATH_FORBIDDEN');
+    }
+    // Preflight BOTH accounts before GitHub creates any objects.
+    const srcMeta=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','',undefined,{branch:sourceBranch});
+    if(srcMeta?.default_branch!=='main')
+      throw new Error('GITHUB_TESTER_SOURCE_DEFAULT_UNEXPECTED');
+    const dstMeta=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','',undefined,{branch:reviewBranch});
+    if(!['master','main'].includes(dstMeta?.default_branch))
+      throw new Error('GITHUB_TESTER_DESTINATION_DEFAULT_UNEXPECTED');
+    const srcRef=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','/git/ref/heads/'+encodeURIComponent(sourceBranch),
+      undefined,{branch:sourceBranch});
+    const destRef=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/git/ref/heads/tester',
+      undefined,{branch:reviewBranch});
+    if(srcRef?.object?.sha!==expectedSourceSha ||
+       destRef?.object?.sha!==expectedTesterSha)
+      throw new Error('GITHUB_TESTER_PROMOTION_SHA_CHANGED');
+    const destBranch=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/branches/tester',undefined,{branch:reviewBranch});
+    if(destBranch?.name!=='tester' || destBranch?.protected!==false ||
+       destBranch?.commit?.sha!==expectedTesterSha)
+      throw new Error('GITHUB_TESTER_BRANCH_UNVERIFIED');
+    const sourceCommit=await this.call(owner,sourceId,sourceRepo,'resources:read',
+      'GET','/git/commits/'+expectedSourceSha,undefined,{branch:sourceBranch});
+    const sourceTree=sourceCommit?.tree?.sha;
+    if(typeof sourceTree!=='string' || !/^[a-f0-9]{40}$/.test(sourceTree))
+      throw new Error('GITHUB_TESTER_SOURCE_TREE_UNVERIFIED');
+    const tree=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','/git/trees/'+sourceTree+'?recursive=1',
+      undefined,{branch:sourceBranch});
+    if(tree?.truncated!==false || !Array.isArray(tree.tree))
+      throw new Error('GITHUB_TESTER_SOURCE_TREE_INCOMPLETE');
+    const index=new Map<string,{sha:string;size:number}>();
+    for(const f of tree.tree) {
+      if(f?.type==='blob' && typeof f.path==='string' &&
+         /^[a-f0-9]{40}$/.test(f.sha) &&
+         Number.isSafeInteger(f.size) && f.size>=0) {
+        index.set(f.path,{sha:f.sha,size:f.size});
+      }
+    }
+    const files:{path:string;mode:'100644';type:'blob';content:string}[]=[];
+    let total=0;
+    for(const p of paths) {
+      const e=index.get(p);
+      if(!e || e.size>65536 || (total+=e.size)>768000)
+        throw new Error('GITHUB_TESTER_SOURCE_FILE_LIMIT');
+      // Enforce the owner's per-path source-read and destination-write grants.
+      await this.registry.requireResource(owner,sourceId,'resources:read',
+        {kind:'repository',id:sourceRepo,branch:sourceBranch,path:p});
+      await this.registry.requireResource(owner,destinationId,'contents:write',
+        {kind:'repository',id:destinationRepo,branch:reviewBranch,path:p});
+      const blob=await this.call(owner,sourceId,sourceRepo,'resources:read',
+        'GET','/git/blobs/'+e.sha,undefined,{branch:sourceBranch,path:p});
+      if(blob?.encoding!=='base64'||typeof blob.content!=='string')
+        throw new Error('GITHUB_TESTER_SOURCE_NOT_TEXT');
+      const bytes=Buffer.from(blob.content.replace(/\s/g,''),'base64');
+      if(bytes.length!==e.size||bytes.includes(0))
+        throw new Error('GITHUB_TESTER_SOURCE_NOT_TEXT');
+      const content=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+      files.push({path:p,mode:'100644',type:'blob',content});
+    }
+    // Recheck both refs immediately before the first write. Fail closed on race.
+    const latest=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/git/ref/heads/tester',
+      undefined,{branch:reviewBranch});
+    const latestSource=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','/git/ref/heads/'+encodeURIComponent(sourceBranch),
+      undefined,{branch:sourceBranch});
+    if(latest?.object?.sha!==expectedTesterSha ||
+       latestSource?.object?.sha!==expectedSourceSha)
+      throw new Error('GITHUB_TESTER_PROMOTION_SHA_CHANGED');
+    const targetCommit=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/git/commits/'+expectedTesterSha,
+      undefined,{branch:reviewBranch});
+    const baseTree=targetCommit?.tree?.sha;
+    if(!/^[a-f0-9]{40}$/.test(baseTree))
+      throw new Error('GITHUB_TESTER_BASE_TREE_UNVERIFIED');
+    const built=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','POST','/git/trees',
+      {base_tree:baseTree,tree:files},{branch:reviewBranch});
+    if(!/^[a-f0-9]{40}$/.test(built?.sha))
+      throw new Error('GITHUB_TESTER_TREE_RESPONSE_INVALID');
+    const committed=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','POST','/git/commits',{
+        message:'stage: reviewed Dev files for tester ('+expectedSourceSha.slice(0,12)+')',
+        tree:built.sha,parents:[expectedTesterSha],
+      },{branch:reviewBranch});
+    if(!/^[a-f0-9]{40}$/.test(committed?.sha))
+      throw new Error('GITHUB_TESTER_COMMIT_RESPONSE_INVALID');
+    const created=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','POST','/git/refs',{
+        ref:'refs/heads/'+reviewBranch,sha:committed.sha,
+      },{branch:reviewBranch});
+    if(created?.ref!=='refs/heads/'+reviewBranch)
+      throw new Error('GITHUB_TESTER_BRANCH_RESPONSE_INVALID');
+    return {repo:destinationRepo,branch:reviewBranch,base:'tester',
+      sourceRepo,sourceSha:expectedSourceSha,testerSha:expectedTesterSha,
+      reviewSha:committed.sha,fileCount:files.length,
+      next:'nyx_connection_github_draft_pr_to_ref',merged:false};
   }
 
   /** Create/update exactly one text file with GitHub's optimistic SHA check. */
