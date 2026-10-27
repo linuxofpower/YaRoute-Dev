@@ -386,6 +386,20 @@ export class McpService {
           sourceConnectionId,destinationConnectionId,sourceRepo,destinationRepo,
           sourceBranch,expectedSourceSha,expectedTesterSha,reviewBranch,paths))));
 
+    server.registerTool('nyx_connection_github_reviewed_pr_to_ref',{
+      title:'Open an exact-SHA reviewed PR into tester or another unprotected non-default branch',
+      description:'Creates a non-draft PR for a nyx/* source with verified source/target SHAs. No protected master/main, no automatic merge or deployment. Use the separately gated merge_reviewed_nondefault tool after CI.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200),
+        branch:z.string().min(5).max(100),baseBranch:z.string().min(1).max(100),
+        title:z.string().min(1).max(200),body:z.string().max(10000).optional(),
+        expectedHeadSha:z.string().regex(/^[a-f0-9]{40}$/),
+        expectedBaseSha:z.string().regex(/^[a-f0-9]{40}$/)}),
+      annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+    },async({id,repo,branch,baseBranch,title,body,expectedHeadSha,expectedBaseSha})=>
+      this.safeTool(()=>this.limitedConnectionApi(id,()=>
+        this.githubWrites.openReviewedNonDefault(this.connectorOwner(),
+          id,repo,branch,baseBranch,title,body||'',expectedHeadSha,expectedBaseSha))));
+
     server.registerTool('nyx_connection_github_draft_pr_to_ref',{
       title:'Open an unmerged draft PR to tester or another non-default branch',
       description:'Open a DRAFT PR from a nyx/* review branch to a non-default branch. Never merges, deploys, dispatches workflows or targets protected main/master.',
