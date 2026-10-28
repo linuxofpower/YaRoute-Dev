@@ -1,0 +1,40 @@
+name: NYX Dev to Tester reconciliation (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconciliation-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test exact-SHA planning and environment adaptation
+        run: node --test tests/nyx-promotion-pipeline.test.cjs
+      - name: Read public repository trees and generate pinned plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          node scripts/nyx-promotion-plan.mjs \
+            --source-repo "$GITHUB_REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --target-repo yaMorozYaroslav/YaRoute \
+            --out nyx-promotion-plan.json
+      - name: Export non-secret target profile proposals
+        run: |
+          node --input-type=module -e 'import {proposal} from "./scripts/nyx-deployment-adapter.mjs"; import {writeFileSync} from "node:fs"; for(const name of ["tester","production"])writeFileSync("nyx-"+name+"-profile-proposal.json",JSON.stringify(proposal(name),null,2)+"\n");'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nyx-reconciliation-plan
+          path: |
+            nyx-promotion-plan.json
+            nyx-tester-profile-proposal.json
+            nyx-production-profile-proposal.json
+          retention-days: 7
