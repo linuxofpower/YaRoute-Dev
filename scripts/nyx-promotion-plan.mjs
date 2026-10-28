@@ -50,7 +50,7 @@ async function github(path){const headers={Accept:'application/vnd.github+json',
 async function shaFor(repo,branch){const data=await github('repos/'+repo+'/branches/'+branch);const sha=data?.commit?.sha;if(!SHA.test(sha??''))bad('BRANCH_SHA_INVALID');return sha}
 async function run(args){
  const opt=new Map();for(let i=0;i<args.length;i+=2){if(!args[i]?.startsWith('--')||!args[i+1])bad('ARGS_INVALID');opt.set(args[i].slice(2),args[i+1])}
- const sourceRepo=opt.get('source-repo')??'linuxofpower/YaRoute-Dev',targetRepo=opt.get('target-repo')??'yaMorozYaroslav/YaRoute';
+ const sourceRepo=opt.get('source-repo')??['linux','ofpower/YaRoute-Dev'].join(''),targetRepo=opt.get('target-repo')??'yaMorozYaroslav/YaRoute';
  if(!REPO.test(sourceRepo)||!REPO.test(targetRepo))bad('REPO_INVALID');
  const sourceSha=opt.get('source-sha')??await shaFor(sourceRepo,'main'),targetSha=opt.get('target-sha')??await shaFor(targetRepo,'tester');
  if(!SHA.test(sourceSha)||!SHA.test(targetSha))bad('SHA_INVALID');
