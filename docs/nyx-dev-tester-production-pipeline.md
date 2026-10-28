@@ -6,7 +6,7 @@
 
 Dev and Tester have separate Git histories. Do not merge entire histories or force-copy the Dev tree over Tester. Their baseline on 28 October 2026 was:
 
-- Dev: linuxofpower/YaRoute-Dev main d0ddd3368b993a439387f3eb3e9cd7b36a00ce74; CI + public repo audit passed.
+- Dev: YaRoute-Dev main d0ddd3368b993a439387f3eb3e9cd7b36a00ce74; CI + public repo audit passed.
 - Tester: yaMorozYaroslav/YaRoute tester 692d0ffb075f86f31242841cf9ea78cf797d6158; its own CI passed.
 - 28 Dev-only files, 24 differing blobs, one Tester-only .github/CODEOWNERS and 105 common blobs. These separate CI successes do not prove the combined code passes tests.
 
@@ -46,7 +46,7 @@ The **same reviewed code** should be deployed with target-specific configuration
 
 | Field | Dev (proposal) | Tester (proposal) | Production (proposal) |
 | --- | --- | --- | --- |
-| Account | linuxofpower | yaMorozYaroslav | yaMorozYaroslav |
+| Account | Development account | yaMorozYaroslav | yaMorozYaroslav |
 | Branch | main | tester | master (protected) |
 | NYX_SERVICE_NAME | DevNestNyx | NestNyx | NestNyx |
 | NYX_DEPLOYMENT_MODE | private | private | private |
@@ -61,4 +61,4 @@ These are intentionally **proposed safe private defaults**, not claims about act
 
 Tester has tests/github-api-writes.test.cjs that checks its unrestricted non-default working-branch behavior (three min(1).max(100) schemas and no nyx/* restriction); current Dev mcp.service.ts uses different nyx/* semantics. Straight source-file copying would break that Tester contract. Reconcile the behavior and tests deliberately. Tester also has a CI Rclone installer override that must not be lost.
 
-Track resolution in linuxofpower/YaRoute-Dev issue #35. Do not change yaMorozYaroslav master, GitHub branch rules, Heroku configuration, secrets, or canonical NYX Head/Body/Footer as part of the Dev planning workflow. No files are promoted until exact SHA and tests provide evidence.
+Track resolution in YaRoute-Dev issue #35. Do not change yaMorozYaroslav master, GitHub branch rules, Heroku configuration, secrets, or canonical NYX Head/Body/Footer as part of the Dev planning workflow. No files are promoted until exact SHA and tests provide evidence.
