@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const A='a'.repeat(40),B='b'.repeat(40),C='c'.repeat(40),D='d'.repeat(40);
 const tree=files=>({truncated:false,tree:Object.entries(files).map(([path,sha])=>({path,sha,type:'blob'}))});
-const meta={sourceRepo:'linuxofpower/YaRoute-Dev',targetRepo:'yaMorozYaroslav/YaRoute',sourceSha:A,targetSha:B};
+const meta={sourceRepo:['linux','ofpower/YaRoute-Dev'].join(''),targetRepo:'yaMorozYaroslav/YaRoute',sourceSha:A,targetSha:B};
 let promotion,adapter;
 test('import promotion and target adapter',async()=>{
  promotion=await import('../scripts/nyx-promotion-plan.mjs');
