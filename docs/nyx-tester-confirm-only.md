@@ -29,3 +29,7 @@ The workflow requests a short-lived token for the single target repository using
 - This source-only stage intentionally does **not** ship binary icons or adapt \`app.json\` automatically. Production identity, OAuth origins/audiences, database and secrets must remain target-specific; any asset or configuration migration requires separate reviewed changes.
 - Branch deletion is **not currently exposed** by the connected GitHub ChatGPT tool. Do not promise automatic branch cleanup until implemented and verified with an authorized provider.
 - The pipeline cannot create staging branches until the App credentials above are present and working. A user request authorizing access is not itself a GitHub App grant.
+
+## Post-installation smoke verification
+
+After the App ID variable and private-key secret are configured, perform a successful Dev `main` CI run. The `NYX Prepare Tester Promotion (approval gated)` workflow must begin with a completed `prepare-tester-pr` job rather than a skipped job. A successful token acquisition alone is insufficient: require an exact-sha `nyx/promote-*` branch and draft PR with base `tester`, then inspect that PR's merge-ref CI before seeking owner confirmation. A skipped job means the App ID variable was not exposed; a failed job requires reading the exact failing step (without printing any secret). Never assume the secret is present or valid merely because the variable is configured. The pipeline must not merge the Tester PR automatically.
