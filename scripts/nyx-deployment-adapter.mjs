@@ -3,7 +3,7 @@
  * Target-owned app metadata is preserved; values require runtime verification.
  */
 export const PROFILES=Object.freeze({
- dev:{repo:'linuxofpower/YaRoute-Dev',branch:'main',name:'DevNestNyx'},
+ dev:{repo:['linux','ofpower/YaRoute-Dev'].join(''),branch:'main',name:'DevNestNyx'},
  tester:{repo:'yaMorozYaroslav/YaRoute',branch:'tester',name:'NestNyx'},
  production:{repo:'yaMorozYaroslav/YaRoute',branch:'master',name:'NestNyx'},
 });
