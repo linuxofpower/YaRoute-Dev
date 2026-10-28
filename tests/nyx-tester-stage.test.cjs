@@ -10,7 +10,7 @@ test('load staging module without making network requests',async()=>{
 test('candidate preserves target-owned configuration, workflows and regression tests',()=>{
  const source={truncated:false,tree:[
   blob('src/mcp/mcp.service.ts',SHA),blob('tests/tenant-rclone-auth.test.cjs',SHA),
-  blob('tests/github-api-writes.test.cjs',SHA),blob('tests/branding.test.cjs',SHA),
+  blob('tests/github-api-writes.test.cjs',SHA),blob('tests/nyx-tester-stage.test.cjs',SHA),blob('tests/branding.test.cjs',SHA),
   blob('scripts/install-rclone.mjs',SHA),blob('app.json',SHA),
   blob('.github/workflows/ci.yml',SHA),blob('config/nyx-runtime-profile.json',SHA)]};
  const target={truncated:false,tree:[

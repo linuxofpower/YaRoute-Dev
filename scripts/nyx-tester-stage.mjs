@@ -8,7 +8,8 @@ const TARGET='yaMorozYaroslav/YaRoute';
 const IGNORE=new Set([
  'src/app.module.ts','src/branding.controller.ts',
  'tests/branding.test.cjs','tests/devpronestnyx-stage.test.cjs',
- 'tests/nyx-promotion-pipeline.test.cjs','tests/github-api-writes.test.cjs',
+ 'tests/nyx-promotion-pipeline.test.cjs','tests/nyx-tester-stage.test.cjs',
+ 'tests/github-api-writes.test.cjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 export function candidatePaths(source,target){
