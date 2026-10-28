@@ -12,6 +12,15 @@ const IGNORE=new Set([
  'tests/github-api-writes.test.cjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
+/** Runtime profiles are target-owned, but silently omitting drift can deploy
+ * code with obsolete authority/key pins. Reconcile through a reviewed PR first. */
+export function assertRuntimeProfileParity(source,target){
+ if(source.truncated!==false||target.truncated!==false)fail('TRUNCATED_TREE');
+ const profile=tree=>tree.tree?.find(x=>x.type==='blob'&&x.path==='config/nyx-runtime-profile.json')?.sha;
+ const a=profile(source),b=profile(target);
+ if(!SHA.test(a??'')||!SHA.test(b??'')||a!==b)
+  fail('RUNTIME_PROFILE_RECONCILIATION_REQUIRED');
+}
 export function candidatePaths(source,target){
  const a=new Map(source.tree?.filter(x=>x.type==='blob').map(x=>[x.path,x.sha])??[]);
  const b=new Map(target.tree?.filter(x=>x.type==='blob').map(x=>[x.path,x.sha])??[]);
@@ -94,6 +103,7 @@ async function stage(){
   api(TARGET,'/git/trees/'+targetSha+'?recursive=1',testerToken),
   api(TARGET,'/git/commits/'+targetSha,testerToken),
  ]);
+ assertRuntimeProfileParity(source,target);
  const paths=candidatePaths(source,target);
  validateCandidate({sourceSha,testerSha:targetSha,sourceRef:devBranch.commit?.sha,
    testerRef:testerBranch.commit?.sha,masterRef:masterBranch.commit?.sha,paths});

@@ -6,14 +6,39 @@ import { NyxResourceStore, sha256 } from './resource-store.service';
 @Injectable()
 export class NyxExecutionProfileService {
   constructor(private readonly store: NyxResourceStore) {}
-  async apply(locator: Locator, cli: Cli, cliHash: string): Promise<{ cli: Cli; hash?: string; keyReceipts?: Array<{ key: string; sha256: string }> }> {
-    const deployedPath = process.env.NYX_RUNTIME_PROFILE_PATH ?? (process.env.DYNO ? 'config/nyx-runtime-profile.json' : undefined);
-    if (deployedPath) {
-      try { return await this.applyText(await readFile(deployedPath, 'utf8'), cli, cliHash); }
-      catch (error) { this.rethrowProfileError(error); }
+  /** Private diagnostics only: never reconcile pins or return source contents. */
+  async inspect(locator: Locator, cliHash: string) {
+    try {
+      const text = await this.profileText(locator);
+      if (text === undefined) return { ready: true, configured: false, keys: [] };
+      const profile = profileSchema.parse(parseJson(text));
+      const keys = [];
+      for (const source of profile.keySources) {
+        try {
+          const actual = sha256(await this.store.read(source.ref, 256 * 1024));
+          keys.push({ key: source.key, expected: source.sha256, actual,
+            status: actual === source.sha256 ? 'verified' : 'changed' });
+        } catch { keys.push({ key: source.key, expected: source.sha256, status: 'unavailable' }); }
+      }
+      const authorityMatches = profile.cliSha256 === cliHash;
+      return { ready: authorityMatches && keys.every(key => key.status === 'verified'),
+        configured: true, profileSha256: sha256(text), authorityMatches,
+        expectedCliSha256: profile.cliSha256, actualCliSha256: cliHash, keys };
+    } catch {
+      return { ready: false, configured: true, error: 'EXECUTION_PROFILE_INVALID_OR_UNAVAILABLE', keys: [] };
     }
-    if (!locator.executionProfile) return { cli, keyReceipts: [] as Array<{ key: string; sha256: string }> };
-    try { return await this.applyText(await this.store.read(locator.executionProfile, 128 * 1024), cli, cliHash); }
+  }
+  private async profileText(locator: Locator): Promise<string | undefined> {
+    const deployedPath = process.env.NYX_RUNTIME_PROFILE_PATH ?? (process.env.DYNO ? 'config/nyx-runtime-profile.json' : undefined);
+    if (deployedPath) return readFile(deployedPath, 'utf8');
+    if (locator.executionProfile) return this.store.read(locator.executionProfile, 128 * 1024);
+    return undefined;
+  }
+  async apply(locator: Locator, cli: Cli, cliHash: string): Promise<{ cli: Cli; hash?: string; keyReceipts?: Array<{ key: string; sha256: string }> }> {
+    try {
+      const text = await this.profileText(locator);
+      return text === undefined ? { cli, keyReceipts: [] } : await this.applyText(text, cli, cliHash);
+    }
     catch (error) { this.rethrowProfileError(error); }
   }
   private rethrowProfileError(error: unknown): never {
