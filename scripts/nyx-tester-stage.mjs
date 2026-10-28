@@ -18,7 +18,7 @@ export function candidatePaths(source,target){
  if(source.truncated!==false||target.truncated!==false)fail('TRUNCATED_TREE');
  return [...a.entries()].filter(([p,sha])=>
   (p.startsWith('src/')||p.startsWith('tests/'))&&
-  !IGNORE.has(p)&&!NO_COPY.test(p)&&
+  !IGNORE.has(p)&&!(p.startsWith('tests/nyx-tester-')&&p.endsWith('.test.cjs'))&&!NO_COPY.test(p)&&
   /^[A-Za-z0-9._/-]+$/.test(p)&&
   !p.includes('..')&&
   SHA.test(sha)&&b.get(p)!==sha
