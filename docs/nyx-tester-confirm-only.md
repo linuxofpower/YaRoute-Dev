@@ -1,3 +1,11 @@
+# NYX non-production staging authority (updated 28 Oct 2026)
+
+The user delegates **autonomous verified merges into `tester` and other non-main/non-master branches**, without repeated confirmation. Only merge/promotion requests targeting `yaMorozYaroslav` `main` or `master` require explicit user approval. This replaces the earlier confirmation-only Tester merge policy below. `tester` is staging, not production; do not infer public-service or credential-isolation readiness from CI tests.
+
+The guarded `scripts/nyx-tester-auto-merge.mjs` follows the generation step in the Dev workflow, uses the same **single-repository GitHub App token**, checks SHA ancestry and exact target branch, eligible source/test files, pending review blockers, `build` and `GitGuardian Security Checks`, and verifies merge receipt + `tester` branch. It cannot merge, edit, rename, or create PRs to `master` or `main`. No deployment actions or runtime toggles are performed. Failure/timeouts stop, never override. Approvals are still required for production.
+
+---
+
 # NYX Tester staging pipeline — confirmation-only merge
 
 ## Authority and scope
