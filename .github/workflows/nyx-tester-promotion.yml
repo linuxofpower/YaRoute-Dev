@@ -1,0 +1,57 @@
+name: NYX Prepare Tester Promotion (approval gated)
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nyx-tester-promotion
+  cancel-in-progress: false
+
+jobs:
+  prepare-tester-pr:
+    # Only trusted CI after a main push. Missing App setup means fail closed.
+    if: >
+      vars.NYX_TESTER_PROMOTION_APP_ID != '' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify staging contract before acquiring target token
+        run: node --test tests/nyx-tester-stage.test.cjs
+      - name: Obtain short-lived target-repository GitHub App token
+        id: target-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.NYX_TESTER_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.NYX_TESTER_PROMOTION_APP_PRIVATE_KEY }}
+          owner: yaMorozYaroslav
+          repositories: YaRoute
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Stage exact Dev code into a draft Tester PR only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NYX_TESTER_TOKEN: ${{ steps.target-token.outputs.token }}
+          NYX_SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: node scripts/nyx-tester-stage.mjs
