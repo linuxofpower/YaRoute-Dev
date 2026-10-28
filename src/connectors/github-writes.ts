@@ -58,7 +58,10 @@ export class GithubWriteConnector {
        (suffix!=='' && !suffix.startsWith('/')) ||
        (suffix.includes('..') && !(method==='GET' &&
          /^\/compare\/(?:main|master)\.\.\.tester$/.test(suffix))) ||
-       /[?#]/.test(suffix)) throw new Error('GITHUB_API_PATH_INVALID');
+       (/[?#]/.test(suffix) && !(method==='GET' &&
+         (/^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(suffix) ||
+          /^\/actions\/runs\?head_sha=[a-f0-9]{40}&per_page=10$/.test(suffix)))))
+      throw new Error('GITHUB_API_PATH_INVALID');
     const response=await this.http('https://api.github.com/repos/'+repo+suffix,{
       method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json',
         'Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
@@ -155,6 +158,48 @@ export class GithubWriteConnector {
   }
 
   /**
+   * Open a review-ready, non-draft PR ONLY between two verified unprotected
+   * non-default branches. Exact SHA requirements prevent stale submissions.
+   * Actual merges require a separate explicit CI-verified NYX tool call.
+   */
+  async openReviewedNonDefault(owner:string,id:string,repo:string,
+    head:string,base:string,title:string,body:string,
+    expectedHeadSha:string,expectedBaseSha:string) {
+    this.workingBranch(head);this.workingBranch(base);
+    if(!head.startsWith('nyx/') || head===base ||
+       !/^[a-f0-9]{40}$/.test(expectedHeadSha) ||
+       !/^[a-f0-9]{40}$/.test(expectedBaseSha) ||
+       typeof title!=='string'||!title.trim()||title.length>200||
+       typeof body!=='string'||body.length>10000)
+      throw new Error('GITHUB_REVIEW_OPEN_INPUT_INVALID');
+    const def=await this.defaultBranch(owner,id,repo,'pulls:write',{branch:head});
+    if(head===def||base===def)
+      throw new Error('GITHUB_DEFAULT_BRANCH_WRITE_FORBIDDEN');
+    const inspect=async(ref:string)=>{
+      const result=await this.call(owner,id,repo,'resources:read','GET',
+        '/branches/'+encodeURIComponent(ref),undefined,{branch:ref});
+      if(result?.name!==ref||result?.protected!==false||
+         !/^[a-f0-9]{40}$/.test(result?.commit?.sha))
+        throw new Error('GITHUB_REVIEW_BRANCH_UNVERIFIED');
+      return result.commit.sha as string;
+    };
+    if((await inspect(head))!==expectedHeadSha ||
+       (await inspect(base))!==expectedBaseSha)
+      throw new Error('GITHUB_REVIEW_BRANCH_CHANGED');
+    const result=await this.call(owner,id,repo,'pulls:write','POST','/pulls',{
+      head,base,title:title.trim(),body,draft:false,maintainer_can_modify:false,
+    },{branch:head});
+    if(result?.draft!==false||!Number.isSafeInteger(result.number) ||
+       result?.head?.ref!==head||result?.base?.ref!==base ||
+       result?.head?.sha!==expectedHeadSha||
+       typeof result?.html_url!=='string')
+      throw new Error('GITHUB_REVIEW_PR_RESPONSE_INVALID');
+    return {repo,head,base,pr:result.number,url:result.html_url,
+      readyForReview:true,merged:false,headSha:expectedHeadSha,
+      baseSha:expectedBaseSha};
+  }
+
+  /**
    * Review-only release PR from the current non-default tester branch to a
    * GitHub-protected default (main/master). Never updates either ref.
    * The accepted source commit must be rechecked immediately before PR create.
@@ -218,6 +263,205 @@ export class GithubWriteConnector {
     return {repo,number:result.number,url:result.html_url,branch:source,
       base,draft:true,alreadyOpen:false,sourceSha:expectedTesterSha,
       changedFiles:comparison.files.length};
+  }
+
+  /**
+   * Stage an exact, reviewed Dev source snapshot on a *new* NYX review branch
+   * forked from the verified current tester commit. No tester/master updates.
+   * Read-only source GitHub installation and separate write-scoped destination
+   * installation; never cross-copy secrets, binaries or workflow config.
+   */
+  async stageTesterFromDev(owner:string,sourceId:string,destinationId:string,
+    sourceRepo:string,destinationRepo:string,sourceBranch:string,
+    expectedSourceSha:string,expectedTesterSha:string,
+    reviewBranch:string,paths:string[]) {
+    this.repoName(sourceRepo);this.repoName(destinationRepo);
+    if(!sourceRepo.endsWith('/YaRoute-Dev') ||
+       !destinationRepo.endsWith('/YaRoute') ||
+       sourceRepo===destinationRepo ||
+       sourceRepo.split('/')[0].toLowerCase()===destinationRepo.split('/')[0].toLowerCase())
+      throw new Error('GITHUB_TESTER_REPOSITORY_PAIR_INVALID');
+    if(sourceBranch!=='main')this.workingBranch(sourceBranch);
+    this.workingBranch(reviewBranch);
+    if(sourceBranch!=='main' && !sourceBranch.startsWith('nyx/'))
+      throw new Error('GITHUB_TESTER_SOURCE_BRANCH_FORBIDDEN');
+    if(!reviewBranch.startsWith('nyx/') ||
+       !/^[a-f0-9]{40}$/.test(expectedSourceSha) ||
+       !/^[a-f0-9]{40}$/.test(expectedTesterSha) ||
+       !Array.isArray(paths)||paths.length<1||paths.length>40||
+       new Set(paths).size!==paths.length)
+      throw new Error('GITHUB_TESTER_PROMOTION_INPUT_INVALID');
+    for(const p of paths) {
+      this.writablePath(p);
+      if(!/^(src|tests|docs)\//.test(p))throw new Error('GITHUB_TESTER_PROMOTION_PATH_FORBIDDEN');
+    }
+    // Preflight BOTH accounts before GitHub creates any objects.
+    const srcMeta=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','',undefined,{branch:sourceBranch});
+    if(srcMeta?.default_branch!=='main')
+      throw new Error('GITHUB_TESTER_SOURCE_DEFAULT_UNEXPECTED');
+    const dstMeta=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','',undefined,{branch:reviewBranch});
+    if(!['master','main'].includes(dstMeta?.default_branch))
+      throw new Error('GITHUB_TESTER_DESTINATION_DEFAULT_UNEXPECTED');
+    const srcRef=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','/git/ref/heads/'+encodeURIComponent(sourceBranch),
+      undefined,{branch:sourceBranch});
+    const destRef=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/git/ref/heads/tester',
+      undefined,{branch:reviewBranch});
+    if(srcRef?.object?.sha!==expectedSourceSha ||
+       destRef?.object?.sha!==expectedTesterSha)
+      throw new Error('GITHUB_TESTER_PROMOTION_SHA_CHANGED');
+    const destBranch=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/branches/tester',undefined,{branch:reviewBranch});
+    if(destBranch?.name!=='tester' || destBranch?.protected!==false ||
+       destBranch?.commit?.sha!==expectedTesterSha)
+      throw new Error('GITHUB_TESTER_BRANCH_UNVERIFIED');
+    const sourceCommit=await this.call(owner,sourceId,sourceRepo,'resources:read',
+      'GET','/git/commits/'+expectedSourceSha,undefined,{branch:sourceBranch});
+    const sourceTree=sourceCommit?.tree?.sha;
+    if(typeof sourceTree!=='string' || !/^[a-f0-9]{40}$/.test(sourceTree))
+      throw new Error('GITHUB_TESTER_SOURCE_TREE_UNVERIFIED');
+    const tree=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','/git/trees/'+sourceTree+'?recursive=1',
+      undefined,{branch:sourceBranch});
+    if(tree?.truncated!==false || !Array.isArray(tree.tree))
+      throw new Error('GITHUB_TESTER_SOURCE_TREE_INCOMPLETE');
+    const index=new Map<string,{sha:string;size:number}>();
+    for(const f of tree.tree) {
+      if(f?.type==='blob' && typeof f.path==='string' &&
+         /^[a-f0-9]{40}$/.test(f.sha) &&
+         Number.isSafeInteger(f.size) && f.size>=0) {
+        index.set(f.path,{sha:f.sha,size:f.size});
+      }
+    }
+    const files:{path:string;mode:'100644';type:'blob';content:string}[]=[];
+    let total=0;
+    for(const p of paths) {
+      const e=index.get(p);
+      if(!e || e.size>65536 || (total+=e.size)>768000)
+        throw new Error('GITHUB_TESTER_SOURCE_FILE_LIMIT');
+      // Enforce the owner's per-path source-read and destination-write grants.
+      await this.registry.requireResource(owner,sourceId,'resources:read',
+        {kind:'repository',id:sourceRepo,branch:sourceBranch,path:p});
+      await this.registry.requireResource(owner,destinationId,'contents:write',
+        {kind:'repository',id:destinationRepo,branch:reviewBranch,path:p});
+      const blob=await this.call(owner,sourceId,sourceRepo,'resources:read',
+        'GET','/git/blobs/'+e.sha,undefined,{branch:sourceBranch,path:p});
+      if(blob?.encoding!=='base64'||typeof blob.content!=='string')
+        throw new Error('GITHUB_TESTER_SOURCE_NOT_TEXT');
+      const bytes=Buffer.from(blob.content.replace(/\s/g,''),'base64');
+      if(bytes.length!==e.size||bytes.includes(0))
+        throw new Error('GITHUB_TESTER_SOURCE_NOT_TEXT');
+      const content=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+      files.push({path:p,mode:'100644',type:'blob',content});
+    }
+    // Recheck both refs immediately before the first write. Fail closed on race.
+    const latest=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/git/ref/heads/tester',
+      undefined,{branch:reviewBranch});
+    const latestSource=await this.call(owner,sourceId,sourceRepo,
+      'resources:read','GET','/git/ref/heads/'+encodeURIComponent(sourceBranch),
+      undefined,{branch:sourceBranch});
+    if(latest?.object?.sha!==expectedTesterSha ||
+       latestSource?.object?.sha!==expectedSourceSha)
+      throw new Error('GITHUB_TESTER_PROMOTION_SHA_CHANGED');
+    const targetCommit=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','GET','/git/commits/'+expectedTesterSha,
+      undefined,{branch:reviewBranch});
+    const baseTree=targetCommit?.tree?.sha;
+    if(!/^[a-f0-9]{40}$/.test(baseTree))
+      throw new Error('GITHUB_TESTER_BASE_TREE_UNVERIFIED');
+    const built=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','POST','/git/trees',
+      {base_tree:baseTree,tree:files},{branch:reviewBranch});
+    if(!/^[a-f0-9]{40}$/.test(built?.sha))
+      throw new Error('GITHUB_TESTER_TREE_RESPONSE_INVALID');
+    const committed=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','POST','/git/commits',{
+        message:'stage: reviewed Dev files for tester ('+expectedSourceSha.slice(0,12)+')',
+        tree:built.sha,parents:[expectedTesterSha],
+      },{branch:reviewBranch});
+    if(!/^[a-f0-9]{40}$/.test(committed?.sha))
+      throw new Error('GITHUB_TESTER_COMMIT_RESPONSE_INVALID');
+    const created=await this.call(owner,destinationId,destinationRepo,
+      'contents:write','POST','/git/refs',{
+        ref:'refs/heads/'+reviewBranch,sha:committed.sha,
+      },{branch:reviewBranch});
+    if(created?.ref!=='refs/heads/'+reviewBranch)
+      throw new Error('GITHUB_TESTER_BRANCH_RESPONSE_INVALID');
+    return {repo:destinationRepo,branch:reviewBranch,base:'tester',
+      sourceRepo,sourceSha:expectedSourceSha,testerSha:expectedTesterSha,
+      reviewSha:committed.sha,fileCount:files.length,
+      next:'nyx_connection_github_draft_pr_to_ref',merged:false};
+  }
+
+  /**
+   * Explicit reviewed promotion ONLY to an unprotected non-default branch.
+   * Require an exact head SHA, exact current base SHA, non-draft same-repository
+   * PR, and successful GitHub Actions CI for that head. No admin bypass,
+   * force-push, deployment dispatch or background auto-merge.
+   */
+  async mergeReviewedNonDefault(owner:string,id:string,repo:string,
+    number:number,expectedHeadSha:string,expectedBaseSha:string) {
+    if(!Number.isSafeInteger(number)||number<1||number>1000000||
+       !/^[a-f0-9]{40}$/.test(expectedHeadSha)||
+       !/^[a-f0-9]{40}$/.test(expectedBaseSha))
+      throw new Error('GITHUB_REVIEW_MERGE_INPUT_INVALID');
+    const pr=await this.call(owner,id,repo,'pulls:read','GET','/pulls/'+number);
+    const head=pr?.head?.ref,base=pr?.base?.ref;
+    this.workingBranch(head);this.workingBranch(base);
+    if(!head.startsWith('nyx/') || head===base ||
+       pr?.state!=='open' || pr?.draft!==false ||
+       pr?.head?.sha!==expectedHeadSha ||
+       pr?.base?.sha!==expectedBaseSha ||
+       pr?.head?.repo?.full_name!==repo ||
+       pr?.base?.repo?.full_name!==repo ||
+       pr?.mergeable!==true)
+      throw new Error('GITHUB_REVIEW_MERGE_UNVERIFIED');
+    const meta=await this.call(owner,id,repo,'resources:read','GET','',
+      undefined,{branch:base});
+    if(meta?.default_branch===base)
+      throw new Error('GITHUB_DEFAULT_BRANCH_WRITE_FORBIDDEN');
+    const branch=await this.call(owner,id,repo,'resources:read','GET',
+      '/branches/'+encodeURIComponent(base),undefined,{branch:base});
+    if(branch?.name!==base || branch?.protected!==false ||
+       branch?.commit?.sha!==expectedBaseSha)
+      throw new Error('GITHUB_REVIEW_BASE_CHANGED_OR_PROTECTED');
+    const runs=await this.call(owner,id,repo,'ci:read','GET',
+      '/actions/runs?head_sha='+expectedHeadSha+'&per_page=10',
+      undefined,{branch:head});
+    if(!Array.isArray(runs?.workflow_runs) ||
+       runs.workflow_runs.length>=10 ||
+       !runs.workflow_runs.some((run:any)=>
+         run?.head_sha===expectedHeadSha &&
+         run?.head_branch===head &&
+         run?.name==='CI' && run?.status==='completed' &&
+         run?.conclusion==='success') ||
+       runs.workflow_runs.some((run:any)=>
+         run?.head_sha===expectedHeadSha &&
+         run?.head_branch===head &&
+         ['queued','in_progress'].includes(run.status)))
+      throw new Error('GITHUB_REVIEW_CI_UNVERIFIED');
+    // One last server-side base ref and PR SHA check before the sole mutation.
+    const again=await this.call(owner,id,repo,'pulls:read','GET',
+      '/pulls/'+number,undefined,{branch:base});
+    const latest=await this.call(owner,id,repo,'resources:read','GET',
+      '/branches/'+encodeURIComponent(base),undefined,{branch:base});
+    if(again?.state!=='open'||again?.draft!==false||
+       again?.head?.sha!==expectedHeadSha||
+       again?.base?.sha!==expectedBaseSha||
+       latest?.commit?.sha!==expectedBaseSha||
+       latest?.protected!==false)
+      throw new Error('GITHUB_REVIEW_MERGE_STALE');
+    const result=await this.call(owner,id,repo,'pulls:write','PUT',
+      '/pulls/'+number+'/merge',
+      {sha:expectedHeadSha,merge_method:'merge'},{branch:base});
+    if(result?.merged!==true || !/^[a-f0-9]{40}$/.test(result.sha))
+      throw new Error('GITHUB_REVIEW_MERGE_RESPONSE_INVALID');
+    return {repo,pr:number,base,head,merged:true,mergeCommitSha:result.sha,
+      production:false,sourceSha:expectedHeadSha};
   }
 
   /** Create/update exactly one text file with GitHub's optimistic SHA check. */
