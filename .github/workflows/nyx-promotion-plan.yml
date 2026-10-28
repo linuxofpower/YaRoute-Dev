@@ -1,6 +1,8 @@
 name: NYX Dev to Tester reconciliation (read-only)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
