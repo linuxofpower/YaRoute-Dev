@@ -23,7 +23,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
         run: |
           node scripts/nyx-promotion-plan.mjs \
-            --source-repo linuxofpower/YaRoute-Dev \
+            --source-repo "$GITHUB_REPOSITORY" \
             --source-sha "$SOURCE_SHA" \
             --target-repo yaMorozYaroslav/YaRoute \
             --out nyx-promotion-plan.json
