@@ -20,9 +20,9 @@ const iniContract = () => ({
   scope: { default: 'local', localAreas: ['MAIN'], externalContext: ['chatgpt_library'], globalLabel: 'all_configured_nyx_drives' },
   arguments: { targets: true, maxTargets: 16 },
   sources: {
-    basic: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    normal: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    deep: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
+    basic: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    normal: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    deep: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
   },
   pathsVisible: true,
   mutation: 'conversation-artifact',
@@ -53,7 +53,7 @@ const locator = {
   paths: { basic: ref('paths.md'), normal: ref('n_paths.json'), deep: ref('d_paths.json') },
   canonical: { head: 'head.zip', body: 'body.zip', footer: 'footer.zip' },
 };
-const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs') };
+const routes = { maps: ref('maps.md'), todo: ref('todo.md'), todo_10: ref('todo_10.md'), toget: ref('toget.md'), handoffs: ref('Handoffs'), 'Voice.state': ref('areas/Voice/0_state/state.json'), 'Voice.config': ref('areas/Voice/0_state/config.json') };
 const markdown = '# Nyx Paths\n\n| key | area | path |\n| --- | --- | --- |\n' + Object.entries(routes).map(([key, r]) => `| ${key} | ${r.area} | ${r.path} |`).join('\n') + '\n';
 
 class MemoryResources {
@@ -68,6 +68,8 @@ class MemoryResources {
       'todo.md': '# Todo\n',
       'todo_10.md': '# Todo 10\n',
       'toget.md': '# ToGet\n',
+      'areas/Voice/0_state/state.json': JSON.stringify({ area: 'Voice', state: {} }),
+      'areas/Voice/0_state/config.json': JSON.stringify({ area: 'Voice', rules: [] }),
     }));
     this.reads = []; this.writes = []; this.stats = 0;
   }

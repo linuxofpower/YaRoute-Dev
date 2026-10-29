@@ -19,9 +19,9 @@ const contract = () => ({
   scope: { default: 'local', localAreas: ['MAIN'], externalContext: ['chatgpt_library'], globalLabel: 'all_configured_nyx_drives' },
   arguments: { targets: true, maxTargets: 16 },
   sources: {
-    basic: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    normal: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
-    deep: [source('maps'), source('nyxcli'), source('todo', 'targeted'), source('todo_10', 'targeted'), source('toget', 'targeted')],
+    basic: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    normal: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
+    deep: [source('maps'), source('nyxcli'), source('todo'), source('todo_10'), source('toget')],
   },
   pathsVisible: true,
   mutation: 'conversation-artifact',

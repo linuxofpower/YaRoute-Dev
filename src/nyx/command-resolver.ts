@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cli, CommandRequest, requestSchema } from './runtime.schema';
 
 const modifierPattern = /^o([lg])([bnd])$/i;
+const inheritedModifierPattern = /^([lg])([bnd])o$/i;
 const depthByCode = { b: 'basic', n: 'normal', d: 'deep' } as const;
 const codeByDepth = { basic: 'B', normal: 'N', deep: 'D' } as const;
 
@@ -19,7 +20,7 @@ export class NyxCommandResolver {
     if (!contract) throw new Error('COMMAND_EXECUTION_CONTRACT_MISSING');
     if (Object.values(contract.sources).flat().some(s => s.perTarget && !s.key.includes('{target}'))) throw new Error('TARGET_CONTRACT_INVALID');
 
-    const modifiers: Array<{ scope: 'local' | 'global'; depth: 'basic' | 'normal' | 'deep' }> = [];
+    const modifiers: Array<{ scope: 'local' | 'global'; depth: 'basic' | 'normal' | 'deep'; source: 'explicit' | 'inherited' }> = [];
     const operations: Array<'++' | '--'> = [];
     const targetArgs: string[] = [];
     for (const token of request.args) {
@@ -30,9 +31,11 @@ export class NyxCommandResolver {
         targetArgs.push(token);
         continue;
       }
-      const modifier = modifierPattern.exec(token);
+      const prefixModifier = modifierPattern.exec(token);
+      const inheritedModifier = inheritedModifierPattern.exec(token);
+      const modifier = prefixModifier ?? inheritedModifier;
       if (modifier) {
-        modifiers.push({ scope: modifier[1].toLowerCase() === 'l' ? 'local' : 'global', depth: depthByCode[modifier[2].toLowerCase() as keyof typeof depthByCode] });
+        modifiers.push({ scope: modifier[1].toLowerCase() === 'l' ? 'local' : 'global', depth: depthByCode[modifier[2].toLowerCase() as keyof typeof depthByCode], source: prefixModifier ? 'explicit' : 'inherited' });
       } else if (token === '++' || token === '--') operations.push(token);
       else targetArgs.push(token);
     }
@@ -48,7 +51,7 @@ export class NyxCommandResolver {
     if (!contract.depth.allowed.includes(depth)) throw new Error('DEPTH_NOT_ALLOWED');
     const scope = request.scope ?? explicit?.scope ?? contract.scope?.default;
     const modifier = scope ? `o${scope === 'local' ? 'L' : 'G'}${codeByDepth[depth]}` : undefined;
-    const modifierSource = explicit ? 'explicit' : (request.scope || request.depth) ? 'request' : contract.scope ? 'default' : undefined;
+    const modifierSource = explicit ? explicit.source : (request.scope || request.depth) ? 'request' : contract.scope ? 'default' : undefined;
 
     if ((!contract.arguments.targets && targetArgs.length) || targetArgs.length > contract.arguments.maxTargets) throw new Error('ARGUMENTS_NOT_ALLOWED');
     const targets = Array.from(new Map(targetArgs.map(a => [a.toLowerCase(), a])).values());
