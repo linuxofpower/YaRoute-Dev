@@ -44,3 +44,13 @@ test('incomplete tree or unexpected schema stops planning',()=>{
  assert.throws(()=>m.candidatePaths({truncated:true,tree:[]},{truncated:false,tree:[]}),/TRUNCATED_TREE/);
  assert.throws(()=>m.adaptMcpForTester('some untrusted code'),/MCP_SOURCE_INVALID/);
 });
+
+test('promotion refuses silently omitted runtime authority/profile drift',async()=>{
+ const {assertRuntimeProfileParity}=await import('../scripts/nyx-tester-stage.mjs');
+ const tree=sha=>({truncated:false,tree:sha?[{type:'blob',path:'config/nyx-runtime-profile.json',sha}]:[]});
+ assert.doesNotThrow(()=>assertRuntimeProfileParity(tree('a'.repeat(40)),tree('a'.repeat(40))));
+ for(const target of [tree('b'.repeat(40)),tree(null)]) {
+  assert.throws(()=>assertRuntimeProfileParity(tree('a'.repeat(40)),target),/RUNTIME_PROFILE_RECONCILIATION_REQUIRED/);
+ }
+ assert.throws(()=>assertRuntimeProfileParity({truncated:true,tree:[]},tree('a'.repeat(40))),/TRUNCATED_TREE/);
+});

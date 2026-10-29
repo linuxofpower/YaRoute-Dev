@@ -345,3 +345,28 @@ restart/reauthorization/revoke tests. No production release is implied.
 The accepted Dev implementation no longer scrubs inherited private Rclone settings from process memory. In public mode, startup **fails closed** if any `RCLONE_CONFIG*` or `NYX_SHARED_ROOTS_JSON` variable is present, or a legacy Rclone config file is detected. Remove these settings from the **Dev Heroku app's stored config** before public startup; a secure independent recovery backup and the working private NestNyxPro app are the rollback path. The earlier transitional in-process quarantine procedure above is superseded by this strict rule. Do not modify Pro's settings.
 
 Release remains gated on PR review, CI, promotion to `YaRoute:tester`, exact deployed commit and health checks, separate tenant vault and OAuth configuration, and two real independently authenticated users with cross-owner denial. No public write or delete capability is authorized.
+
+## Verified-root binding and activation concurrency — 2026-10-28
+
+A successful MEGA pending probe now seals the normalized selected root inside
+that owner/connection's encrypted credential. Activation requires the current
+single root grant to match that proof. Active lists and probes also require the
+same binding, so editing a grant cannot reuse old verification for a different
+folder. Existing MEGA credentials without a binding require fresh enrollment
+and verification before use; Google Drive credentials retain their existing
+folder-ID binding.
+
+Activation's locked SQL selection includes the exact encrypted pending profile
+inspected before the transaction. A concurrent replacement fails verification
+without deleting the existing active credential.
+
+Private `nyx_head_status` reports runtime profile/key preflight diagnostics
+without source contents. A verified bootstrap is not proof of freshness against
+the newest Footer. Changed pins remain execution blockers and must be reviewed;
+diagnostics never update them. Dev-to-Tester staging now rejects runtime-profile
+drift rather than silently omitting target-owned configuration. Reconcile the
+profile through a separate reviewed Tester change before retrying promotion.
+
+Real acceptance still requires two independently authenticated MEGA accounts,
+cross-owner denial, restart/revoke checks and exact deployed SHA verification.
+No local/operator credential retirement is implied by these source changes.

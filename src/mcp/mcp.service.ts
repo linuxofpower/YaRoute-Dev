@@ -603,8 +603,12 @@ export class McpService {
       this.connectorOwner();
       const locator=await this.bootstrap.locate();
       const {cli,hash}=await this.cliRegistry.current(locator);
+      const preflight=await this.commands.inspectRuntimeProfile(locator,hash);
       return {
-        status:'READY',role:'constitution-library',canonical:locator.canonical,
+        status:preflight.ready?'BOOTSTRAP_VERIFIED':'NOT_READY',
+        role:'constitution-library',canonical:locator.canonical,
+        canonical_freshness:'bootstrap-pointer-only; newest Footer not independently checked',
+        preflight,
         cli:{version:cli.version,sha256:hash},
         library:this.headLibrary.snapshot(),
         source_of_truth:'canonical Head bundle',

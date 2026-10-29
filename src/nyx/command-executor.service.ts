@@ -10,6 +10,9 @@ import { ChatConfigState, HandoffStore, assertNoSecrets } from './handoff-store.
 @Injectable()
 export class NyxCommandExecutor {
   constructor(private readonly bootstrap: NyxBootstrapService, private readonly registry: NyxCliRegistryService, private readonly resolver: NyxCommandResolver, private readonly resources: NyxResourceResolver, private readonly handoffs: HandoffStore, private readonly profiles: NyxExecutionProfileService) {}
+  async inspectRuntimeProfile(locator: Parameters<NyxExecutionProfileService['inspect']>[0], cliHash: string) {
+    return this.profiles.inspect(locator, cliHash);
+  }
   async execute(request: CommandRequest, owner = 'api-key') {
     const locator = await this.bootstrap.locate();
     const { cli, hash } = await this.registry.current(locator);
