@@ -2,15 +2,30 @@ import { Injectable } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import { Cli, Locator, parseJson, profileSchema } from './runtime.schema';
 import { NyxResourceStore, sha256 } from './resource-store.service';
+import { assertRuntimePinBoundary } from './runtime-pin-repair';
 
 @Injectable()
 export class NyxExecutionProfileService {
   constructor(private readonly store: NyxResourceStore) {}
+  async inspectMaintenanceTarget(locator: Locator, text: string, cliHash: string) {
+    const configured = await this.profileText(locator);
+    if (configured === undefined) throw new Error('MAINTENANCE_CONFIGURED_PROFILE_REQUIRED');
+    // Validate every source definition before making any target-directed private read.
+    assertRuntimePinBoundary(configured, text);
+    return this.inspectText(text, cliHash);
+  }
   /** Private diagnostics only: never reconcile pins or return source contents. */
   async inspect(locator: Locator, cliHash: string) {
     try {
       const text = await this.profileText(locator);
       if (text === undefined) return { ready: true, configured: false, keys: [] };
+      return this.inspectText(text, cliHash);
+    } catch {
+      return { ready: false, configured: true, error: 'EXECUTION_PROFILE_INVALID_OR_UNAVAILABLE', keys: [] };
+    }
+  }
+  async inspectText(text: string, cliHash: string) {
+    try {
       const profile = profileSchema.parse(parseJson(text));
       const keys = [];
       for (const source of profile.keySources) {
