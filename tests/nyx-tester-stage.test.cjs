@@ -61,3 +61,10 @@ test('workflow-only commits must exit as successful no-op instead of creating an
  assert.equal(m.stageRequired([{path:'src/x.ts'}],null),true);
  assert.equal(m.stageRequired([],JSON.stringify({mode:'observe'})),true);
 });
+
+test('normalized source identical to Tester tree is a no-op, even with a differing source blob',()=>{
+ const a='a'.repeat(40),b='b'.repeat(40);
+ assert.equal(m.hasEffectiveTreeChange(a,a),false);
+ assert.equal(m.hasEffectiveTreeChange(a,b),true);
+ assert.throws(()=>m.hasEffectiveTreeChange('not-sha',b),/STAGING_TREE_INVALID/);
+});
