@@ -56,6 +56,16 @@ test('require all exact-sha check runs to be green',()=>{
  assert.throws(()=>mod.validateChecks({...c,check_runs:[c.check_runs[0],{...c.check_runs[0]}]}),/DUPLICATE_OR_UNNAMED_CHECK/);
 });
 
+test('require a distinct write-authorized approval on the exact head',()=>{
+ const valid={state:'APPROVED',commit_id:HEAD,user:{login:'reviewer'}};
+ assert.deepEqual(mod.validateReviews([valid],HEAD,'author'),['reviewer']);
+ assert.throws(()=>mod.validateReviews([],HEAD,'author'),/APPROVAL_REQUIRED/);
+ assert.throws(()=>mod.validateReviews([{...valid,commit_id:BASE}],HEAD,'author'),/APPROVAL_REQUIRED/);
+ assert.throws(()=>mod.validateReviews([{...valid,user:{login:'author'}}],HEAD,'author'),/APPROVAL_REQUIRED/);
+ assert.throws(()=>mod.validateReviews([valid,{state:'CHANGES_REQUESTED'}],HEAD,'author'),/REVIEW_BLOCKED/);
+ assert.equal(mod.validateApproverPermissions([{permission:'write'}]),true);
+ assert.throws(()=>mod.validateApproverPermissions([{permission:'read'}]),/WRITE_APPROVAL_REQUIRED/);
+});
 test('profile change requires independent exact-mode verification',()=>{
  const c=candidate();c.files.push({filename:'config/nyx-runtime-profile.json',status:'modified'});c.pr.changed_files=3;
  assert.throws(()=>mod.validatePull(c),/UNSAFE_PATH/);
