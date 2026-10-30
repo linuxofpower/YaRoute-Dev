@@ -12,6 +12,8 @@ const IGNORE=new Set([
  'tests/branding.test.cjs','tests/devpronestnyx-stage.test.cjs',
  'tests/nyx-promotion-pipeline.test.cjs','tests/nyx-tester-stage.test.cjs',
  'tests/github-api-writes.test.cjs',
+  // This test imports Dev-only release script, never copied to Tester.
+  'tests/nyx-bot-master-release.test.cjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy
