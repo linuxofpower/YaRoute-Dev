@@ -630,7 +630,7 @@ export class McpService {
       const {cli,hash}=await this.cliRegistry.current(locator);
       const preflight=await this.commands.inspectRuntimeProfile(locator,hash);
       return {
-        status:preflight.ready?'BOOTSTRAP_VERIFIED':'NOT_READY',
+        status:preflight.ready?(('driftDetected' in preflight && preflight.driftDetected)?'BOOTSTRAP_VERIFIED_WITH_WARNINGS':'BOOTSTRAP_VERIFIED'):'NOT_READY',
         role:'constitution-library',canonical:locator.canonical,
         canonical_freshness:'bootstrap-pointer-only; newest Footer not independently checked',
         preflight,

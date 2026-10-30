@@ -45,3 +45,26 @@ the private NestNyx app and its MCP tool inventory is refreshed. Source commits
 or Dev CI alone do not update a connected deployment. The existing target-owned
 runtime-profile parity gate still applies to automatic Dev-to-Tester promotion;
 this implementation does not bypass that gate or modify stored/local credentials.
+
+## Mutable draft overlay drift (30 October 2026)
+
+The runtime profile distinguishes enforced integrity pins (default, fail-closed) from
+**observe-only** integrity receipts for the *two exact known mutable staging drafts*:
+`temp_paths` and `temp_nyxcli`. Only these named MAIN draft files under
+`0_repository/3_template/staging/drafts/` may have `mode: "observe"`.
+A change or read error is returned as `KEY_OBSERVE_*` warning and is reported
+by the private preflight diagnostics; the changed bytes are **never** accepted
+as CLI authority, executed, used to change routing, or silently re-pinned.
+Other keys, including `active_key`, remain enforced and fail-closed.
+
+This prevents routine draft editing from globally disabling `ini`, `hel`,
+or unrelated commands. It does **not** bypass verification of the real canonical
+CLI, the runtime profile, authoritative source reads, resource routing or FIF
+readback. Stale bootstrap Head/Body/Footer pointers, unsupported InitBun
+contracts, and undeployed backend source are separate blockers and must be
+resolved through the reviewed Tester/production release workflow. A Dev merge
+alone is not proof of a working live initialization.
+
+Regression tests reject observe mode on arbitrary keys or source paths, prove
+that both draft drift and unavailability are reported without blocking, and
+verify that a changed enforced key still prevents execution.
