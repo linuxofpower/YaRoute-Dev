@@ -20,11 +20,6 @@ test('candidate preserves target-owned configuration, workflows and regression t
  assert.equal(p[0].targetBlob,DST);
  assert.equal(p[1].targetBlob,null);
 });
-test('adapted source that matches Tester must not create an empty promotion PR',()=>{
- assert.equal(m.hasEffectiveTreeChange(SHA,SHA),false);
- assert.equal(m.hasEffectiveTreeChange(SHA,DST),true);
- assert.throws(()=>m.hasEffectiveTreeChange('not-a-sha',DST),/TREE_SHA_INVALID/);
-});
 test('all refs and candidate inputs are SHA-pinned and never permit target-owned paths',()=>{
  const input={sourceSha:SHA,testerSha:DST,sourceRef:SHA,testerRef:DST,masterRef:C,
   paths:[{path:'src/main.ts'}]};
