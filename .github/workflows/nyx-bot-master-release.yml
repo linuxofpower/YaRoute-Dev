@@ -1,0 +1,48 @@
+name: NYX bot-authored Tester to Master draft (never merge)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tester_sha:
+        description: Exact 40-character verified Tester commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nyx-master-release-review
+  cancel-in-progress: false
+
+jobs:
+  create-review-only-draft:
+    if: vars.NYX_TESTER_PROMOTION_APP_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate fail-closed release contracts
+        run: node --test tests/nyx-bot-master-release.test.cjs
+      - name: Obtain short-lived, target-repo-scoped GitHub App identity
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.NYX_TESTER_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.NYX_TESTER_PROMOTION_APP_PRIVATE_KEY }}
+          owner: yaMorozYaroslav
+          repositories: YaRoute
+          permission-contents: write
+          permission-pull-requests: write
+          permission-checks: read
+      - name: Create bot-authored draft PR from exact Tester tree (never merge)
+        env:
+          NYX_TESTER_SHA: ${{ inputs.tester_sha }}
+          NYX_MASTER_RELEASE_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: node scripts/nyx-bot-master-release.mjs
