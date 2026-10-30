@@ -6,7 +6,7 @@ or weakening CODEOWNERS**, and without automatically merging/deploying multi-use
 MEGA work to production.
 
 Development remains:
-- linuxofpower/YaRoute-Dev/main (Dev)
+- Dev repository main (Dev)
 - yaMorozYaroslav/YaRoute/tester (Tester, can be promoted automatically)
 - yaMorozYaroslav/YaRoute/master (protected production)
 
