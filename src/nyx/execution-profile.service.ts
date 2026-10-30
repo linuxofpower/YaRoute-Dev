@@ -18,7 +18,7 @@ export class NyxExecutionProfileService {
   async inspect(locator: Locator, cliHash: string) {
     try {
       const text = await this.profileText(locator);
-      if (text === undefined) return { ready: true, configured: false, keys: [] };
+      if (text === undefined) return { ready: true, configured: false, driftDetected: false, keys: [] };
       return this.inspectText(text, cliHash);
     } catch {
       return { ready: false, configured: true, error: 'EXECUTION_PROFILE_INVALID_OR_UNAVAILABLE', keys: [] };
@@ -31,13 +31,13 @@ export class NyxExecutionProfileService {
       for (const source of profile.keySources) {
         try {
           const actual = sha256(await this.store.read(source.ref, 256 * 1024));
-          keys.push({ key: source.key, expected: source.sha256, actual,
+          keys.push({ key: source.key, mode: source.mode, expected: source.sha256, actual,
             status: actual === source.sha256 ? 'verified' : 'changed' });
-        } catch { keys.push({ key: source.key, expected: source.sha256, status: 'unavailable' }); }
+        } catch { keys.push({ key: source.key, mode: source.mode, expected: source.sha256, status: 'unavailable' }); }
       }
       const authorityMatches = profile.cliSha256 === cliHash;
-      return { ready: authorityMatches && keys.every(key => key.status === 'verified'),
-        configured: true, profileSha256: sha256(text), authorityMatches,
+      return { ready: authorityMatches && keys.every(key => key.mode === 'observe' || key.status === 'verified'),
+        driftDetected: keys.some(key => key.status !== 'verified'), configured: true, profileSha256: sha256(text), authorityMatches,
         expectedCliSha256: profile.cliSha256, actualCliSha256: cliHash, keys };
     } catch {
       return { ready: false, configured: true, error: 'EXECUTION_PROFILE_INVALID_OR_UNAVAILABLE', keys: [] };
@@ -49,10 +49,10 @@ export class NyxExecutionProfileService {
     if (locator.executionProfile) return this.store.read(locator.executionProfile, 128 * 1024);
     return undefined;
   }
-  async apply(locator: Locator, cli: Cli, cliHash: string): Promise<{ cli: Cli; hash?: string; keyReceipts?: Array<{ key: string; sha256: string }> }> {
+  async apply(locator: Locator, cli: Cli, cliHash: string): Promise<{ cli: Cli; hash?: string; keyReceipts?: Array<{ key: string; sha256: string }>; keyWarnings?: string[] }> {
     try {
       const text = await this.profileText(locator);
-      return text === undefined ? { cli, keyReceipts: [] } : await this.applyText(text, cli, cliHash);
+      return text === undefined ? { cli, keyReceipts: [], keyWarnings: [] } : await this.applyText(text, cli, cliHash);
     }
     catch (error) { this.rethrowProfileError(error); }
   }
@@ -65,16 +65,29 @@ export class NyxExecutionProfileService {
     // The canonical CLI is checked first; profile bindings cannot add commands or aliases.
     const profile = profileSchema.parse(parseJson(text));
     if (profile.cliSha256 !== cliHash) throw new Error('PROFILE_AUTHORITY_CHANGED');
-    // Read and hash the active, explicitly pinned keys before resolving any command.
-    // Arbitrary text keys must never be evaluated as backend code. If their bytes change,
-    // fail closed so ChatGPT can apply/reconcile the accepted pending key explicitly.
+    // Enforce trusted pins fail-closed. Mutable, non-executable staging overlays are
+    // diagnostic-only: they cannot change canonical CLI authority or execution routes.
+    // Never promote an observed hash or execute text from an observed overlay.
     const keyReceipts: Array<{ key: string; sha256: string }> = [];
+    const keyWarnings: string[] = [];
     for (const source of profile.keySources) {
       let content: string;
       try { content = await this.store.read(source.ref, 256 * 1024); }
-      catch { throw new Error(`KEY_PREFLIGHT_SOURCE_UNAVAILABLE:${source.key}`); }
+      catch {
+        if (source.mode === 'observe') {
+          keyWarnings.push(`KEY_OBSERVE_SOURCE_UNAVAILABLE:${source.key}`);
+          continue;
+        }
+        throw new Error(`KEY_PREFLIGHT_SOURCE_UNAVAILABLE:${source.key}`);
+      }
       const actual = sha256(content);
-      if (actual !== source.sha256) throw new Error(`KEY_PREFLIGHT_CHANGED_REQUIRES_CHATGPT:${source.key}`);
+      if (actual !== source.sha256) {
+        if (source.mode === 'observe') {
+          keyWarnings.push(`KEY_OBSERVE_CHANGED_REQUIRES_REVIEW:${source.key}`);
+          continue;
+        }
+        throw new Error(`KEY_PREFLIGHT_CHANGED_REQUIRES_CHATGPT:${source.key}`);
+      }
       keyReceipts.push({ key: source.key, sha256: actual });
     }
     const commands = { ...cli.commands };
@@ -82,6 +95,6 @@ export class NyxExecutionProfileService {
       if (!Object.prototype.hasOwnProperty.call(commands, name)) throw new Error('PROFILE_COMMAND_NOT_CANONICAL');
       commands[name] = { ...commands[name], execution };
     }
-    return { cli: { ...cli, commands }, hash: sha256(text), keyReceipts };
+    return { cli: { ...cli, commands }, hash: sha256(text), keyReceipts, keyWarnings };
   }
 }
