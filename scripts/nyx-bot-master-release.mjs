@@ -47,6 +47,7 @@ async function execute(){
  const request=async(path,method='GET',body,allow404=false)=>{
    const response=await fetch(root+path,{method,redirect:'error',signal:AbortSignal.timeout(20000),
      headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json',
+       'Content-Type':'application/json',
        'X-GitHub-Api-Version':'2022-11-28','User-Agent':'NYX-Bot-Release-Review'},
      ...(body?{body:JSON.stringify(body)}:{})});
    if(allow404&&response.status===404)return null;
