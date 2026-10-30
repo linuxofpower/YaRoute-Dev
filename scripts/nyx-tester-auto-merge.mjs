@@ -35,9 +35,21 @@ export function validateChecks(list){
    if(!byName.has(required))fail('REQUIRED_CHECK_MISSING_'+required.replace(/[^A-Za-z0-9]/g,'_'));
  return true;
 }
-function validateReviews(reviews){
+/** Approval must be for the exact current head, not merely an old PR revision. */
+export function validateReviews(reviews,headSha,authorLogin){
  if(!Array.isArray(reviews)||reviews.length>=100)fail('REVIEWS_INCOMPLETE');
+ if(!SHA.test(headSha??'')||!authorLogin)fail('REVIEW_CONTEXT_INVALID');
  if(reviews.some(r=>r.state==='CHANGES_REQUESTED'||r.state==='PENDING'))fail('REVIEW_BLOCKED');
+ const approvers=[...new Set(reviews.filter(r=>r.state==='APPROVED'&&
+  r.commit_id===headSha&&r.user?.login&&r.user.login!==authorLogin)
+  .map(r=>r.user.login))];
+ if(!approvers.length)fail('APPROVAL_REQUIRED');
+ return approvers;
+}
+export function validateApproverPermissions(permissions){
+ if(!Array.isArray(permissions)||!permissions.some(p=>
+   ['admin','maintain','write'].includes(p?.permission)))fail('WRITE_APPROVAL_REQUIRED');
+ return true;
 }
 async function request(path,method='GET',body){
  const token=process.env.NYX_TESTER_TOKEN;
@@ -80,7 +92,10 @@ async function inspect(prNum,sourceSha){
    profileReviewed=true;
  }
  validatePull({pr,branch,master,sourceSha,files,commit,profileReviewed});
- validateReviews(reviews);
+ const approvers=validateReviews(reviews,pr.head.sha,pr.user?.login);
+ const permissions=await Promise.all(approvers.map(login=>
+  gh('/collaborators/'+encodeURIComponent(login)+'/permission')));
+ validateApproverPermissions(permissions);
  return {pr,branch};
 }
 async function waitForGreen(prNum,sha,sourceSha){
