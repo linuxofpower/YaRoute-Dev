@@ -55,3 +55,11 @@ test('require all exact-sha check runs to be green',()=>{
  assert.throws(()=>mod.validateChecks({...c,check_runs:[c.check_runs[0]],total_count:1}),/CHECK_INVENTORY_INCOMPLETE/);
  assert.throws(()=>mod.validateChecks({...c,check_runs:[c.check_runs[0],{...c.check_runs[0]}]}),/DUPLICATE_OR_UNNAMED_CHECK/);
 });
+
+test('profile change requires independent exact-mode verification',()=>{
+ const c=candidate();c.files.push({filename:'config/nyx-runtime-profile.json',status:'modified'});c.pr.changed_files=3;
+ assert.throws(()=>mod.validatePull(c),/UNSAFE_PATH/);
+ assert.equal(mod.validatePull({...c,profileReviewed:true}),true);
+ const bad={...c,files:[...c.files.slice(0,2),{filename:'config/heroku-public.json',status:'modified'}]};
+ assert.throws(()=>mod.validatePull({...bad,profileReviewed:true}),/UNSAFE_PATH/);
+});
