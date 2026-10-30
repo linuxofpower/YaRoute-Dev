@@ -1,0 +1,69 @@
+name: NYX Read-only Heroku Runtime Health
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-runtime-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe configured public URL and attest running commit
+        env:
+          NYX_TESTER_HEALTH_URL: ${{ vars.NYX_TESTER_HEALTH_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const settings=JSON.parse(readFileSync('config/heroku-public.json','utf8'));
+          const explicit=String(process.env.NYX_TESTER_HEALTH_URL??'').trim();
+          const target=explicit||settings.NYX_PUBLIC_URL;
+          const report={schema:'nyx.public-health-attestation.v1',
+            targetSelection:explicit?'explicit-tester-health-url':'configured-public-url-not-proof-of-tester',
+            target,probe:'GET /health',status:'UNVERIFIED'};
+          const emit=()=>{writeFileSync('nyx-public-health-report.json',JSON.stringify(report,null,2)+'\n');
+            console.log(JSON.stringify(report));};
+          try{
+            const url=new URL(target);
+            if(url.protocol!=='https:'||!url.hostname.endsWith('.herokuapp.com')||
+              url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('UNSAFE_OR_UNSUPPORTED_HEALTH_URL');
+            const [resp,ref]=await Promise.all([
+              fetch(url.origin+'/health',{redirect:'error',signal:AbortSignal.timeout(15000)}),
+              fetch('https://api.github.com/repos/yaMorozYaroslav/YaRoute/branches/tester',
+                {headers:{Accept:'application/vnd.github+json','User-Agent':'NYX-Health-Attestation'},
+                 signal:AbortSignal.timeout(12000)}),
+            ]);
+            report.httpStatus=resp.status;
+            const data=resp.ok?await resp.json().catch(()=>null):null;
+            const branch=ref.ok?await ref.json().catch(()=>null):null;
+            report.expectedTesterSha=branch?.commit?.sha??null;
+            report.observedCommit=typeof data?.commit==='string'?data.commit:null;
+            report.service=typeof data?.service==='string'?data.service:null;
+            report.healthy=resp.ok&&data?.ok===true;
+            report.commitMatchesTester=report.healthy&&report.expectedTesterSha===report.observedCommit;
+            report.status=!report.healthy?'LIVE_HEALTH_FAILED':
+              report.commitMatchesTester?'LIVE_COMMIT_MATCHES_TESTER':
+              explicit?'TESTER_CONFIGURED_URL_COMMIT_MISMATCH':'PUBLIC_URL_RESPONDING_TESTER_DEPLOYMENT_UNVERIFIED';
+          }catch(e){report.status='HEALTH_PROBE_FAILED';report.error=String(e?.message??e).slice(0,180);}
+          emit();
+          if(report.status==='HEALTH_PROBE_FAILED'||report.status==='LIVE_HEALTH_FAILED')process.exitCode=1;
+          if(explicit&&report.status==='TESTER_CONFIGURED_URL_COMMIT_MISMATCH')process.exitCode=2;
+          NODE
+      - name: Retain public-only health evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nyx-public-health-report
+          path: nyx-public-health-report.json
+          retention-days: 7
+          if-no-files-found: ignore
