@@ -2,6 +2,7 @@
 // Credentials are supplied by the runner from a repository-scoped GitHub App.
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
+import {reconcileObservedDraftProfile} from './nyx-runtime-draft-profile.mjs';
 const SHA=/^[a-f0-9]{40}$/,REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const fail=x=>{throw Error('NYX_TESTER_STAGE_'+x)};
 const TARGET='yaMorozYaroslav/YaRoute';
@@ -79,6 +80,15 @@ async function api(repo,path,token,method='GET',body){
  if(!response.ok)fail('GITHUB_'+response.status+'_'+path.split('?')[0].slice(0,55));
  return response.json();
 }
+async function sourceBlobText(repo,blobSha,token){
+ if(!SHA.test(blobSha??''))fail('PROFILE_BLOB_INVALID');
+ const blob=await api(repo,'/git/blobs/'+blobSha,token);
+ if(blob.encoding!=='base64'||blob.size>65536||typeof blob.content!=='string')fail('PROFILE_BLOB_NOT_TEXT');
+ const bytes=Buffer.from(blob.content.replace(/\s/g,''),'base64');
+ const text=bytes.toString('utf8');
+ if(bytes.includes(0)||!Buffer.from(text,'utf8').equals(bytes))fail('PROFILE_NON_UTF8');
+ return text;
+}
 async function stage(){
  const sourceRepo=process.env.GITHUB_REPOSITORY;
  const sourceSha=process.env.NYX_SOURCE_SHA;
@@ -103,7 +113,19 @@ async function stage(){
   api(TARGET,'/git/trees/'+targetSha+'?recursive=1',testerToken),
   api(TARGET,'/git/commits/'+targetSha,testerToken),
  ]);
- assertRuntimeProfileParity(source,target);
+ const srcProfile=source.tree?.find(x=>x.type==='blob'&&x.path==='config/nyx-runtime-profile.json')?.sha;
+ const dstProfile=target.tree?.find(x=>x.type==='blob'&&x.path==='config/nyx-runtime-profile.json')?.sha;
+ if(source.truncated!==false||target.truncated!==false||!SHA.test(srcProfile??'')||!SHA.test(dstProfile??''))fail('PROFILE_TREE_INCOMPLETE');
+ // Source and target profiles differ only for the two known mutable draft receipts.
+ // Reconcile by preserving Tester hashes; all enforced pins and command contracts must match.
+ let profileUpgrade=null;
+ if(srcProfile!==dstProfile){
+  const [sourceText,targetText]=await Promise.all([
+   sourceBlobText(sourceRepo,srcProfile,sourceToken),
+   sourceBlobText(TARGET,dstProfile,testerToken)]);
+  const resolution=reconcileObservedDraftProfile(sourceText,targetText);
+  if(resolution.changed)profileUpgrade=resolution.content;
+ }
  const paths=candidatePaths(source,target);
  validateCandidate({sourceSha,testerSha:targetSha,sourceRef:devBranch.commit?.sha,
    testerRef:testerBranch.commit?.sha,masterRef:masterBranch.commit?.sha,paths});
@@ -114,6 +136,7 @@ async function stage(){
  const existing=prs.find(x=>x.head?.ref===reviewBranch && x.base?.ref==='tester');
  if(existing){console.log(JSON.stringify({status:'EXISTING_DRAFT',url:existing.html_url,number:existing.number,branch:reviewBranch}));return}
  const tree=[];
+ if(profileUpgrade)tree.push({path:'config/nyx-runtime-profile.json',mode:'100644',type:'blob',content:profileUpgrade});
  for(const p of paths){
   const blob=await api(sourceRepo,'/git/blobs/'+p.sourceBlob,sourceToken);
   if(blob.encoding!=='base64'||typeof blob.content!=='string'||blob.size>65536)fail('NON_TEXT_OR_OVERSIZED_'+p.path);
@@ -142,7 +165,7 @@ async function stage(){
   body:'NYX automatic candidate only. DO NOT MERGE until user confirmation and passing exact-PR Tester CI/security checks.\n\n'+
    '- Dev: '+sourceRepo+' @ '+sourceSha+'\n- Tester parent: '+targetSha+
    '\n- Existing Tester-specific files preserved: workflows, install-rclone, deployment config, app metadata, CODEOWNERS, github-api-writes contract test.'+
-   '\n- No modification to master/main, live secrets or Heroku config.\n- Changed source/test paths: '+paths.length+
+   '\n- No modification to master/main, live secrets or Heroku config.\n- Tester draft profile upgraded to warning-only with target-owned hashes: '+Boolean(profileUpgrade)+'\n- Changed source/test paths: '+paths.length+
    '\n- Auth and tenant isolation require separate runtime acceptance before production.\n',
  });
  if(pr.draft!==true||pr.base?.ref!=='tester'||pr.head?.ref!==reviewBranch)fail('PR_RESPONSE_INVALID');
