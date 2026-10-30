@@ -27,7 +27,7 @@ export class RuntimeMaintenanceService {
     const snapshot=await this.snapshot(owner,id,repo,testerSha);
     return {
       schema:'nyx.maintenance.runtime-pins.v1',
-      status:snapshot.preflight.ready?'PINS_VERIFIED':
+      status:snapshot.preflight.ready && !('driftDetected' in snapshot.preflight && snapshot.preflight.driftDetected)?'PINS_VERIFIED':
         ('authorityMatches' in snapshot.preflight && snapshot.preflight.authorityMatches &&
           snapshot.preflight.keys.every(pin=>'actual' in pin))?'REVIEW_REQUIRED':'BLOCKED',
       target:{repo,base:'tester',sha:testerSha},
