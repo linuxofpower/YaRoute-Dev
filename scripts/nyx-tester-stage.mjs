@@ -2,6 +2,7 @@
 // Credentials are supplied by the runner from a repository-scoped GitHub App.
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
+import {appendFileSync} from 'node:fs';
 import {reconcileObservedDraftProfile} from './nyx-runtime-draft-profile.mjs';
 const SHA=/^[a-f0-9]{40}$/,REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const fail=x=>{throw Error('NYX_TESTER_STAGE_'+x)};
@@ -89,6 +90,8 @@ async function sourceBlobText(repo,blobSha,token){
  if(bytes.includes(0)||!Buffer.from(text,'utf8').equals(bytes))fail('PROFILE_NON_UTF8');
  return text;
 }
+export function stageRequired(paths,profileUpgrade){return (Array.isArray(paths)&&paths.length>0)||Boolean(profileUpgrade)}
+function stageReceipt(ready){if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,'candidate='+String(ready)+'\n')}
 async function stage(){
  const sourceRepo=process.env.GITHUB_REPOSITORY;
  const sourceSha=process.env.NYX_SOURCE_SHA;
@@ -127,6 +130,10 @@ async function stage(){
   if(resolution.changed)profileUpgrade=resolution.content;
  }
  const paths=candidatePaths(source,target);
+ if(!stageRequired(paths,profileUpgrade)){
+  stageReceipt(false);console.log(JSON.stringify({status:'NO_TESTER_CODE_CHANGES',sourceSha,targetSha}));
+  return;
+ }
  validateCandidate({sourceSha,testerSha:targetSha,sourceRef:devBranch.commit?.sha,
    testerRef:testerBranch.commit?.sha,masterRef:masterBranch.commit?.sha,paths});
  if(!SHA.test(stagingCommit.tree?.sha??''))fail('TESTER_BASE_TREE_INVALID');
@@ -134,7 +141,7 @@ async function stage(){
  const prs=await api(TARGET,'/pulls?state=open&base=tester&per_page=100',testerToken);
  if(!Array.isArray(prs)||prs.length===100)fail('PR_INVENTORY_INCOMPLETE');
  const existing=prs.find(x=>x.head?.ref===reviewBranch && x.base?.ref==='tester');
- if(existing){console.log(JSON.stringify({status:'EXISTING_DRAFT',url:existing.html_url,number:existing.number,branch:reviewBranch}));return}
+ if(existing){stageReceipt(true);console.log(JSON.stringify({status:'EXISTING_DRAFT',url:existing.html_url,number:existing.number,branch:reviewBranch}));return}
  const tree=[];
  if(profileUpgrade)tree.push({path:'config/nyx-runtime-profile.json',mode:'100644',type:'blob',content:profileUpgrade});
  for(const p of paths){
@@ -169,6 +176,7 @@ async function stage(){
    '\n- Auth and tenant isolation require separate runtime acceptance before production.\n',
  });
  if(pr.draft!==true||pr.base?.ref!=='tester'||pr.head?.ref!==reviewBranch)fail('PR_RESPONSE_INVALID');
+ stageReceipt(true);
  console.log(JSON.stringify({status:'DRAFT_REVIEW_READY',number:pr.number,url:pr.html_url,
   sourceSha,testerParentSha:targetSha,stagedSha:commit.sha,fileCount:tree.length,
   fingerprint:createHash('sha256').update(JSON.stringify(paths)).digest('hex')}));

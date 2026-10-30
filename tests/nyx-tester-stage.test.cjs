@@ -54,3 +54,10 @@ test('promotion refuses silently omitted runtime authority/profile drift',async(
  }
  assert.throws(()=>assertRuntimeProfileParity({truncated:true,tree:[]},tree('a'.repeat(40))),/TRUNCATED_TREE/);
 });
+
+test('workflow-only commits must exit as successful no-op instead of creating an empty Tester PR',()=>{
+ assert.equal(m.stageRequired([],null),false);
+ assert.equal(m.stageRequired([],''),false);
+ assert.equal(m.stageRequired([{path:'src/x.ts'}],null),true);
+ assert.equal(m.stageRequired([],JSON.stringify({mode:'observe'})),true);
+});
