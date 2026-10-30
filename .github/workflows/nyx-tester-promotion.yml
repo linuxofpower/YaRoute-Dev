@@ -52,12 +52,14 @@ jobs:
           permission-checks: read
           permission-actions: read
       - name: Stage exact Dev code into a draft Tester PR only
+        id: stage
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NYX_TESTER_TOKEN: ${{ steps.target-token.outputs.token }}
           NYX_SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: node scripts/nyx-tester-stage.mjs
       - name: Auto-merge exact verified Tester PR (never master/main)
+        if: steps.stage.outputs.candidate == 'true'
         env:
           NYX_TESTER_TOKEN: ${{ steps.target-token.outputs.token }}
           NYX_SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
