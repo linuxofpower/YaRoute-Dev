@@ -22,6 +22,11 @@ export function assertRuntimeProfileParity(source,target){
  if(!SHA.test(a??'')||!SHA.test(b??'')||a!==b)
   fail('RUNTIME_PROFILE_RECONCILIATION_REQUIRED');
 }
+/** Git trees can be byte-identical after Tester-specific source adaptation. */
+export function hasEffectiveTreeChange(baseTreeSha,newTreeSha){
+ if(!SHA.test(baseTreeSha??'')||!SHA.test(newTreeSha??''))fail('TREE_SHA_INVALID');
+ return baseTreeSha!==newTreeSha;
+}
 export function candidatePaths(source,target){
  const a=new Map(source.tree?.filter(x=>x.type==='blob').map(x=>[x.path,x.sha])??[]);
  const b=new Map(target.tree?.filter(x=>x.type==='blob').map(x=>[x.path,x.sha])??[]);
@@ -152,6 +157,11 @@ async function stage(){
  if(devAgain.commit?.sha!==sourceSha||testAgain.commit?.sha!==targetSha)fail('SOURCE_OR_TARGET_DRIFT');
  const newTree=await api(TARGET,'/git/trees',testerToken,'POST',{base_tree:stagingCommit.tree.sha,tree});
  if(!SHA.test(newTree.sha??''))fail('TREE_WRITE_UNVERIFIED');
+ if(!hasEffectiveTreeChange(stagingCommit.tree.sha,newTree.sha)){
+  console.log(JSON.stringify({status:'NO_EFFECTIVE_TESTER_CHANGES',
+   sourceSha,testerParentSha:targetSha,rawCandidateCount:paths.length}));
+  return;
+ }
  const commit=await api(TARGET,'/git/commits',testerToken,'POST',{
    message:'stage(nyx): reviewed Dev source for Tester CI (approval required)',
    tree:newTree.sha,parents:[targetSha],
