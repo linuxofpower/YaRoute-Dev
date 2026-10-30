@@ -59,7 +59,7 @@ async function execute(){
    request('/git/commits/'+sha),request('/pulls?state=open&base=master&per_page=100'),
    request('/commits/'+sha+'/check-runs?per_page=100')]);
  const compare=await request('/compare/'+master.commit.sha+'...'+sha);
- const planned=validateCandidate({repo,tester,master,commit:{...commit,sha},compare,sha,pulls,checks});
+ const planned=validateCandidate({repo,tester,master,commit,compare,sha,pulls,checks});
  if(await request('/git/ref/heads/'+encodeURIComponent(planned.branch),'GET',undefined,true))
    fail('RELEASE_BRANCH_ALREADY_EXISTS');
  const [latestTester,latestMaster]=await Promise.all([request('/branches/tester'),request('/branches/master')]);
