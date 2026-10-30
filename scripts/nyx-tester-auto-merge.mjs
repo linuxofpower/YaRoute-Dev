@@ -1,3 +1,4 @@
+import {validateTargetDraftModeUpgrade} from './nyx-runtime-draft-profile.mjs';
 /**
  * NYX: merge only a verified, machine-generated draft PR into YaRoute/tester.
  * No workflow, deployment, credential, main or master writes are possible here.
@@ -8,7 +9,7 @@ const fail=code=>{throw Error('NYX_TESTER_AUTOMERGE_'+code)};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const targetPath=path=>/^(src|tests)\/[A-Za-z0-9._/-]+$/.test(path)&&!path.includes('..')&&!path.includes('//')&&!path.endsWith('/');
 
-export function validatePull({pr,branch,master,sourceSha,files,commit}){
+export function validatePull({pr,branch,master,sourceSha,files,commit,profileReviewed=false}){
  if(!SHA.test(sourceSha??'')||!SHA.test(branch?.commit?.sha??'')||!SHA.test(master?.commit?.sha??''))fail('REF_INVALID');
  if(master.protected!==true||branch.protected!==false||branch.name!=='tester'||master.name!=='master')fail('PROTECTION_CHANGED');
  if(pr?.state!=='open'||pr.base?.ref!=='tester'||pr.base?.sha!==branch.commit.sha||pr.base?.repo?.full_name!==TARGET)fail('TARGET_CHANGED');
@@ -16,7 +17,7 @@ export function validatePull({pr,branch,master,sourceSha,files,commit}){
     pr.head.ref!=='nyx/promote-'+sourceSha.slice(0,10)+'-'+branch.commit.sha.slice(0,10))fail('SOURCE_UNVERIFIED');
  if(!pr.draft&&pr.mergeable===false)fail('NOT_MERGEABLE');
  if(pr.changed_files!==files?.length||!files.length||files.length>=100)fail('FILE_INVENTORY_INCOMPLETE');
- if(files.some(f=>!targetPath(f.filename)||!['added','modified'].includes(f.status)))fail('UNSAFE_PATH');
+ if(files.some(f=>!(targetPath(f.filename)||(profileReviewed&&f.filename==='config/nyx-runtime-profile.json'))||!['added','modified'].includes(f.status)))fail('UNSAFE_PATH');
  if(commit?.sha!==pr.head.sha||commit.parents?.length!==1||commit.parents[0]?.sha!==branch.commit.sha)fail('PARENT_UNVERIFIED');
  if(pr.requested_reviewers?.length||pr.requested_teams?.length)fail('REVIEW_PENDING');
  return true;
@@ -54,6 +55,13 @@ async function graphql(query,variables){
  if(data.errors?.length||!data.data)fail('GRAPHQL_REJECTED');
  return data.data;
 }
+function fileText(file){
+ if(file?.encoding!=='base64'||typeof file.content!=='string'||file.size>65536)fail('PROFILE_CONTENT_INVALID');
+ const bytes=Buffer.from(file.content.replace(/\s/g,''),'base64');
+ const str=bytes.toString('utf8');
+ if(bytes.includes(0)||!Buffer.from(str,'utf8').equals(bytes))fail('PROFILE_ENCODING_INVALID');
+ return str;
+}
 async function inspect(prNum,sourceSha){
  const [repo,branch,master,pr,files,reviews]=await Promise.all([
   gh(''),gh('/branches/tester'),gh('/branches/master'),
@@ -61,7 +69,17 @@ async function inspect(prNum,sourceSha){
   gh('/pulls/'+prNum+'/reviews?per_page=100')]);
  if(repo.default_branch!=='master')fail('DEFAULT_BRANCH_CHANGED');
  const commit=await gh('/git/commits/'+pr.head.sha);
- validatePull({pr,branch,master,sourceSha,files,commit});
+ let profileReviewed=false;
+ if(files.some(f=>f.filename==='config/nyx-runtime-profile.json')){
+   const path='/contents/config/nyx-runtime-profile.json?ref=';
+   const [before,after]=await Promise.all([
+     gh(path+branch.commit.sha),gh(path+pr.head.sha)]);
+   // Full equality to the precise two-key mode-only transformation is required.
+   const review=validateTargetDraftModeUpgrade(fileText(before),fileText(after));
+   if(!review.valid||!review.changed)fail('PROFILE_CHANGE_NOT_ALLOWED');
+   profileReviewed=true;
+ }
+ validatePull({pr,branch,master,sourceSha,files,commit,profileReviewed});
  validateReviews(reviews);
  return {pr,branch};
 }

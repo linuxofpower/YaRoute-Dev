@@ -68,3 +68,28 @@ alone is not proof of a working live initialization.
 Regression tests reject observe mode on arbitrary keys or source paths, prove
 that both draft drift and unavailability are reported without blocking, and
 verify that a changed enforced key still prevents execution.
+
+## 30 October: safe Tester draft profile reconciliation
+
+To unblock staging after introducing diagnostic-only draft observations, the
+Dev-to-Tester preparer performs an exact two-profile semantic review when the
+profiles' Git blobs differ. It requires identical CLI authority, command
+bindings, trusted key pins, source refs and all other profile fields. It accepts
+only different historical receipts for `temp_paths` / `temp_nyxcli` at their
+hardcoded MAIN staging-draft paths, with `observe` mode already approved in Dev.
+
+The generated Tester profile **retains its own existing two hash receipts**;
+only the two draft modes become `observe`. An independent exact comparison of
+old/new Tester profile contents is repeated on every auto-merge preflight. The
+single `config/nyx-runtime-profile.json` path is allowed in the staging PR
+only when this comparison proves no other change. Trusted keys and executable
+runtime authority cannot be changed by the exception. All changes still
+require fresh Tester CI and GitGuardian checks, and no protected branch is
+modified by Tester staging.
+
+This updates the code of the Tester branch, **not the deployed Heroku app**.
+After the staging commit, a separate release mechanism must attest the precise
+Heroku slug commit from `/health` and the target app's latest release. Do not
+claim that passing GitHub Actions tests or availability of the ChatGPT MCP
+connector means staging has been deployed. An unavailable Heroku release reader
+is a verification blocker, not proof of a healthy release.
