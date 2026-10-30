@@ -23,7 +23,7 @@ test('only matching Tester, protected master, and green checks yield release int
 });
 test('refuse mismatched source SHA, unsafe history, and weakened branch protection',()=>{
  for(const edit of [
-  x=>x.sha=d,x=>x.tester.commit.sha=d,x=>x.master.protected=false,
+  x=>x.sha=d,x=>x.tester.commit.sha=d,x=>x.commit.sha=d,x=>x.master.protected=false,
   x=>x.tester.protected=true,x=>x.repo.default_branch='main',
   x=>x.repo.full_name='unexpected/repo',x=>x.commit.tree.sha='invalid',
   x=>x.compare.behind_by=1,x=>x.compare.ahead_by=0,
