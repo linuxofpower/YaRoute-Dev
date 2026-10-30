@@ -90,6 +90,10 @@ async function sourceBlobText(repo,blobSha,token){
  if(bytes.includes(0)||!Buffer.from(text,'utf8').equals(bytes))fail('PROFILE_NON_UTF8');
  return text;
 }
+export function hasEffectiveTreeChange(baseTreeSha,newTreeSha){
+ if(!SHA.test(baseTreeSha??'')||!SHA.test(newTreeSha??''))fail('STAGING_TREE_INVALID');
+ return baseTreeSha!==newTreeSha;
+}
 export function stageRequired(paths,profileUpgrade){return (Array.isArray(paths)&&paths.length>0)||Boolean(profileUpgrade)}
 function stageReceipt(ready){if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,'candidate='+String(ready)+'\n')}
 async function stage(){
@@ -159,6 +163,11 @@ async function stage(){
  if(devAgain.commit?.sha!==sourceSha||testAgain.commit?.sha!==targetSha)fail('SOURCE_OR_TARGET_DRIFT');
  const newTree=await api(TARGET,'/git/trees',testerToken,'POST',{base_tree:stagingCommit.tree.sha,tree});
  if(!SHA.test(newTree.sha??''))fail('TREE_WRITE_UNVERIFIED');
+ if(!hasEffectiveTreeChange(stagingCommit.tree.sha,newTree.sha)){
+   stageReceipt(false);
+   console.log(JSON.stringify({status:'NO_EFFECTIVE_TESTER_CHANGE',sourceSha,targetSha,selectionCount:tree.length}));
+   return;
+ }
  const commit=await api(TARGET,'/git/commits',testerToken,'POST',{
    message:'stage(nyx): reviewed Dev source for Tester CI (approval required)',
    tree:newTree.sha,parents:[targetSha],
