@@ -3,6 +3,7 @@ import { NyxCommandExecutor } from '../nyx/command-executor.service';
 import { NyxBootstrapService } from '../nyx/bootstrap.service';
 import { NyxCliRegistryService } from '../nyx/cli-registry.service';
 import { NyxHeadLibraryService } from '../nyx/head-library.service';
+import { headStatusReport } from '../nyx/head-status-report';
 import { RuntimeMaintenanceService } from './runtime-maintenance.service';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -626,19 +627,12 @@ export class McpService {
       annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
     },async()=>this.safeTool(async()=>{
       this.connectorOwner();
-      const locator=await this.bootstrap.locate();
-      const {cli,hash}=await this.cliRegistry.current(locator);
-      const preflight=await this.commands.inspectRuntimeProfile(locator,hash);
-      return {
-        status:preflight.ready?(('driftDetected' in preflight && preflight.driftDetected)?'BOOTSTRAP_VERIFIED_WITH_WARNINGS':'BOOTSTRAP_VERIFIED'):'NOT_READY',
-        role:'constitution-library',canonical:locator.canonical,
-        canonical_freshness:'bootstrap-pointer-only; newest Footer not independently checked',
-        preflight,
-        cli:{version:cli.version,sha256:hash},
-        library:this.headLibrary.snapshot(),
-        source_of_truth:'canonical Head bundle',
-        mutation:'read-only runtime cache; canonical Head lifecycle remains separate',
-      };
+      return headStatusReport(
+        {locate:()=>this.bootstrap.locate()},
+        {current:locator=>this.cliRegistry.current(locator)},
+        (locator,hash)=>this.commands.inspectRuntimeProfile(locator,hash),
+        this.headLibrary,
+      );
     }));
     server.registerTool('nyx_areas',{
       title:'List logical NYX storage areas',

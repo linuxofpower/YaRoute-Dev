@@ -5,6 +5,7 @@ import { CommandRequest } from './runtime.schema';
 import { NyxBootstrapService } from './bootstrap.service';
 import { NyxCliRegistryService } from './cli-registry.service';
 import { NyxHeadLibraryService } from './head-library.service';
+import { headStatusReport } from './head-status-report';
 
 @Controller('nyx')
 export class NyxController {
@@ -18,17 +19,12 @@ export class NyxController {
 
   @Get('head')
   async headStatus() {
-    const locator = await this.bootstrap.locate();
-    const cli = await this.registry.current(locator);
-    return {
-      status: 'READY',
-      role: 'constitution-library',
-      canonical: locator.canonical,
-      cli: { version: cli.cli.version, sha256: cli.hash },
-      library: this.head.snapshot(),
-      source_of_truth: 'canonical Head bundle',
-      mutation: 'read-only runtime cache; canonical Head lifecycle remains separate',
-    };
+    return headStatusReport(
+      this.bootstrap,
+      this.registry,
+      (locator,hash)=>this.commands.inspectRuntimeProfile(locator,hash),
+      this.head,
+    );
   }
 
   @Post('key')
