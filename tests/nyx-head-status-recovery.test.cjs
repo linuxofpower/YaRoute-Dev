@@ -14,7 +14,7 @@ test('read-only head status reports unavailable bootstrap without false READY or
     async () => { throw new Error('must not inspect'); }, library,
   );
   assert.equal(status.status, 'NOT_READY');
-  assert.equal(status.canonicalVerified, false);
+  assert.equal(status.bootstrapPointerAndCliVerified, false);
   assert.equal(status.blockedScope, 'canonical_nyx_commands');
   assert.equal(status.diagnostic, 'BOOTSTRAP_INVALID_OR_UNAVAILABLE');
   assert.deepEqual(status.allowedIndependentWork, ['read_only_connector_diagnostics']);
@@ -27,7 +27,7 @@ test('invalid canonical CLI still blocks command readiness', async () => {
     async () => ({ ready: true, keys: [] }), library);
   assert.equal(status.status, 'NOT_READY');
   assert.equal(status.diagnostic, 'CANONICAL_CLI_INVALID_OR_UNAVAILABLE');
-  assert.equal(status.canonicalVerified, false);
+  assert.equal(status.bootstrapPointerAndCliVerified, false);
   assert.doesNotMatch(JSON.stringify(status), /PRIVATE_TOKEN/);
 });
 
@@ -39,7 +39,7 @@ test('mutable observed draft drift remains warning while validated CLI stays ava
   const status = await headStatusReport(bootstrap, registry, async () => preflight, library);
   assert.equal(status.status, 'BOOTSTRAP_VERIFIED_WITH_WARNINGS');
   assert.deepEqual(status.issues.map(issue => issue.severity), ['DEFERRED_WARNING', 'DEFERRED_WARNING']);
-  assert.equal(status.canonicalVerified, true);
+  assert.equal(status.bootstrapPointerAndCliVerified, true);
   assert.equal('blockedScope' in status, false);
 });
 

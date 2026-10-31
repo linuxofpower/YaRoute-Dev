@@ -26,7 +26,7 @@ export async function headStatusReport(
     allowedIndependentWork: ['read_only_connector_diagnostics'],
     warningDisposition: 'DEFERRED_REPAIR_REQUIRES_REVIEW',
     mutation: 'none',
-    canonicalVerified: false,
+    bootstrapPointerAndCliVerified: false,
   });
 
   let locator: Awaited<ReturnType<NyxBootstrapService['locate']>>;
@@ -55,7 +55,7 @@ export async function headStatusReport(
     role: 'constitution-library',
     canonical: locator.canonical,
     canonical_freshness: 'bootstrap-pointer-only; newest Footer not independently checked',
-    canonicalVerified: true,
+    bootstrapPointerAndCliVerified: true,
     preflight,
     issues,
     ...(issues.some(issue => issue.severity === 'HARD_BLOCK') || !canExecute
