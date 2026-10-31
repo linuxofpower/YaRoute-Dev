@@ -17,9 +17,11 @@ test('previously advertised private NYX MCP read tools are registered',()=>{
 
 test('MCP helpers reuse existing verified NYX services, not invented Head commands',()=>{
  const mcp=source();
+ const report=readFileSync(join(__dirname,'..','src','nyx','head-status-report.ts'),'utf8');
  assert.match(mcp,/this\.bootstrap\.locate\(\)/);
  assert.match(mcp,/this\.cliRegistry\.current\(locator\)/);
- assert.match(mcp,/this\.headLibrary\.snapshot\(\)/);
+ assert.match(mcp,/headStatusReport\(/);
+ assert.match(report,/head\.snapshot\(\)/);
  for(const expr of [
   'this.storage.areas()',
   'this.storage.list(area,path)',
@@ -29,7 +31,7 @@ test('MCP helpers reuse existing verified NYX services, not invented Head comman
  ]){
   assert.ok(mcp.includes(expr),'missing existing backend delegation: '+expr);
  }
- assert.match(mcp,/source_of_truth:'canonical Head bundle'/);
+ assert.match(report,/source_of_truth: 'canonical Head bundle'/);
  assert.match(mcp,/These are MCP auxiliaries and must not/);
 });
 
