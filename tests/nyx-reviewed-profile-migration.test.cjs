@@ -48,3 +48,15 @@ test('reject arbitrary CLI, trusted-key or source-schema substitutions',async()=
  const modified=JSON.parse(sourceText);modified.cliSha256='f'.repeat(64);
  assert.throws(()=>reconcileReviewedProfileMigration(text(modified),targetText,reviewedProfileBlobs),/BLOB_CONTENT_MISMATCH/);
 });
+test('Tester merger accepts the exact migration while rejecting schema or profile substitutions',async()=>{
+ const {reviewedProfileBlobs}=await import('../scripts/nyx-reviewed-profile-migration.mjs');
+ const {validateStagedProfileUpgrade}=await import('../scripts/nyx-tester-auto-merge.mjs');
+ const targetText=text(oldTesterProfile());
+ const response=(text,sha)=>({encoding:'base64',size:Buffer.byteLength(text),content:Buffer.from(text).toString('base64'),sha});
+ const before=response(targetText,reviewedProfileBlobs.target),after=response(sourceText,reviewedProfileBlobs.source);
+ const beforeSchema={sha:reviewedProfileBlobs.targetSchema},afterSchema={sha:reviewedProfileBlobs.sourceSchema};
+ assert.equal(validateStagedProfileUpgrade(before,after,beforeSchema,afterSchema).kind,'noteflow-profile-2026-11-01');
+ assert.throws(()=>validateStagedProfileUpgrade(before,after,beforeSchema,{sha:'f'.repeat(40)}),/SCHEMA_PAIR_CHANGED/);
+ const changed=oldTesterProfile();changed.commands.ini.sources.normal.find(x=>x.key==='togive').ref.path='unreviewed.md';
+ assert.throws(()=>validateStagedProfileUpgrade(response(text(changed),reviewedProfileBlobs.target),after,beforeSchema,afterSchema),/BLOB_CONTENT_MISMATCH/);
+});
