@@ -85,6 +85,6 @@ test('deployed runtime profile is bound to H31 and current readable mirrors', ()
   assert.equal(byKey.temp_paths.ref.path, 'YaRoute/0_repository/3_template/staging/drafts/temp_paths.json');
   assert.equal(byKey.temp_nyxcli.ref.path, 'YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json');
   assert.equal(byKey.active_key.ref.path, 'YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/active_key.txt');
-  assert.equal(byKey.active_key.mode, 'observe');
+  assert.equal(byKey.active_key.mode, 'enforce');
   assert.equal(byKey.active_key.sha256, '595aa1204e1ae772cd66998e949d7b6c7b9a2df7b782782a6cc8f17c0cbbb1be');
 });
