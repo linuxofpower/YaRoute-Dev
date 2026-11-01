@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { NyxWarningQueueService } from './warning-queue.service';
 import { NyxExecutionProfileService } from './execution-profile.service';
 import { CommandRequest } from './runtime.schema';
 import { NyxBootstrapService } from './bootstrap.service';
@@ -9,7 +10,7 @@ import { ChatConfigState, HandoffStore, assertNoSecrets } from './handoff-store.
 
 @Injectable()
 export class NyxCommandExecutor {
-  constructor(private readonly bootstrap: NyxBootstrapService, private readonly registry: NyxCliRegistryService, private readonly resolver: NyxCommandResolver, private readonly resources: NyxResourceResolver, private readonly handoffs: HandoffStore, private readonly profiles: NyxExecutionProfileService) {}
+  constructor(private readonly bootstrap: NyxBootstrapService, private readonly registry: NyxCliRegistryService, private readonly resolver: NyxCommandResolver, private readonly resources: NyxResourceResolver, private readonly handoffs: HandoffStore, private readonly profiles: NyxExecutionProfileService, @Optional() private readonly warningQueue?: NyxWarningQueueService) {}
   async inspectRuntimeProfile(locator: Parameters<NyxExecutionProfileService['inspect']>[0], cliHash: string) {
     return this.profiles.inspect(locator, cliHash);
   }
@@ -174,6 +175,15 @@ export class NyxCommandExecutor {
       source_refs: loaded.files.map(f => ({ key: f.key, ref: f.ref, sha256: f.sha256, bytes: f.bytes, returned: f.visible })),
       ...(chatState ? { chat_config: { initial: chatState, current: chatState, history: [] } } : {}),
     }) : undefined;
+    const allWarnings = [...(profile.keyWarnings ?? []), ...loaded.warnings];
+    // Help is read-only. Only an otherwise successful initialization may emit
+    // durable Template issue receipts, after mandatory source/FIF verification.
+    const warningQueue = this.warningQueue && plan.contract.adapter === 'context.initialize.v1'
+      ? await this.warningQueue.persist(owner, plan.name, allWarnings)
+      : undefined;
+    const reportedWarnings = warningQueue && !warningQueue.verified && allWarnings.length
+      ? [...allWarnings, `WARNING_QUEUE_${warningQueue.status}`]
+      : allWarnings;
     return {
       schema: plan.contract.response, status: 'COMPLETE', conversation_id: fif?.conversationId,
       fif: fif ? { id: fif.id, kind: fif.kind, ref: fif.ref, sha256: fif.sha256, verified: fif.verified } : null,
@@ -181,7 +191,8 @@ export class NyxCommandExecutor {
       metadata: {
         command: plan.name, targets: plan.targets, depth: plan.depth,
         ...(plan.scope ? { scope: plan.scope, modifier: plan.modifier, modifier_source: plan.modifierSource } : {}),
-        cli: { version: cli.version, sha256: hash, profile_sha256: profile.hash }, source_receipts: loaded.files.map(({ content, ...receipt }) => receipt), key_preflight: profile.keyReceipts ?? [], warnings: [...(profile.keyWarnings ?? []), ...loaded.warnings],
+        cli: { version: cli.version, sha256: hash, profile_sha256: profile.hash }, source_receipts: loaded.files.map(({ content, ...receipt }) => receipt), key_preflight: profile.keyReceipts ?? [], warnings: reportedWarnings,
+        ...(warningQueue ? { warning_queue: warningQueue } : {}),
       },
     };
   }
