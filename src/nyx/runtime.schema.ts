@@ -48,8 +48,16 @@ export const runtimeKeyPinSchema = z.object({
   mode: z.enum(['enforce', 'observe']).default('enforce'),
 }).strict().refine(pin => pin.mode === 'enforce' ||
   (pin.ref.area === 'MAIN' && (
-    (pin.key === 'temp_paths' && pin.ref.path === '🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_paths.json') ||
-    (pin.key === 'temp_nyxcli' && pin.ref.path === '🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json')
+    (pin.key === 'temp_paths' && [
+      'YaRoute/0_repository/3_template/staging/drafts/temp_paths.json',
+      '🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_paths.json',
+    ].includes(pin.ref.path)) ||
+    (pin.key === 'temp_nyxcli' && [
+      'YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json',
+      '🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json',
+    ].includes(pin.ref.path)) ||
+    (pin.key === 'active_key' &&
+      pin.ref.path === 'YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/active_key.txt')
   )), 'only fixed mutable staging overlays may use observe mode');
 
 export const profileSchema = z.object({
