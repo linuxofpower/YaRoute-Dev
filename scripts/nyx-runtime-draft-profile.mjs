@@ -4,8 +4,8 @@
  */
 import { isDeepStrictEqual } from 'node:util';
 const paths={
-  temp_paths:'🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_paths.json',
-  temp_nyxcli:'🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json',
+  temp_paths:'YaRoute/0_repository/3_template/staging/drafts/temp_paths.json',
+  temp_nyxcli:'YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json',
 };
 const fail=s=>{throw Error('NYX_DRAFT_PROFILE_'+s)};
 const parse=s=>{
