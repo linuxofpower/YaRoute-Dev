@@ -1,4 +1,5 @@
 import {validateTargetDraftModeUpgrade} from './nyx-runtime-draft-profile.mjs';
+import {reconcileReviewedProfileMigration,reviewedProfileBlobs} from './nyx-reviewed-profile-migration.mjs';
 /**
  * NYX: merge only a verified, machine-generated draft PR into YaRoute/tester.
  * No workflow, deployment, credential, main or master writes are possible here.
@@ -62,6 +63,22 @@ function fileText(file){
  if(bytes.includes(0)||!Buffer.from(str,'utf8').equals(bytes))fail('PROFILE_ENCODING_INVALID');
  return str;
 }
+/** Keep routine two-draft upgrades narrow; the one-time NoteFlow authority
+ * migration is allowed only for its exact old/new profile AND schema blobs. */
+export function validateStagedProfileUpgrade(before,after,beforeSchema,afterSchema){
+ const older=fileText(before),newer=fileText(after);
+ if(before.sha===reviewedProfileBlobs.target&&after.sha===reviewedProfileBlobs.source){
+   const reviewed=reconcileReviewedProfileMigration(newer,older,{
+     source:after.sha,target:before.sha,
+     sourceSchema:afterSchema?.sha,targetSchema:beforeSchema?.sha,
+   });
+   if(!reviewed.changed||reviewed.content!==newer)fail('REVIEWED_MIGRATION_MISMATCH');
+   return {valid:true,changed:true,kind:reviewed.reviewId};
+ }
+ const routine=validateTargetDraftModeUpgrade(older,newer);
+ if(!routine.valid||!routine.changed)fail('PROFILE_CHANGE_NOT_ALLOWED');
+ return {...routine,kind:'draft-mode-only'};
+}
 async function inspect(prNum,sourceSha){
  const [repo,branch,master,pr,files,reviews]=await Promise.all([
   gh(''),gh('/branches/tester'),gh('/branches/master'),
@@ -74,9 +91,13 @@ async function inspect(prNum,sourceSha){
    const path='/contents/config/nyx-runtime-profile.json?ref=';
    const [before,after]=await Promise.all([
      gh(path+branch.commit.sha),gh(path+pr.head.sha)]);
-   // Full equality to the precise two-key mode-only transformation is required.
-   const review=validateTargetDraftModeUpgrade(fileText(before),fileText(after));
-   if(!review.valid||!review.changed)fail('PROFILE_CHANGE_NOT_ALLOWED');
+   const reviewedPair=before.sha===reviewedProfileBlobs.target&&after.sha===reviewedProfileBlobs.source;
+   if(reviewedPair&&!files.some(f=>f.filename==='src/nyx/runtime.schema.ts'))
+     fail('REVIEWED_SCHEMA_NOT_STAGED');
+   const schemaPath='/contents/src/nyx/runtime.schema.ts?ref=';
+   const [beforeSchema,afterSchema]=reviewedPair?await Promise.all([
+     gh(schemaPath+branch.commit.sha),gh(schemaPath+pr.head.sha)]):[null,null];
+   validateStagedProfileUpgrade(before,after,beforeSchema,afterSchema);
    profileReviewed=true;
  }
  validatePull({pr,branch,master,sourceSha,files,commit,profileReviewed});
