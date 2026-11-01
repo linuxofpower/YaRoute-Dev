@@ -262,8 +262,7 @@
         "area": "MAIN",
         "path": "YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/active_key.txt"
       },
-      "sha256": "595aa1204e1ae772cd66998e949d7b6c7b9a2df7b782782a6cc8f17c0cbbb1be",
-      "mode": "observe"
+      "sha256": "595aa1204e1ae772cd66998e949d7b6c7b9a2df7b782782a6cc8f17c0cbbb1be"
     }
   ]
 }
