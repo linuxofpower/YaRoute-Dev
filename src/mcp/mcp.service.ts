@@ -553,6 +553,14 @@ export class McpService {
         this.tenantRclone.listAuthorizedRoot(
           this.connectorOwner(),id,provider,rootId,path||'')));
 
+      server.registerTool('nyx_storage_connection_revoke', {
+        title:'Revoke my MEGA or Google Drive connection',
+        description:'Owner-scoped: revoke this tenant storage grant and erase its pending/active encrypted credentials and unconsumed sign-in links. Does not revoke provider-side sessions or touch private/operator Rclone config.',
+        inputSchema:z.object({id:z.string().uuid()}),
+        annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false},
+      },async({id})=>this.safeTool(() =>
+        this.tenantRclone.revokeStorage(this.connectorOwner(),id)));
+
       server.registerTool('nyx_storage_connection_test_active', {
         title: 'Verify read access to my active isolated storage root',
         description: 'Read-only Rclone probe using only the authenticated owner, one activated connection and its exact selected root. Never uses private global Rclone configuration or returns file names.',
