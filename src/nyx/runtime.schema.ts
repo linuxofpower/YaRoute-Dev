@@ -55,9 +55,7 @@ export const runtimeKeyPinSchema = z.object({
     (pin.key === 'temp_nyxcli' && [
       'YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json',
       '🪼👁️📡YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json',
-    ].includes(pin.ref.path)) ||
-    (pin.key === 'active_key' &&
-      pin.ref.path === 'YaRoute/1_depository/3_subfooter/2_areas_v0/FileFilter/0_state/active_key.txt')
+    ].includes(pin.ref.path))
   )), 'only fixed mutable staging overlays may use observe mode');
 
 export const profileSchema = z.object({
