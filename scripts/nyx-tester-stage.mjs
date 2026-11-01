@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {appendFileSync} from 'node:fs';
 import {reconcileObservedDraftProfile} from './nyx-runtime-draft-profile.mjs';
+import {reconcileReviewedProfileMigration,reviewedProfileBlobs} from './nyx-reviewed-profile-migration.mjs';
 const SHA=/^[a-f0-9]{40}$/,REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const fail=x=>{throw Error('NYX_TESTER_STAGE_'+x)};
 const TARGET='yaMorozYaroslav/YaRoute';
@@ -125,17 +126,26 @@ async function stage(){
  const srcProfile=source.tree?.find(x=>x.type==='blob'&&x.path==='config/nyx-runtime-profile.json')?.sha;
  const dstProfile=target.tree?.find(x=>x.type==='blob'&&x.path==='config/nyx-runtime-profile.json')?.sha;
  if(source.truncated!==false||target.truncated!==false||!SHA.test(srcProfile??'')||!SHA.test(dstProfile??''))fail('PROFILE_TREE_INCOMPLETE');
- // Source and target profiles differ only for the two known mutable draft receipts.
- // Reconcile by preserving Tester hashes; all enforced pins and command contracts must match.
- let profileUpgrade=null;
+ // Routine upgrades preserve Tester pins. The single, exact-hash reviewed
+ // migration also corrects stale CLI/NoteFlow paths and verified enforced key.
+ let profileUpgrade=null,reviewedMigration=false;
  if(srcProfile!==dstProfile){
   const [sourceText,targetText]=await Promise.all([
    sourceBlobText(sourceRepo,srcProfile,sourceToken),
    sourceBlobText(TARGET,dstProfile,testerToken)]);
-  const resolution=reconcileObservedDraftProfile(sourceText,targetText);
+  const migrationPair=srcProfile===reviewedProfileBlobs.source&&dstProfile===reviewedProfileBlobs.target;
+  const resolution=migrationPair?reconcileReviewedProfileMigration(sourceText,targetText,{
+    source:srcProfile,target:dstProfile,
+    sourceSchema:source.tree?.find(x=>x.type==='blob'&&x.path==='src/nyx/runtime.schema.ts')?.sha,
+    targetSchema:target.tree?.find(x=>x.type==='blob'&&x.path==='src/nyx/runtime.schema.ts')?.sha,
+  }):reconcileObservedDraftProfile(sourceText,targetText);
+  reviewedMigration=migrationPair;
   if(resolution.changed)profileUpgrade=resolution.content;
  }
  const paths=candidatePaths(source,target);
+ if(reviewedMigration&&!paths.some(p=>p.path==='src/nyx/runtime.schema.ts'&&
+   p.sourceBlob===reviewedProfileBlobs.sourceSchema&&p.targetBlob===reviewedProfileBlobs.targetSchema))
+   fail('REVIEWED_MIGRATION_SCHEMA_NOT_STAGED');
  if(!stageRequired(paths,profileUpgrade)){
   stageReceipt(false);console.log(JSON.stringify({status:'NO_TESTER_CODE_CHANGES',sourceSha,targetSha}));
   return;
@@ -183,7 +193,8 @@ async function stage(){
   body:'NYX automatic candidate only. DO NOT MERGE until user confirmation and passing exact-PR Tester CI/security checks.\n\n'+
    '- Dev: '+sourceRepo+' @ '+sourceSha+'\n- Tester parent: '+targetSha+
    '\n- Existing Tester-specific files preserved: workflows, install-rclone, deployment config, app metadata, CODEOWNERS, github-api-writes contract test.'+
-   '\n- No modification to master/main, live secrets or Heroku config.\n- Tester draft profile upgraded to warning-only with target-owned hashes: '+Boolean(profileUpgrade)+'\n- Changed source/test paths: '+paths.length+
+   '\n- No modification to master/main, live secrets or Heroku config.\n- Reviewed exact-blob NoteFlow profile migration: '+reviewedMigration+
+   '\n- Routine warning-only draft profile upgrade: '+Boolean(profileUpgrade&&!reviewedMigration)+'\n- Changed source/test paths: '+paths.length+
    '\n- Auth and tenant isolation require separate runtime acceptance before production.\n',
  });
  if(pr.draft!==true||pr.base?.ref!=='tester'||pr.head?.ref!==reviewBranch)fail('PR_RESPONSE_INVALID');
