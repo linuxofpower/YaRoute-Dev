@@ -36,7 +36,7 @@ test('revoking a MEGA owner connection atomically disables the grant and clears 
  assert.equal(statements[5],'COMMIT');
  assert.equal(statements[6],'RELEASE');
  for(const query of sql.slice(1,5))assert.deepEqual(query.params,[owner,id]);
- assert.equal(statements.some(s=>/spawn|rclone|remote/.test(s)),false);
+ assert.equal(statements.some(s=>/DELETE FROM nyx_connector_connections/.test(s)),false);
 });
 test('different OAuth owner or connection ID cannot trigger any database transaction',async()=>{
  const {svc,sql}=setup();
