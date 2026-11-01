@@ -1,9 +1,9 @@
 # HeartBit CoreGen policy
 
 - HeartBit checks unresolved temporary keys on every pulse.
-- Canonical adaptive seed threshold: more than 10 decent unresolved keys after deduplication and quality filtering.
+- Adaptive seed threshold: **five decent unresolved keys** after deduplication and quality filtering.
 - Explicit `Nyx key oSG` selects the seed stage globally and overrides the adaptive default.
-- Key quantity is the primary trigger: once the threshold is reached, HeartBit should create/promote the seed when safe and begin the generation lifecycle; it should not wait for a pre-existing seed as the initiating condition.
+- Key quantity is the primary trigger: at five decent unresolved keys, HeartBit should create/promote one seed when safe and begin the generation lifecycle; it should not wait for a pre-existing seed as the initiating condition.
 - One valid compatible unconsumed seed is sufficient for its target core generation.
 - Noncritical deferred warnings do not block generation.
 - Deterministic FIN/UPD/generation/readback faults are repaired and retried automatically when no owner decision is required.
