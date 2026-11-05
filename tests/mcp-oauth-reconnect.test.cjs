@@ -234,3 +234,53 @@ test('MCP connection requests cannot dispatch before valid OAuth login and requi
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(dispatched, [{ subject: 'visitor-a', method: 'tools/call' }]);
 });
+
+
+test('opt-in private owner gate permits one exact OAuth subject and denies other or ambiguous grants', async t => {
+  const names = ['NYX_DEPLOYMENT_MODE', 'NYX_PUBLIC_CONNECTORS_ENABLED',
+    'NYX_PRIVATE_OWNER_SUBJECT_ENFORCED', 'NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT',
+    'NYX_PRIVATE_OAUTH_SUBJECTS'];
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  t.after(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+  process.env.NYX_DEPLOYMENT_MODE = 'private';
+  process.env.NYX_PUBLIC_CONNECTORS_ENABLED = 'false';
+  process.env.NYX_PRIVATE_OWNER_SUBJECT_ENFORCED = 'true';
+  process.env.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT = 'owner-test';
+  process.env.NYX_PRIVATE_OAUTH_SUBJECTS = 'owner-test';
+
+  const auth = authWithKeyProvider((_kid, callback) =>
+    callback(null, { getPublicKey: () => publicKey }));
+  assert.equal((await request(auth, token(3600, 'owner-test'))).allowed, true);
+  const other = await request(auth, token(3600, 'another-user'));
+  assert.equal(other.allowed, false);
+  assert.equal(other.res.statusCode, 403);
+
+  process.env.NYX_PRIVATE_OAUTH_SUBJECTS = 'owner-test,another-user';
+  const multiple = await request(auth, token(3600, 'owner-test'));
+  assert.equal(multiple.allowed, false);
+  assert.equal(multiple.res.statusCode, 403);
+
+  process.env.NYX_PRIVATE_OAUTH_SUBJECTS = 'owner-test';
+  delete process.env.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT;
+  assert.equal((await request(auth, token(3600, 'owner-test'))).res.statusCode, 403);
+  process.env.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT = 'another-user';
+  assert.equal((await request(auth, token(3600, 'owner-test'))).res.statusCode, 403);
+
+  process.env.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT = 'owner-test';
+  process.env.NYX_PRIVATE_OAUTH_SUBJECTS = 'owner-test,another-user';
+  process.env.NYX_PRIVATE_OWNER_SUBJECT_ENFORCED = 'false';
+  // No private deployment behavior changes until the operator enables the
+  // gate after binding their verified Google identity to this MCP subject.
+  assert.equal((await request(auth, token(3600, 'owner-test'))).allowed, true);
+
+  process.env.NYX_PRIVATE_OWNER_SUBJECT_ENFORCED = 'true';
+  process.env.NYX_DEPLOYMENT_MODE = 'public';
+  process.env.NYX_PUBLIC_CONNECTORS_ENABLED = 'true';
+  // Ordinary public tenants still use isolated, per-owner credentials.
+  assert.equal((await request(auth, token(3600, 'tenant-bob'))).allowed, true);
+});
