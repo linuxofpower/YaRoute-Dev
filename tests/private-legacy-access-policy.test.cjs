@@ -35,7 +35,7 @@ test('former second owner is denied even with a previously allowed two-owner reg
 });
 
 test('missing or mismatched protected approved-email configuration denies access', () => {
-  assert.equal(allow(actor(), google(), [owner], undefined), false);
+  assert.equal(mayUsePrivateLegacyRclone(actor(), google(), [owner], undefined), false);
   assert.equal(allow(actor(), google(), [owner], ''), false);
   assert.equal(allow(actor(), google(), [owner], 'other@example.com'), false);
   assert.equal(allow(actor(), google(), [{ ...owner, googleEmail: 'other@example.com' }]), false);
