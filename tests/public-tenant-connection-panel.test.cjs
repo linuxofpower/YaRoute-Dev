@@ -26,7 +26,7 @@ function renderPanel(mode, connectors, multiuser, ownerLink = 'false') {
 test('signed-in public tenants discover their own Rclone onboarding at startup', () => {
   const html = renderPanel('public', 'true', 'true');
   assert.match(html, /const publicTenantStorage=true;/);
-  assert.match(html, /if\(publicTenantStorage\)refreshTenantStorage\(\);\s*else refreshRclone\(\);/);
+  assert.match(html, /if\(publicTenantStorage\)\{\s*refreshTenantStorage\(\);\s*if\(ownerLinkEnabled\)refreshOwnerLink\(\);\s*\}else refreshRclone\(\);/);
   assert.match(html, /call\('nyx_storage_connections_list',\{\}\)/);
   assert.match(html, /call\('nyx_storage_connection_create',\{provider,name\}\)/);
   assert.match(html, /nyx_storage_connection_begin_google/);
