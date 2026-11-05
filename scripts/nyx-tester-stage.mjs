@@ -1,4 +1,4 @@
-// NYX guarded Dev -> Tester candidate builder. Creates a draft PR only.
+// NYX guarded Dev -> Tester candidate builder. Creates a CI-gated draft PR.
 // Credentials are supplied by the runner from a repository-scoped GitHub App.
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
@@ -183,16 +183,16 @@ async function stage(){
    return;
  }
  const commit=await api(TARGET,'/git/commits',testerToken,'POST',{
-   message:'stage(nyx): reviewed Dev source for Tester CI (approval required)',
+   message:'stage(nyx): exact Dev source for CI-gated Tester promotion',
    tree:newTree.sha,parents:[targetSha],
  });
  if(!SHA.test(commit.sha??''))fail('COMMIT_WRITE_UNVERIFIED');
  const ref=await api(TARGET,'/git/refs',testerToken,'POST',{ref:'refs/heads/'+reviewBranch,sha:commit.sha});
  if(ref.ref!=='refs/heads/'+reviewBranch||ref.object?.sha!==commit.sha)fail('REF_WRITE_UNVERIFIED');
  const pr=await api(TARGET,'/pulls',testerToken,'POST',{
-  title:'WIP: NYX exact-SHA Dev candidate to Tester — approval required',
+  title:'NYX exact-SHA Dev candidate to Tester — automated CI gates',
   head:reviewBranch,base:'tester',draft:true,maintainer_can_modify:false,
-  body:'NYX automatic candidate only. DO NOT MERGE until user confirmation and passing exact-PR Tester CI/security checks.\n\n'+
+  body:'NYX automatic candidate: merge only through the verified CI/security-gated Tester promoter. A review request alone does not require manual approval; an actual blocking submitted review stops promotion.\n\n'+
    '- Dev: '+sourceRepo+' @ '+sourceSha+'\n- Tester parent: '+targetSha+
    '\n- Existing Tester-specific files preserved: workflows, install-rclone, deployment config, app metadata, CODEOWNERS, github-api-writes contract test.'+
    '\n- No modification to master/main, live secrets or Heroku config.\n- Reviewed exact-blob NoteFlow profile migration: '+reviewedMigration+
