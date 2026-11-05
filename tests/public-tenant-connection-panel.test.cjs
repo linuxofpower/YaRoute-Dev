@@ -45,7 +45,7 @@ test('public tenant UI does not offer legacy operator Rclone inventory', () => {
 test('private mode preserves operator Rclone inventory without enabling tenant onboarding', () => {
   const html = renderPanel('private', 'false', 'false');
   assert.match(html, /const publicTenantStorage=false;/);
-  assert.match(html, /data-open="nyx-rclone-group">/);
+  assert.match(html, /data-open="nyx-rclone-group"\s*>/);
   assert.match(html, /id="nyx-rclone-group">/);
   assert.doesNotMatch(html, /id="nyx-rclone-group" hidden/);
 });
