@@ -17,6 +17,25 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
   operator passwords, rclone.conf, refresh tokens or private root inventories
   into the public runtime, source control, ChatGPT messages or diagnostic logs.
 
+## Signed Google identity proof (Dev candidate)
+
+- `PrivateLegacyGoogleIdTokenVerifier` verifies an OIDC ID token against
+  Google's JWKS with RS256, expected issuer, exact configured client audience,
+  mandatory stored nonce, issued-at freshness, expiry, Google subject and
+  `email_verified === true`. It returns only a short-lived proof object;
+  never a provider or MCP bearer token.
+- Offline, synthetic RSA tests cover valid owner-one/owner-two proofs, wrong
+  MCP subject, wrong Google subject, forged key, wrong algorithm, audience,
+  issuer, nonce, stale/expired token and unverified email.
+- **Still disconnected:** no public HTTP route invokes this verifier, no owner
+  link database or OAuth state exchange has been installed, and the existing
+  private Rclone service remains separate. The verifier cannot itself authorize
+  access to a remote. A future callback must atomically consume the server-side
+  state and nonce before calling this verifier.
+- Never store the two real operator addresses, private Google subject IDs or
+  rclone credentials in this public repository. Provision the approved links
+  in the isolated operator registry after both logins are verified.
+
 ## Architecture and gates
 1. **Public front end:** OAuth-authenticated MCP service. Every caller has a
    server-verified issuer and immutable subject. All users can create MEGA
