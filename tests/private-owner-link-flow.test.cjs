@@ -141,13 +141,13 @@ test('wrong Google account and changed Google subject never transfer the singlet
   t.after(()=>{global.fetch=previous;});
   const start=async()=>new URL((await svc.begin(operator)).url).searchParams.get('state');
   shownEmail='other@example.com';
-  await assert.rejects(()=>svc.complete(await start(),'code-test'),/IDENTITY_DENIED/);
+  await assert.rejects(async()=>svc.complete(await start(),'code-test'),/IDENTITY_DENIED/);
   assert.equal(getLink(),undefined);
   shownEmail=email;
   assert.equal((await svc.complete(await start(),'code-test')).status,'identity_linked');
   const baseline=getLink();
   sub='new-google-account';
-  await assert.rejects(()=>svc.complete(await start(),'code-test'),/CONFLICT/);
+  await assert.rejects(async()=>svc.complete(await start(),'code-test'),/CONFLICT/);
   assert.deepEqual(getLink(),baseline);
 });
 
