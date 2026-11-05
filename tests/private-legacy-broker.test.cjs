@@ -130,7 +130,7 @@ test('public broker client requires verified owner and never inherits private Rc
     assert.equal(url,expected.audience);
     const token=options.headers.authorization.slice(10);
     const payload=verifyPrivateBrokerDelegation(token,key,{
-      ...expected,issuer:expected.mcpIssuer,
+      ...expected,issuer:expected.issuer,
       audience:expected.audience,
     },Math.floor(Date.now()/1000));
     assert.equal(payload.op,'roots');
