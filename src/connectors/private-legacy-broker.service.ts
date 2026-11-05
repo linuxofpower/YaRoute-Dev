@@ -82,7 +82,8 @@ export class PrivateLegacyBrokerService implements OnModuleInit, OnModuleDestroy
         ON CONFLICT (mcp_subject,minute) DO UPDATE SET
           count=nyx_private_broker_rate_v1.count+1 RETURNING count`,
         [cfg.mcpSubject]);
-      if (Number(usage.rows[0]?.count)>20)
+      const requestCount = Number(usage.rows[0]?.count);
+      if (!Number.isInteger(requestCount) || requestCount < 1 || requestCount > 20)
         throw new Error('PRIVATE_BROKER_RATE_LIMITED');
       await client.query('COMMIT');
     } catch (error) {
