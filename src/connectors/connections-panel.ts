@@ -361,6 +361,7 @@ async function refreshOwnerLink(){
   document.getElementById('nyx-owner-status').textContent=status.linked===true ?
    (privateBrokerEnabled ? 'Google identity linked. Load your approved private roots.' : 'Google identity linked. Private legacy Rclone broker not activated.') :
    'Approved account: verification required before any private broker access.';
+  document.getElementById('nyx-private-read-controls').hidden=!(status.linked===true && privateBrokerEnabled);
  }catch{section.hidden=true;}
 }
 document.getElementById('nyx-owner-link').addEventListener('click',async()=>{
