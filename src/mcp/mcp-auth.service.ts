@@ -86,20 +86,25 @@ export class McpAuthService {
       }
 
       if (typeof payload.sub !== 'string' || !payload.sub.trim()) throw new Error('Missing subject');
-      // The current rclone configuration is process-wide, not scoped to the OAuth subject.
-      // Until per-user storage connections exist, explicitly allow only private owners.
-      // Fail closed if NYX_PRIVATE_OAUTH_SUBJECTS is unset or empty.
+      // Legacy private Rclone credentials are process-wide. They must never be
+      // authorized by a caller-provided email or an unverified provider claim.
+      // Keep the private allowlist fail-closed. In the separately opted-in
+      // single-owner mode, require one distinct subject and an exact trusted
+      // operator-provisioned subject; public tenants remain isolated elsewhere.
       const allowedSubjects = new Set(
         (process.env.NYX_PRIVATE_OAUTH_SUBJECTS || '')
           .split(',')
           .map((subject) => subject.trim())
           .filter(Boolean),
       );
-      // Public connector mode has verified JWT tenants and NO legacy shared
-      // Rclone, CLI, or private handoff tools. Keep strict allowlist in private mode.
       const connectorMode = process.env.NYX_DEPLOYMENT_MODE === 'public' &&
         process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true';
-      if (!connectorMode && !allowedSubjects.has(payload.sub)) {
+      const requireSingleOwner = process.env.NYX_PRIVATE_OWNER_SUBJECT_ENFORCED === 'true';
+      const exactOwner = (process.env.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT || '').trim();
+      const oneOwnerConfigured = /^[^\\x00-\\x20]{1,500}$/.test(exactOwner) &&
+        allowedSubjects.size === 1 && allowedSubjects.has(exactOwner);
+      if (!connectorMode && (!allowedSubjects.has(payload.sub) ||
+          (requireSingleOwner && (!oneOwnerConfigured || payload.sub !== exactOwner)))) {
         res.status(403).json({ error: 'access_denied', error_description: 'Private NYX instance: user not authorized' });
         return false;
       }
