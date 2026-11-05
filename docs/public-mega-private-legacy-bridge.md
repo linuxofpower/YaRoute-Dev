@@ -1,6 +1,6 @@
 # Public MEGA + owner-only legacy Rclone: implementation contract
 
-Status: **Dev policy groundwork only; not deployed, not an authorization bridge**.
+Status: **Dev owner-identity linking candidate; not deployed, no private Rclone broker or live access change**.
 The public plugin may be installed by any authenticated user. Only the operator's
 one specifically approved, separately verified Google identity may reach the existing private Rclone
 service. Other users may enroll their **own** MEGA accounts in isolated storage.
@@ -27,14 +27,48 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
 - Offline, synthetic RSA tests cover a valid sole-owner proof and former-owner denial, wrong
   MCP subject, wrong Google subject, forged key, wrong algorithm, audience,
   issuer, nonce, stale/expired token and unverified email.
-- **Still disconnected:** no public HTTP route invokes this verifier, no owner
-  link database or OAuth state exchange has been installed, and the existing
-  private Rclone service remains separate. The verifier cannot itself authorize
-  access to a remote. A future callback must atomically consume the server-side
-  state and nonce before calling this verifier.
+- **Opt-in owner link implemented in Dev candidate:** a dedicated one-use
+  Google OIDC callback now invokes this verifier after validating the state,
+  PKCE and nonce. The singleton database link binds the preapproved MCP
+  subject to one immutable Google subject and cannot silently switch owners.
+  This still cannot authorize a private Rclone operation: no broker is connected.
 - Never store the real approved operator address, private Google subject IDs or
   rclone credentials in this public repository. Provision the approved links
   in the isolated operator registry after both logins are verified.
+
+## Opt-in private-owner identity link (Dev candidate, 2026-11-05)
+
+The new identity-only flow is disabled by default. It is available exclusively
+on an isolated public pilot with all public tenant isolation flags enabled.
+It does not read any private Rclone configuration or grant legacy tools.
+
+Required **operator-only** configuration in that pilot:
+
+- `NYX_PRIVATE_OWNER_LINK_ENABLED=true`
+- `NYX_PRIVATE_LEGACY_OWNER_GOOGLE_EMAIL`: the sole approved verified Google account.
+- `NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT`: immutable authenticated MCP subject,
+  obtained from a verified login (never from user-supplied tool arguments).
+- `NYX_PRIVATE_OWNER_GOOGLE_CLIENT_ID` and
+  `NYX_PRIVATE_OWNER_GOOGLE_CLIENT_SECRET`: a dedicated Google web OAuth client
+  configured for the exact HTTPS redirect
+  `https://PUBLIC_HOST/connect/private-owner/callback`.
+- Dedicated public-pilot `DATABASE_URL`, `NYX_STORAGE_ENCRYPTION_KEY`,
+  `NYX_OAUTH_ISSUER`, `NYX_PUBLIC_URL`, and existing public auth settings.
+
+The owner begins verification through the panel's `nyx_private_owner_link_begin`
+MCP tool. Other signed-in users cannot begin this link; they use
+`nyx_storage_connection_*` and their own credential enrollment. The callback
+consumes the server-stored state once, exchanges the code through PKCE, verifies
+Google's RS256-signed ID token against exact client audience and stored nonce,
+and stores the approved Google subject/MCP subject in a singleton record.
+No access token, refresh token, password, Rclone config or broker delegation
+is stored in the link table. Rebinding to a new account requires a separate
+operator-controlled revocation/migration.
+
+**The owner link is not private storage access.** The public pilot MUST NOT
+gain inherited private credentials. The private broker, signed short-lived
+delegation, enforcement, negative live tests and rollback remain separately
+required before a user can operate the operator's legacy remotes.
 
 ## Architecture and gates
 1. **Public front end:** OAuth-authenticated MCP service. Every caller has a
@@ -80,8 +114,8 @@ repository, and do not accept it from caller-supplied arguments.
 The legacy policy rejects zero links, two or more links, mismatched approved
 email, unverified Google email, swapped subjects and anonymous callers.
 The earlier two-owner exception is revoked as a **design decision** but is not
-yet a live credential revocation: the broker, account-link database and
-deployment-specific owner configuration are not installed. Until the isolated
+yet a live credential revocation: the opt-in account-link code is staged only;
+no broker or deployment-specific owner configuration has been installed. Until the isolated
 broker has passed runtime tests, do not expose private Rclone to public tenants.
 Existing local Arch Linux/Termux operating-system access is a separate boundary.
 
@@ -89,9 +123,9 @@ Existing local Arch Linux/Termux operating-system access is a separate boundary.
 - Review the current Dev implementation and security tests. The new
   `private-legacy-access.policy.ts` is only a pure predicate and MUST NOT be
   used as proof that a Google login has been authenticated.
-- Implement and review Google account linking, durable owner registry,
-  signed delegation and an independent legacy broker before exposing any
-  `private_legacy_*` MCP tools.
+- Review and run the opt-in owner-link and singleton registry tests in Dev and
+  Tester. Implement signed delegation and an independent legacy broker before
+  exposing any `private_legacy_*` MCP tools.
 - Deploy a separate **public pilot** with new database/key, not on the
   existing private Dev or Production service. The public pilot MUST NOT have
   inherited `RCLONE_CONFIG*`, `NYX_SHARED_ROOTS_JSON`, or a legacy file.
