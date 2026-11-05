@@ -154,3 +154,36 @@ Existing local Arch Linux/Termux operating-system access is a separate boundary.
 
 The legacy private integration is intentionally blocked until every above
 security condition is independently verified.
+
+
+## Private MCP single-owner subject gate (Dev candidate)
+
+The private Heroku service still holds the operator's process-wide legacy Rclone
+credentials. OAuth access tokens must be verified by the configured issuer,
+audience and scopes before any private MCP handler runs. A Google email in an
+unverified request or tool argument is **not** authorization.
+
+A separately opt-in gate `NYX_PRIVATE_OWNER_SUBJECT_ENFORCED=true` additionally
+requires all of the following in the **private deployment's** trusted config:
+
+- `NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT`: one immutable verified MCP OAuth
+  subject independently bound to the approved Google owner identity.
+- `NYX_PRIVATE_OAUTH_SUBJECTS`: exactly one distinct allowed subject, identical
+  to the bound owner subject.
+- Every private request must carry a valid signed OAuth token with that exact
+  subject. Missing identity, another user, or a broader allowlist fails closed
+  with 403.
+
+The code **does not itself verify that an MCP subject owns the approved Google
+email**. Do not enable this gate on a live app merely by guessing a subject or
+copying an email into config. First complete the independent Google OIDC
+owner-link proof; verify the immutable Google subject against the immutable MCP
+subject via trusted operator setup; audit the configured allowlist; then run
+negative acceptance tests with a separate signed-in account. An unset flag
+preserves current legacy behavior, so merging this code alone is not a live
+credential revocation or proof of exclusive access. No private credentials,
+refresh tokens or literal owner email belong in the public repository.
+
+The public multi-user deployment is a separate runtime with no inherited
+legacy `RCLONE_CONFIG*` values. This subject gate does not reduce its
+ordinary users' ability to link their **own** isolated storage credentials.
