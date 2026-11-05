@@ -101,7 +101,7 @@ export class McpAuthService {
         process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true';
       const requireSingleOwner = process.env.NYX_PRIVATE_OWNER_SUBJECT_ENFORCED === 'true';
       const exactOwner = (process.env.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT || '').trim();
-      const oneOwnerConfigured = /^[^\\x00-\\x20]{1,500}$/.test(exactOwner) &&
+      const oneOwnerConfigured = /^[^\x00-\x20]{1,500}$/.test(exactOwner) &&
         allowedSubjects.size === 1 && allowedSubjects.has(exactOwner);
       if (!connectorMode && (!allowedSubjects.has(payload.sub) ||
           (requireSingleOwner && (!oneOwnerConfigured || payload.sub !== exactOwner)))) {
