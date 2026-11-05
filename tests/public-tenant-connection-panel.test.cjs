@@ -46,7 +46,7 @@ test('private mode preserves operator Rclone inventory without enabling tenant o
   const html = renderPanel('private', 'false', 'false');
   assert.match(html, /const publicTenantStorage=false;/);
   assert.match(html, /data-open="nyx-rclone-group"\s*>/);
-  assert.match(html, /id="nyx-rclone-group">/);
+  assert.match(html, /id="nyx-rclone-group"\s*>/);
   assert.doesNotMatch(html, /id="nyx-rclone-group" hidden/);
 });
 
