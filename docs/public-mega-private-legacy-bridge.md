@@ -2,7 +2,7 @@
 
 Status: **Dev policy groundwork only; not deployed, not an authorization bridge**.
 The public plugin may be installed by any authenticated user. Only the operator's
-two separately verified Google identities may reach the existing private Rclone
+one specifically approved, separately verified Google identity may reach the existing private Rclone
 service. Other users may enroll their **own** MEGA accounts in isolated storage.
 
 ## Existing code that should be reused
@@ -24,7 +24,7 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
   mandatory stored nonce, issued-at freshness, expiry, Google subject and
   `email_verified === true`. It returns only a short-lived proof object;
   never a provider or MCP bearer token.
-- Offline, synthetic RSA tests cover valid owner-one/owner-two proofs, wrong
+- Offline, synthetic RSA tests cover a valid sole-owner proof and former-owner denial, wrong
   MCP subject, wrong Google subject, forged key, wrong algorithm, audience,
   issuer, nonce, stale/expired token and unverified email.
 - **Still disconnected:** no public HTTP route invokes this verifier, no owner
@@ -32,7 +32,7 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
   private Rclone service remains separate. The verifier cannot itself authorize
   access to a remote. A future callback must atomically consume the server-side
   state and nonce before calling this verifier.
-- Never store the two real operator addresses, private Google subject IDs or
+- Never store the real approved operator address, private Google subject IDs or
   rclone credentials in this public repository. Provision the approved links
   in the isolated operator registry after both logins are verified.
 
@@ -46,8 +46,8 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
    `sub`, `email` and `email_verified`. Bind those to the current verified
    MCP issuer+subject, using encrypted or otherwise protected server-side
    ownership records. Never accept identity fields from caller tool arguments.
-3. **Private owner registry:** Provision exactly the two operator-approved
-   Google subjects/emails through a protected administrative process.
+3. **Private owner registry:** Provision exactly one operator-approved
+   Google subject/email through a protected administrative process.
    Do not put the real addresses or subject IDs in this public repository.
    A changed email, new Google subject, revoked link, or mismatched MCP subject
    must fail closed pending fresh verification.
@@ -68,6 +68,23 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
    revoked; disconnect never deletes owner legacy data. Keep non-secret audit
    events for deny, grant, revoke and failed delegated access.
 
+## Single-owner requirement (2026-11-05)
+
+Private legacy Rclone access is reserved only for the separately verified
+Google account chosen by the operator. In the intended deployment the protected
+operator configuration must specify `NYX_PRIVATE_LEGACY_OWNER_GOOGLE_EMAIL`
+as the approved account and bind its immutable Google subject to the current
+authenticated MCP issuer+subject. Do not embed that real identity in this public
+repository, and do not accept it from caller-supplied arguments.
+
+The legacy policy rejects zero links, two or more links, mismatched approved
+email, unverified Google email, swapped subjects and anonymous callers.
+The earlier two-owner exception is revoked as a **design decision** but is not
+yet a live credential revocation: the broker, account-link database and
+deployment-specific owner configuration are not installed. Until the isolated
+broker has passed runtime tests, do not expose private Rclone to public tenants.
+Existing local Arch Linux/Termux operating-system access is a separate boundary.
+
 ## Release sequence
 - Review the current Dev implementation and security tests. The new
   `private-legacy-access.policy.ts` is only a pure predicate and MUST NOT be
@@ -82,7 +99,7 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
   `NYX_PUBLIC_CONNECTORS_ENABLED=true`,
   `NYX_MULTIUSER_RCLONE_ENABLED=true`. Test through real Google and MEGA
   sign-ins, never credentials in ChatGPT.
-- Run two authorized-owner, two unrelated-user, anonymous-user and mixed
+- Run one approved owner, the former second owner, two unrelated users, anonymous-user and mixed
   subject/Google-sub tests against *both* public and broker endpoints.
   Unauthorized requests must return 403 without revealing operator remotes.
 - Test foreign-owner list, connection probe, credentials, revoke, root traversal,
@@ -94,7 +111,8 @@ service. Other users may enroll their **own** MEGA accounts in isolated storage.
 
 ## Scope of this Dev patch
 - Adds a fail-closed pure policy that requires matching trusted MCP issuer/sub,
-  Google issuer/sub and verified email, against at most two configured links.
+  Google issuer/sub and verified email, against exactly one server-configured owner link, and requires an independently
+  configured exact approved email. Old two-owner lists fail closed.
 - Adds synthetic negative and positive unit tests.
 - Does **not** implement Google account linking, bridge transport, broker tools,
   live MEGA enrollment, tenant deployment or cross-user production verification.
