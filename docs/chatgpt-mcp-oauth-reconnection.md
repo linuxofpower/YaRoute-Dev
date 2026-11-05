@@ -24,6 +24,31 @@ token through MCP tool arguments.
   the issuer recovers. This does not bypass signature checks.
 - Private-owner allowlists and granted scopes remain enforced after recovery.
 
+## Why a monthly prompt can survive the JWKS fix
+
+The server-side change only prevents a **false** reconnect when the signing-key
+provider is temporarily unreachable. It now also recognizes structured nested
+Node/Undici socket, timeout, rate-limit and upstream 5xx errors. Unknown keys,
+bad signatures, expired access tokens and revoked grants still fail closed.
+
+ChatGPT normally **reuses the dynamically registered OAuth client** for the
+same MCP connection. If the authorization server expires, rotates or deletes
+that client or its secret, reconnecting can fail with `invalid_client`. Preserve
+the DCR registration/client credentials for the lifetime of the connection.
+If the refresh grant fails with `invalid_grant`, inspect the issuer's refresh-token
+rotation, inactivity and absolute session limits. These changes are made in
+the OAuth provider, not in NestNyx's bearer-token verifier.
+
+Treat this as a three-part acceptance:
+1. Confirm the exact deployed SHA on the intended Tester runtime without
+   waking billable applications merely to collect telemetry.
+2. In the issuer's admin UI verify that the ChatGPT DCR client persists and
+   refresh tokens are supported, rotated correctly and not force-expired early.
+   Never paste tokens or client secrets into a bug report.
+3. Exercise a real ChatGPT automatic refresh **after access-token expiry**,
+   including a temporary JWKS outage, and record only timestamps/error codes.
+   A unit test or a successful MCP call with a still-valid token is not proof.
+
 ## Diagnose an approximately monthly reconnect
 
 1. Record the affected plugin, the date/time, the ChatGPT error and whether
