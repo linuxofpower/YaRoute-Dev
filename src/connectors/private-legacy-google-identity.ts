@@ -77,7 +77,8 @@ export class PrivateLegacyGoogleIdTokenVerifier {
     const now = Math.floor(Date.now() / 1000);
     const normalizedEmail = typeof claims.email === 'string'
       ? claims.email.trim().toLowerCase() : '';
-    if (!GOOGLE_ISSUERS.includes(claims.iss as typeof GOOGLE_ISSUERS[number]) ||
+    if (typeof claims.iss !== 'string' ||
+        !GOOGLE_ISSUERS.includes(claims.iss as typeof GOOGLE_ISSUERS[number]) ||
         claims.aud !== expected.clientId ||
         (claims.azp !== undefined && claims.azp !== expected.clientId) ||
         claims.nonce !== expected.nonce ||
