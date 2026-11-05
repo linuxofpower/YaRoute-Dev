@@ -9,7 +9,7 @@ const keys = ['NYX_PRIVATE_OWNER_LINK_ENABLED','NYX_DEPLOYMENT_MODE',
   'NYX_PRIVATE_OWNER_GOOGLE_CLIENT_ID','NYX_PRIVATE_OWNER_GOOGLE_CLIENT_SECRET',
   'NYX_OAUTH_ISSUER','NYX_PUBLIC_URL'];
 const operator = 'oauth:approved-owner-test';
-const email = 'synthetic-owner@example.test';
+const email = 'sole-owner@example.com';
 
 function setup(t) {
   const previous = Object.fromEntries(keys.map(k => [k,process.env[k]]));
@@ -140,7 +140,7 @@ test('wrong Google account and changed Google subject never transfer the singlet
   global.fetch=async()=>({ok:true,text:async()=>JSON.stringify({id_token:'synthetic'})});
   t.after(()=>{global.fetch=previous;});
   const start=async()=>new URL((await svc.begin(operator)).url).searchParams.get('state');
-  shownEmail='other-user@example.test';
+  shownEmail='other@example.com';
   await assert.rejects(()=>svc.complete(await start(),'code-test'),/IDENTITY_DENIED/);
   assert.equal(getLink(),undefined);
   shownEmail=email;
