@@ -6,6 +6,7 @@ test('load automatic Tester merger without calling GitHub',async()=>{
  mod=await import('../scripts/nyx-tester-auto-merge.mjs');
  assert.equal(typeof mod.validatePull,'function');
  assert.equal(typeof mod.validateChecks,'function');
+ assert.equal(typeof mod.validateReviews,'function');
 });
 function candidate(){
  const target='yaMorozYaroslav/YaRoute';
@@ -37,8 +38,23 @@ test('reject stale branch head, non-Taster ancestry and non-generated PR',()=>{
  const c=candidate();
  assert.throws(()=>mod.validatePull({...c,commit:{...c.commit,parents:[{sha:MASTER}]}}),/PARENT_UNVERIFIED/);
  assert.throws(()=>mod.validatePull({...c,pr:{...c.pr,head:{...c.pr.head,ref:'feature/unsafe'}}}),/SOURCE_UNVERIFIED/);
- assert.throws(()=>mod.validatePull({...c,pr:{...c.pr,requested_reviewers:[{login:'owner'}]}}),/REVIEW_PENDING/);
+
 });
+test('Tester reviewer requests do not require manual approval when CI is green',()=>{
+ const c=candidate();
+ const requested={...c,pr:{...c.pr,requested_reviewers:[{login:'owner'}]}};
+ assert.equal(mod.validatePull(requested),true);
+ assert.equal(mod.validateChecks(checks()),true);
+ assert.doesNotThrow(()=>mod.validateReviews([{state:'COMMENTED'}]));
+ assert.doesNotThrow(()=>mod.validateReviews([{state:'APPROVED'}]));
+});
+test('actual blocking reviews and incomplete review inventory still stop Tester',()=>{
+ assert.throws(()=>mod.validateReviews([{state:'CHANGES_REQUESTED'}]),/REVIEW_BLOCKED/);
+ assert.throws(()=>mod.validateReviews([{state:'PENDING'}]),/REVIEW_BLOCKED/);
+ assert.throws(()=>mod.validateReviews(null),/REVIEWS_INCOMPLETE/);
+ assert.throws(()=>mod.validateReviews(Array(100).fill({state:'COMMENTED'})),/REVIEWS_INCOMPLETE/);
+});
+
 test('never auto-merge edits to hosting, workflow, keys, or default branches',()=>{
  for(const path of ['app.json','.github/workflows/release.yml','scripts/install-rclone.mjs','config/nyx-runtime-profile.json','../outside','src/../../bad']){
   const c=candidate();c.files[0].filename=path;
