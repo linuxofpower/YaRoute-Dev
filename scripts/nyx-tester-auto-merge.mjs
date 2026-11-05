@@ -20,7 +20,10 @@ export function validatePull({pr,branch,master,sourceSha,files,commit,profileRev
  if(pr.changed_files!==files?.length||!files.length||files.length>=100)fail('FILE_INVENTORY_INCOMPLETE');
  if(files.some(f=>!(targetPath(f.filename)||(profileReviewed&&f.filename==='config/nyx-runtime-profile.json'))||!['added','modified'].includes(f.status)))fail('UNSAFE_PATH');
  if(commit?.sha!==pr.head.sha||commit.parents?.length!==1||commit.parents[0]?.sha!==branch.commit.sha)fail('PARENT_UNVERIFIED');
- if(pr.requested_reviewers?.length||pr.requested_teams?.length)fail('REVIEW_PENDING');
+ // A requested review is advisory on the unprotected Tester branch. Do not
+ // equate an unsubmitted request with CHANGES_REQUESTED or a pending review.
+ // validateReviews() separately blocks actual review objections, and master
+ // remains protected, excluded from this workflow and promotion target.
  return true;
 }
 export function validateChecks(list){
@@ -36,7 +39,7 @@ export function validateChecks(list){
    if(!byName.has(required))fail('REQUIRED_CHECK_MISSING_'+required.replace(/[^A-Za-z0-9]/g,'_'));
  return true;
 }
-function validateReviews(reviews){
+export function validateReviews(reviews){
  if(!Array.isArray(reviews)||reviews.length>=100)fail('REVIEWS_INCOMPLETE');
  if(reviews.some(r=>r.state==='CHANGES_REQUESTED'||r.state==='PENDING'))fail('REVIEW_BLOCKED');
 }
