@@ -1,4 +1,4 @@
-name: NYX Prepare Tester Promotion (approval gated)
+name: NYX Prepare Tester Promotion (CI gated)
 
 on:
   workflow_run:
@@ -51,7 +51,7 @@ jobs:
           permission-pull-requests: write
           permission-checks: read
           permission-actions: read
-      - name: Stage exact Dev code into a draft Tester PR only
+      - name: Stage exact Dev code into a CI-gated draft Tester PR
         id: stage
         env:
           GITHUB_TOKEN: ${{ github.token }}
