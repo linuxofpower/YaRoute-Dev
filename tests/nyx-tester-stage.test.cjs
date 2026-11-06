@@ -69,3 +69,17 @@ test('normalized source identical to Tester tree is a no-op, even with a differi
  assert.equal(m.hasEffectiveTreeChange(a,b),true);
  assert.throws(()=>m.hasEffectiveTreeChange('not-sha',b),/STAGING_TREE_INVALID/);
 });
+
+
+test('public activation preflight runtime and tests stage together; Dev script stays target-owned',()=>{
+ const src={truncated:false,tree:[
+   blob('src/runtime/public-mega-activation-preflight.ts',SHA),
+   blob('tests/public-mega-activation-preflight.test.cjs',SHA),
+   blob('scripts/nyx-public-mega-activation-preflight.mjs',SHA),
+ ]};
+ const dst={truncated:false,tree:[]};
+ assert.deepEqual(m.candidatePaths(src,dst).map(x=>x.path),[
+   'src/runtime/public-mega-activation-preflight.ts',
+   'tests/public-mega-activation-preflight.test.cjs',
+ ]);
+});
