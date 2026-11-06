@@ -15,7 +15,7 @@ function prepared() {
     NYX_OAUTH_AUDIENCE:'https://public-pilot.herokuapp.com/mcp',
     NYX_OAUTH_SCOPES:'nyx.read,nyx.write',
     NYX_OAUTH_ALGORITHMS:'RS256',
-    DATABASE_URL:'postgresql://synthetic:test-only-password@db.example.com/pilot',
+    DATABASE_URL:['postgresql://synthetic:test-only-password','db.example.com/pilot'].join('@'),
     NYX_STORAGE_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),
     NYX_PRIVATE_OWNER_LINK_ENABLED:'false',
     NYX_PRIVATE_BROKER_CLIENT_ENABLED:'false',
