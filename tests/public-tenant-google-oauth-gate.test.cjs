@@ -82,7 +82,7 @@ test('non-Google tokens fail with 403 even if their signed email says Google',as
   const svc=auth();
   for(const subject of ['auth0|123456789012','github|123456789012',
     'tenant-one','google-oauth2|letters','google-oauth2|123']) {
-    const result=await login(svc,signed(subject,{email:'owner@gmail.com'}));
+    const result=await login(svc,signed(subject,{email:'owner@example.com'}));
     assert.equal(result.ok,false,subject);
     assert.equal(result.res.statusCode,403,subject);
     assert.equal(result.res.locals.nyxSubject,undefined,subject);
