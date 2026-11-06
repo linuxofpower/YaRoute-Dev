@@ -91,6 +91,14 @@ RCLONE_CONFIG_B64; do NOT use it as a public provisioning blueprint.
 Heroku config changes restart the web dyno; perform an ordered maintenance
 window cutover, never share private config with public requests.
 
+## Private broker readiness after the public cutover
+
+The read-only `scripts/nyx-heroku-two-app-audit.mjs` distinguishes legacy operator Rclone credentials from the separately gated public broker client. It **allows** `NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT` and the dedicated `NYX_PRIVATE_BROKER_SHARED_KEY_B64` in public Dev when needed for owner linking and signed delegation, but **rejects** any `RCLONE_CONFIG*`, `NYX_SHARED_ROOTS_JSON`, private OAuth allowlist, or `NYX_PRIVATE_BROKER_SERVER_ENABLED=true` there. It reports broker-key presence only, never its value. The private broker server belongs exclusively on Pro.
+
+## Monthly-reconnection acceptance
+
+The desired interval is **at most one manual reconnect per 30 days**, with automatic OAuth refresh between logins. NestNyx validates access tokens; it cannot set ChatGPT's refresh schedule. Inspect the actual `NYX_OAUTH_ISSUER` provider's administrative settings privately: persistent ChatGPT client registration (DCR or supported CIMD), `refresh_token` grant support, token rotation/idle/absolute expiration, and stable scopes/audience/resource. Do not lengthen access tokens or bypass issuer/signature/expiry validation. A green CI build is not proof: verify a real automatic refresh after access-token expiry, then monitor the interval for a full 30 days. See `docs/chatgpt-mcp-oauth-reconnection.md` and https://developers.openai.com/plugins/build/auth.
+
 ## Phase D: acceptance gates
 
 The compiled READ-ONLY preflight checks actual public Neon hostname,
