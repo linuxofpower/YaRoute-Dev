@@ -1,11 +1,13 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
-import { assertPublicTenantStorageProvider } from './public-tenant-provider.policy';
+import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider } from './public-tenant-provider.policy';
 import { ConnectorsService } from './connectors.service';
-import { TenantRcloneService } from './tenant-rclone.service';
+import { TenantRcloneService, type TenantRcloneProfile } from './tenant-rclone.service';
 
 const DRIVE_READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+const PHOTOS_APP_CREATED_READ_SCOPE = 'https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata';
+type TenantGoogleProvider = 'google-drive' | 'google-photos';
 const OPENID_SCOPES = 'openid email';
 type GoogleTokenResponse = {
   access_token?: string; refresh_token?: string; token_type?: string;
@@ -54,6 +56,8 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
       'digest text PRIMARY KEY, owner_id text NOT NULL, connection_id text NOT NULL,' +
       'folder_id text NOT NULL, encrypted_verifier text NOT NULL,' +
       'expires_at timestamptz NOT NULL)');
+    await this.pool.query("ALTER TABLE nyx_rclone_google_oauth_states_v2 " +
+      "ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'google-drive'");
   }
   async onModuleDestroy() { await this.pool?.end(); }
   private db() {
@@ -77,16 +81,24 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async begin(ownerId: string, connectionId: string, folderId: string) {
-    assertPublicTenantStorageProvider('google-drive');
+    return this.beginProvider(ownerId,connectionId,'google-drive',folderId);
+  }
+  async beginPhotos(ownerId: string, connectionId: string) {
+    return this.beginProvider(ownerId,connectionId,'google-photos','media/all');
+  }
+  private async beginProvider(ownerId: string, connectionId: string,
+                              provider: TenantGoogleProvider, folderId: string) {
+    assertPublicTenantGoogleOwnerId(ownerId);
+    assertPublicTenantStorageProvider(provider);
     const {id} = oauthClient();
     const origin = oauthBase();
     this.db();
-    if (!/^[A-Za-z0-9_-]{1,256}$/.test(folderId)) {
+    if (provider === 'google-drive' && !/^[A-Za-z0-9_-]{1,256}$/.test(folderId)) {
       throw new Error('TENANT_GOOGLE_ROOT_INVALID');
     }
     const item = await this.connectors.getOwned(ownerId, connectionId);
-    if (item.provider !== 'google-drive' || item.status === 'revoked' ||
-        !(item.resources || []).some(r => r.kind === 'drive' && r.id === folderId &&
+    if (item.provider !== provider || item.status === 'revoked' ||
+        !(item.resources || []).some(r => r.kind === (provider === 'google-drive' ? 'drive' : 'photos-root') && r.id === folderId &&
           Array.isArray(r.capabilities) && r.capabilities.includes('storage:list'))) {
       throw new Error('TENANT_GOOGLE_ROOT_NOT_SELECTED');
     }
@@ -97,14 +109,14 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     await this.db().query('DELETE FROM nyx_rclone_google_oauth_states_v2 ' +
       'WHERE owner_id=$1 AND connection_id=$2', [ownerId,connectionId]);
     await this.db().query('INSERT INTO nyx_rclone_google_oauth_states_v2 ' +
-      '(digest,owner_id,connection_id,folder_id,encrypted_verifier,expires_at) ' +
-      "VALUES ($1,$2,$3,$4,$5,now()+interval '10 minutes')",
-      [digest,ownerId,connectionId,folderId,this.encryptVerifier(digest,verifier)]);
+      '(digest,owner_id,connection_id,folder_id,encrypted_verifier,provider,expires_at) ' +
+      "VALUES ($1,$2,$3,$4,$5,$6,now()+interval '10 minutes')",
+      [digest,ownerId,connectionId,folderId,this.encryptVerifier(digest,verifier),provider]);
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', origin + '/connect/google/callback');
-    url.searchParams.set('scope', DRIVE_READ_SCOPE + ' ' + OPENID_SCOPES);
+    url.searchParams.set('scope', (provider === 'google-drive' ? DRIVE_READ_SCOPE : PHOTOS_APP_CREATED_READ_SCOPE) + ' ' + OPENID_SCOPES);
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'offline');
     url.searchParams.set('prompt', 'consent');
@@ -112,7 +124,7 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     url.searchParams.set('code_challenge', challenge);
     url.searchParams.set('include_granted_scopes', 'false');
     return {url:url.toString(),expiresInSeconds:600,
-      message:'Open the Google authorization URL yourself. Only read-only Drive consent is requested; existing remotes are not changed.'};
+      message:provider === 'google-drive' ? 'Authorize read-only Google Drive separately from your NestNyx Google login.' : 'Authorize only Google Photos media created by this application; your existing Photos library is NOT fully accessible via this API.'};
   }
 
   private async readSmallJson<T>(response: Response): Promise<T> {
@@ -124,7 +136,6 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
 
   /** Public HTTPS callback; only a one-time stored state identifies the owner. */
   async complete(state: string, code: string) {
-    assertPublicTenantStorageProvider('google-drive');
     if (!/^[A-Za-z0-9_-]{40,100}$/.test(state) ||
         typeof code !== 'string' || code.length < 3 || code.length > 4096 ||
         /[\x00-\x1f]/.test(code)) {
@@ -133,15 +144,19 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     const {id,secret} = oauthClient();
     const digest = createHash('sha256').update(state).digest('hex');
     const row = await this.db().query('DELETE FROM nyx_rclone_google_oauth_states_v2 ' +
-      'WHERE digest=$1 AND expires_at>now() RETURNING owner_id,connection_id,folder_id,encrypted_verifier',
+      'WHERE digest=$1 AND expires_at>now() RETURNING owner_id,connection_id,folder_id,provider,encrypted_verifier',
       [digest]);
     if (row.rowCount !== 1) throw new Error('TENANT_GOOGLE_AUTH_STATE_EXPIRED');
     const {owner_id:ownerId,connection_id:connectionId,folder_id:folderId,
-      encrypted_verifier:encryptedVerifier} = row.rows[0];
+      provider, encrypted_verifier:encryptedVerifier} = row.rows[0];
+    if (provider !== 'google-drive' && provider !== 'google-photos')
+      throw new Error('TENANT_GOOGLE_PROVIDER_INVALID');
+    assertPublicTenantGoogleOwnerId(ownerId);
+    assertPublicTenantStorageProvider(provider);
     const verifier = this.decryptVerifier(digest, encryptedVerifier);
     const item = await this.connectors.getOwned(ownerId, connectionId);
-    if (item.provider !== 'google-drive' || item.status === 'revoked' ||
-        !(item.resources || []).some(r => r.kind === 'drive' && r.id === folderId &&
+    if (item.provider !== provider || item.status === 'revoked' ||
+        !(item.resources || []).some(r => r.kind === (provider === 'google-drive' ? 'drive' : 'photos-root') && r.id === folderId &&
           r.capabilities.includes('storage:list'))) {
       throw new Error('TENANT_GOOGLE_CONNECTION_CHANGED');
     }
@@ -159,7 +174,7 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     const granted = new Set((token.scope || '').split(/\s+/));
     if (!token.access_token || !token.refresh_token || token.token_type?.toLowerCase() !== 'bearer' ||
         !token.expires_in || !Number.isFinite(token.expires_in) ||
-        !granted.has(DRIVE_READ_SCOPE) || !granted.has('openid')) {
+        !granted.has(provider === 'google-drive' ? DRIVE_READ_SCOPE : PHOTOS_APP_CREATED_READ_SCOPE) || !granted.has('openid')) {
       throw new Error('TENANT_GOOGLE_SCOPE_OR_REFRESH_TOKEN_REQUIRED');
     }
     const identityResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -173,17 +188,17 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
       throw new Error('TENANT_RCLONE_ACCOUNT_CHANGE_FORBIDDEN');
     }
     const expires = new Date(Date.now()+Math.floor(token.expires_in)*1000);
-    const profile = {provider:'google-drive' as const,
-      rootFolderId:folderId,scope:'drive.readonly' as const, clientId:id,
-      clientSecret:secret,
-      token:JSON.stringify({
-        access_token:token.access_token,token_type:'Bearer',
-        refresh_token:token.refresh_token,expiry:expires.toISOString(),
-      }),
-    };
+    const grantToken=JSON.stringify({
+      access_token:token.access_token,token_type:'Bearer',
+      refresh_token:token.refresh_token,expiry:expires.toISOString(),
+    });
+    const profile:TenantRcloneProfile = provider === 'google-drive'
+      ? {provider:'google-drive',rootFolderId:folderId,scope:'drive.readonly',
+         clientId:id,clientSecret:secret,token:grantToken}
+      : {provider:'google-photos',clientId:id,clientSecret:secret,token:grantToken};
     // Only callback-attested provider credentials reach the isolated pending V2 vault.
     await this.storage.stageCredential(ownerId,connectionId,profile);
-    await this.connectors.confirmStorageProvider(ownerId,connectionId,'google-drive',account.sub);
-    return {status:'pending_read_probe',provider:'google-drive'};
+    await this.connectors.confirmStorageProvider(ownerId,connectionId,provider,account.sub);
+    return {status:'pending_read_probe',provider};
   }
 }
