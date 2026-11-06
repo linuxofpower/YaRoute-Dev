@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const preflight=import('../scripts/nyx-public-mega-activation-preflight.mjs');
+const {publicMegaActivationPreflight}=require('../dist/runtime/public-mega-activation-preflight');
 
 const privateOrigin='https://private-dev.example.com';
 function prepared() {
@@ -23,7 +23,6 @@ function prepared() {
   };
 }
 async function check(env,options={}) {
-  const {publicMegaActivationPreflight}=await preflight;
   return publicMegaActivationPreflight(env,{
     existingPrivateOrigin:privateOrigin,exists:()=>false,...options,
   });
