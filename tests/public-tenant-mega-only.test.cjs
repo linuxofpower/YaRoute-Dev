@@ -81,6 +81,7 @@ test('existing owner-owned Google Drive connections can still be revoked',async 
     if(actor!==owner||connectionId!==id)throw Error('FOREIGN');
     return {id,provider:'google-drive',status:'active',ownerId:owner};
   }});
+  svc.encryptionKey=Buffer.alloc(32,7); // synthetic initialized vault, no real key
   const statements=[];
   const client={query:async(sql)=>{
     statements.push(sql);
