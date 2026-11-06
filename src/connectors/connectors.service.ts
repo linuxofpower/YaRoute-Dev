@@ -192,11 +192,11 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
   async listStorage(ownerId: string) {
     this.assertTenantStorageMode();
     return (await this.policy().list(this.owner(ownerId)))
-      .filter(c => c.provider === 'google-drive' || c.provider === 'mega')
+      .filter(c => ['google-drive','google-photos','mega'].includes(c.provider))
       .map(c => this.view(c));
   }
 
-  async createStorage(ownerId: string, provider: 'google-drive' | 'mega', name: string) {
+  async createStorage(ownerId: string, provider: 'google-drive' | 'google-photos' | 'mega', name: string) {
     this.assertTenantStorageMode();
     assertPublicTenantStorageProvider(provider);
     this.owner(ownerId);
@@ -217,7 +217,7 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
-    if (!['google-drive','mega'].includes(connection.provider)) {
+    if (!['google-drive','google-photos','mega'].includes(connection.provider)) {
       throw new Error('CONNECTOR_PROVIDER_DISABLED');
     }
     if (!Array.isArray(capabilities) ||
@@ -232,18 +232,21 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
-    if (!['google-drive','mega'].includes(connection.provider)) {
+    if (!['google-drive','google-photos','mega'].includes(connection.provider)) {
       throw new Error('CONNECTOR_PROVIDER_DISABLED');
     }
     // Initial MEGA pilot verifies one exact user-owned root per connection.
     // Empty selection is permitted to revoke access, but not to enroll.
-    if (connection.provider === 'mega' && Array.isArray(resources) && resources.length > 1)
+    if (['mega','google-photos'].includes(connection.provider) &&
+        Array.isArray(resources) && resources.length > 1)
       throw new Error('TENANT_MEGA_SINGLE_ROOT_REQUIRED');
     if (!Array.isArray(resources) || resources.length > 10 ||
-        resources.some(r => !r || r.kind !== (connection.provider === 'mega' ? 'mega-root' : 'drive') ||
+        resources.some(r => !r || r.kind !== (connection.provider === 'mega' ? 'mega-root' :
+            connection.provider === 'google-photos' ? 'photos-root' : 'drive') ||
           !Array.isArray(r.capabilities) || r.capabilities.some(c => c !== 'storage:list') ||
           r.branches !== undefined || r.pathPrefix !== undefined ||
           typeof r.id !== 'string' || r.id.length > 256 ||
+          (connection.provider === 'google-photos' && r.id !== 'media/all') ||
           !/^[A-Za-z0-9_.\\/-]+$/.test(r.id) || r.id.split('/').some(p => p === '..' || p === '.'))) {
       throw new Error('TENANT_RCLONE_RESOURCE_INVALID');
     }
@@ -253,7 +256,7 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
 
   /** Trusted server-side provider verification only; never an MCP input. */
   async confirmStorageProvider(ownerId: string, id: string,
-                               provider: 'google-drive' | 'mega', verifiedAccountId: string) {
+                               provider: 'google-drive' | 'google-photos' | 'mega', verifiedAccountId: string) {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
