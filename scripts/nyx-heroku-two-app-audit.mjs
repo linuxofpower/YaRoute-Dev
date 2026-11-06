@@ -17,8 +17,6 @@ const NON_SECRET_KEYS = [
 const PRIVATE_KEY_NAMES = [
   'RCLONE_CONFIG_B64','RCLONE_CONFIG_PATH','RCLONE_CONFIG',
   'NYX_SHARED_ROOTS_JSON','NYX_PRIVATE_OAUTH_SUBJECTS',
-  'NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT',
-  'NYX_PRIVATE_BROKER_SHARED_KEY_B64',
 ];
 function fetchJson(args) {
   const result = spawnSync('heroku', args, {
@@ -54,6 +52,11 @@ function reportApp(name,config,meta) {
     hasEncryptedDatabase:Boolean(keyPresent(config,'DATABASE_URL') &&
       keyPresent(config,'NYX_STORAGE_ENCRYPTION_KEY')),
     hasOwnerAllowlist:keyPresent(config,'NYX_PRIVATE_OAUTH_SUBJECTS'),
+    // A public broker client legitimately holds a dedicated delegation key and
+    // an approved MCP subject; neither is the private legacy Rclone config.
+    // The private broker SERVER, however, must never run on public Dev.
+    hasBrokerDelegationKey:keyPresent(config,'NYX_PRIVATE_BROKER_SHARED_KEY_B64'),
+    hasPrivateBrokerServerEnabled:config.NYX_PRIVATE_BROKER_SERVER_ENABLED==='true',
     databaseHostMatchesPublicNeon:Boolean(dbHost(config.DATABASE_URL) &&
       config.NYX_PUBLIC_NEON_HOST &&
       [String(config.NYX_PUBLIC_NEON_HOST).toLowerCase(),
@@ -77,6 +80,7 @@ function main() {
     dev.flags.NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED==='true' &&
     dev.flags.NYX_PUBLIC_TENANT_MEGA_ONLY==='false' &&
     !dev.hasLegacyPrivateRcloneConfig &&
+    !dev.hasPrivateBrokerServerEnabled &&
     dev.hasEncryptedDatabase && dev.databaseHostMatchesPublicNeon;
   const distinctDatabases=dbHost(devCfg.DATABASE_URL)!=='' &&
     dbHost(proCfg.DATABASE_URL)!=='' &&
