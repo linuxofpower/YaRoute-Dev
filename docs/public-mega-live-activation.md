@@ -71,11 +71,18 @@ NYX_PRIVATE_BROKER_CLIENT_ENABLED=false for first-pass tenant acceptance.
 On the isolated service, before accepting requests, run the read-only,
 redacted, **offline** preflight:
 
-    node scripts/nyx-public-mega-activation-preflight.mjs
+    node dist/runtime/public-mega-activation-preflight.js
 
 A successful check returns CONFIG_PREPARED_LIVE_TESTS_REQUIRED. It is
 deliberately NOT a live provider verification; no secret values are printed.
 The command never deploys, writes config or contacts external services.
+
+The Dev repository also includes an optional convenience wrapper in
+scripts/nyx-public-mega-activation-preflight.mjs. Tester promotion intentionally
+preserves its own scripts/ directory, so the authoritative runtime checker is
+compiled from src/runtime/public-mega-activation-preflight.ts and included in
+both Dev and Tester builds. Do not weaken Tester tests or copy arbitrary scripts
+into its protected staging contract.
 
 ## Step C — real Google + MEGA acceptance (not yet done)
 
