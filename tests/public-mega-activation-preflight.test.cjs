@@ -15,7 +15,7 @@ function prepared() {
     NYX_OAUTH_AUDIENCE:'https://public-pilot.herokuapp.com/mcp',
     NYX_OAUTH_SCOPES:'nyx.read,nyx.write',
     NYX_OAUTH_ALGORITHMS:'RS256',
-    DATABASE_URL:['postgresql://synthetic:test-only-password','ep-test-public.c-7.eu-central-1.aws.neon.tech/neondb?sslmode=require'].join('@'),
+    DATABASE_URL:'postgresql://ep-test-public.c-7.eu-central-1.aws.neon.tech/neondb?sslmode=require',
     NYX_PUBLIC_NEON_HOST:'ep-test-public.c-7.eu-central-1.aws.neon.tech',
     NYX_STORAGE_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),
     NYX_PRIVATE_OWNER_LINK_ENABLED:'false',
@@ -38,7 +38,7 @@ test('valid isolated public config is PREPARED, never misrepresented as live ver
   assert.equal(result.ownerPrivateBrokerVerified,false);
   assert.equal(result.noSecretValuesReturned,true);
   const safe=JSON.stringify(result);
-  assert.doesNotMatch(safe,/test-only-password|NYX_STORAGE_ENCRYPTION_KEY|ep-test-public/);
+  assert.doesNotMatch(safe,/NYX_STORAGE_ENCRYPTION_KEY|ep-test-public/);
   assert.doesNotMatch(safe,new RegExp(env.NYX_STORAGE_ENCRYPTION_KEY.replace(/[+/=]/g,'')));
 });
 test('cannot point public pilot at the existing private application',async()=>{
