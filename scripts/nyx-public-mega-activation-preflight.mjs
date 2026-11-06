@@ -71,6 +71,9 @@ export function publicMegaActivationPreflight(
     (name === 'RCLONE_CONFIG' || name.startsWith('RCLONE_CONFIG_') ||
       name === 'NYX_SHARED_ROOTS_JSON' || name === 'NYX_PRIVATE_OAUTH_SUBJECTS' ||
       name === 'NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT' ||
+      name === 'NYX_PRIVATE_LEGACY_OWNER_GOOGLE_EMAIL' ||
+      name === 'NYX_PRIVATE_OWNER_GOOGLE_CLIENT_SECRET' ||
+      name === 'NYX_PRIVATE_BROKER_GOOGLE_SUBJECT' ||
       name === 'NYX_PRIVATE_BROKER_SHARED_KEY_B64'));
   check(!legacyVariables, 'PRIVATE_OPERATOR_CREDENTIALS_OR_ALLOWLIST_FORBIDDEN');
 
