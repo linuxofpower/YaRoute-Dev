@@ -8,10 +8,11 @@ import { Pool } from 'pg';
 import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider } from './public-tenant-provider.policy';
 import { ConnectorsService } from './connectors.service';
 
-export type TenantRcloneProvider = 'google-drive' | 'mega';
+export type TenantRcloneProvider = 'google-drive' | 'google-photos' | 'mega';
 export type TenantRcloneProfile =
   | { provider: 'google-drive'; token: string; clientId?: string;
       clientSecret?: string; rootFolderId?: string; scope?: 'drive.readonly' | 'drive.file' | 'drive' }
+  | { provider: 'google-photos'; token: string; clientId: string; clientSecret: string }
   | { provider: 'mega'; user: string; obscuredPassword: string;
       sessionId?: string; masterKey?: string;
       /** Assigned only after successfully probing this exact root. */
@@ -48,6 +49,22 @@ export function tenantRcloneConfig(profile: TenantRcloneProfile): string {
       lines.push('scope = ' + profile.scope);
     }
     return lines.join('\n') + '\n';
+  }
+  if (profile.provider === 'google-photos') {
+    // Google Photos API can list only app-created media since 2025-03-31.
+    // Fixed read-only Rclone backend; never persist user-editable config options.
+    let parsed: unknown;
+    try { parsed=JSON.parse(safeLine(profile.token)); }
+    catch { throw new Error('TENANT_RCLONE_PROFILE_INVALID'); }
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' ||
+        !(parsed as Record<string,unknown>).refresh_token ||
+        !(parsed as Record<string,unknown>).access_token) {
+      throw new Error('TENANT_RCLONE_PROFILE_INVALID');
+    }
+    return ['[tenant]', 'type = google photos', 'read_only = true',
+      'client_id = ' + safeLine(profile.clientId,2048),
+      'client_secret = ' + safeLine(profile.clientSecret,2048),
+      'token = ' + safeLine(profile.token), ''].join('\n');
   }
   if (profile.provider === 'mega') {
     if (Boolean(profile.sessionId) !== Boolean(profile.masterKey)) {
@@ -125,13 +142,19 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_rclone_tenant_credentials_v2 (
       owner_id text NOT NULL,
       connection_id text NOT NULL,
-      provider text NOT NULL CHECK (provider IN ('google-drive', 'mega')),
+      provider text NOT NULL CHECK (provider IN ('google-drive', 'google-photos', 'mega')),
       encrypted_profile text NOT NULL,
       state text NOT NULL CHECK (state IN ('pending', 'active')),
       read_verified_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (owner_id, connection_id, state)
     )`);
+    // Upgrade the V2 table if it already exists from the MEGA/Drive pilot.
+    await this.pool.query('ALTER TABLE nyx_rclone_tenant_credentials_v2 ' +
+      'DROP CONSTRAINT IF EXISTS nyx_rclone_tenant_credentials_v2_provider_check');
+    await this.pool.query('ALTER TABLE nyx_rclone_tenant_credentials_v2 ' +
+      "ADD CONSTRAINT nyx_rclone_tenant_credentials_v2_provider_check " +
+      "CHECK (provider IN ('google-drive','google-photos','mega'))");
   }
 
   async onModuleDestroy() { await this.pool?.end(); }
@@ -154,7 +177,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     this.owner(ownerId, connectionId);
     const item = await this.connectors.getOwned(ownerId, connectionId).catch(() => undefined);
     if (!item || item.status === 'revoked' ||
-        !['google-drive', 'mega'].includes(item.provider) ||
+        !['google-drive', 'google-photos', 'mega'].includes(item.provider) ||
         (provider && provider !== item.provider)) {
       throw new Error('TENANT_RCLONE_CONNECTION_FORBIDDEN');
     }
@@ -243,6 +266,13 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       if (expectedMegaRoot !== undefined && expectedMegaRoot !== roots[0].id)
         throw new Error('TENANT_MEGA_SELECTED_ROOT_CHANGED');
       relativePath = roots[0].id === 'MEGA_ROOT' ? '' : tenantRclonePath(roots[0].id);
+    } else if (candidate.provider === 'google-photos') {
+      if (!(item.resources || []).some(r => r.kind === 'photos-root' &&
+          r.id === 'media/all' && r.capabilities.includes('storage:list'))) {
+        throw new Error('TENANT_PHOTOS_ROOT_REQUIRED');
+      }
+      relativePath='media/all';
+      if (expectedMegaRoot !== undefined) throw new Error('TENANT_MEGA_EXPECTED_PROVIDER_INVALID');
     } else if (expectedMegaRoot !== undefined) {
       throw new Error('TENANT_MEGA_EXPECTED_PROVIDER_INVALID');
     }
@@ -305,7 +335,8 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     const pendingCandidate = await this.profile(ownerId, connectionId, 'pending');
     const rootId = pendingCandidate.profile.provider === 'google-drive'
       ? pendingCandidate.profile.rootFolderId : undefined;
-    const kind = pendingCandidate.provider === 'mega' ? 'mega-root' : 'drive';
+    const kind = pendingCandidate.provider === 'mega' ? 'mega-root' :
+      pendingCandidate.provider === 'google-photos' ? 'photos-root' : 'drive';
     if (pendingCandidate.profile.provider === 'mega') {
       const roots = (owner.resources || []).filter(r => r.kind === 'mega-root' &&
         r.capabilities.includes('storage:list'));
@@ -317,12 +348,13 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     }
     if (pendingCandidate.provider !== owner.provider ||
         !(owner.resources || []).some(r => r.kind === kind &&
-          (kind === 'mega-root' || r.id === rootId) &&
+          (kind === 'mega-root' ||
+            (kind === 'photos-root' ? r.id === 'media/all' : r.id === rootId)) &&
           r.capabilities.includes('storage:list'))) {
       throw new Error('TENANT_RCLONE_RESOURCE_FORBIDDEN');
     }
     const grant = await this.connectors.registryPolicy().require(ownerId, connectionId, 'storage:list');
-    if (!['google-drive','mega'].includes(grant.provider)) {
+    if (!['google-drive','google-photos','mega'].includes(grant.provider)) {
       throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
     }
     const client = await this.db().connect();
@@ -366,7 +398,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
         "UPDATE nyx_connector_connections SET status='revoked', " +
         "capabilities='[]'::jsonb, provider_capabilities='[]'::jsonb, " +
         "resources='[]'::jsonb, updated_at=now() " +
-        "WHERE owner_id=$1 AND id=$2 AND provider IN ('mega','google-drive') " +
+        "WHERE owner_id=$1 AND id=$2 AND provider IN ('mega','google-drive','google-photos') " +
         "AND status <> 'revoked' RETURNING id",
         [ownerId, connectionId]);
       if (updated.rowCount !== 1) throw new Error('TENANT_RCLONE_REVOKE_STALE');
@@ -398,7 +430,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     await this.owned(ownerId, connectionId, provider);
     const authorization = await this.connectors.registryPolicy().requireResource(
       ownerId, connectionId, 'storage:list',
-      {kind: provider === 'mega' ? 'mega-root' : 'drive', id: resourceId, path: clean});
+      {kind: provider === 'mega' ? 'mega-root' : provider === 'google-photos' ? 'photos-root' : 'drive', id: resourceId, path: clean});
     if (authorization.provider !== provider) throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
     const active = await this.profile(ownerId, connectionId, 'active');
     if (active.provider !== provider) throw new Error('TENANT_RCLONE_PROVIDER_MISMATCH');
@@ -406,6 +438,12 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       if (active.profile.provider !== 'google-drive' ||
           active.profile.rootFolderId !== resourceId) throw new Error('TENANT_RCLONE_ROOT_FORBIDDEN');
       return {profile:active.profile, path:clean};
+    }
+    if (provider === 'google-photos') {
+      if (resourceId !== 'media/all' || active.profile.provider !== 'google-photos') {
+        throw new Error('TENANT_PHOTOS_ROOT_FORBIDDEN');
+      }
+      return {profile:active.profile,path:tenantRclonePath(['media/all',clean].filter(Boolean).join('/'))};
     }
     const root = resourceId === 'MEGA_ROOT' ? '' : tenantRclonePath(resourceId);
     if (active.profile.provider !== 'mega' ||
