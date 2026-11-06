@@ -35,6 +35,27 @@ client settings; no credentials or encryption keys may be reused from
 DevNestNyx or NestNyxPro. This is critical even if both databases live
 inside the same Neon account.
 
+## Neon CLI inspection from Termux or Arch (no secret printing)
+
+As of August 2026, the **current** Neon npm package/binary is `neon`
+(`neonctl` remains a compatibility alias).
+
+```bash
+npm i -g neon@latest
+neon auth
+neon projects list
+```
+
+This lists available projects without printing their database passwords.
+Use the Neon Console to inspect plans/quotas and create an **empty**,
+independent public project/database if your current one contains private
+credentials. Avoid `neon connection-string`, `neon env pull` or any
+command printing `DATABASE_URL` in a captured terminal session.
+
+The Neon app connector in ChatGPT may manage projects directly once
+its account-specific tools become available. Installation alone does not
+confirm which Neon project, database or role hosts your current NestNyx.
+
 ## Existing shared $5 Heroku Eco budget
 
 Creating a dedicated app is distinct from buying another Heroku PostgreSQL
