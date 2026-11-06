@@ -1,8 +1,8 @@
 /**
- * A public NestNyx tenant may bring their own MEGA account, but may not
- * enroll independent Google Drive credentials when the operator has selected
- * the MEGA-only public rollout. Google OIDC *identity* verification for the
- * private owner is a different flow and remains available.
+ * Public tenants may enroll MEGA alone (legacy pilot) or MEGA plus Google
+ * Drive (new opt-in). Both modes require Google OAuth sign-in. Separate
+ * Google OIDC identity verification for the *private owner* is not a storage
+ * provider enrollment.
  *
  * This rule must be enforced in the backend, not only in the Connections UI.
  * Legacy Rclone remotes stay in a separate private worker and never enter
@@ -51,9 +51,7 @@ export function assertPublicTenantStorageProvider(
     throw new Error('PUBLIC_TENANT_MEGA_ONLY');
   }
   if (publicTenantGoogleMulti(env) &&
-      !(['mega','google-drive'].includes(String(provider)) ||
-        (provider === 'google-photos' &&
-          env.NYX_PUBLIC_GOOGLE_PHOTOS_ENABLED === 'true'))) {
+      provider !== 'mega' && provider !== 'google-drive') {
     throw new Error('PUBLIC_TENANT_PROVIDER_NOT_ENABLED');
   }
 }
@@ -67,7 +65,7 @@ export function assertPublicTenantStorageProvider(
  *
  * Enforce this at the MCP entrypoint and again at server-only enrollment /
  * tenant credential boundaries, so a previously issued non-Google sign-in
- * state cannot be redeemed after enabling MEGA-only Google-login mode.
+ * state cannot be redeemed after enabling either Google-login storage mode.
  */
 export function assertPublicTenantGoogleSubject(
   subject: unknown,
@@ -84,7 +82,7 @@ export function assertPublicTenantGoogleOwnerId(
   ownerId: unknown,
   env: Readonly<Record<string,string|undefined>> = process.env,
 ): void {
-  if (!publicTenantMegaOnly(env)) return;
+  if (!publicTenantGoogleLoginRequired(env)) return;
   if (typeof ownerId !== 'string' || !ownerId.startsWith('oauth:')) {
     throw new Error('PUBLIC_GOOGLE_OAUTH_REQUIRED');
   }
