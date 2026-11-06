@@ -6,11 +6,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const { publicMegaActivationPreflight } =
   require('../dist/runtime/public-mega-activation-preflight.js');
 export { publicMegaActivationPreflight };
 
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 let oldPrivateOrigin = '';
 try {
   const data = JSON.parse(fs.readFileSync(
@@ -23,3 +25,4 @@ const report = publicMegaActivationPreflight(process.env, {
 });
 process.stdout.write(JSON.stringify(report, null, 2) + '\n');
 if (report.status !== 'CONFIG_PREPARED_LIVE_TESTS_REQUIRED') process.exitCode = 2;
+}
