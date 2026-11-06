@@ -3,7 +3,6 @@
  * compiles from src/runtime/public-mega-activation-preflight.ts and is
  * promoted with normal src/ files into Tester. No secrets are logged.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -13,13 +12,8 @@ const { publicMegaActivationPreflight } =
 export { publicMegaActivationPreflight };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-let oldPrivateOrigin = '';
-try {
-  const data = JSON.parse(fs.readFileSync(
-    path.resolve('config/heroku-public.json'), 'utf8',
-  ));
-  oldPrivateOrigin = data.NYX_PUBLIC_URL || '';
-} catch { /* Missing private-origin reference must fail closed. */ }
+// With Dev becoming public, the private reference is the existing Pro URL.
+const oldPrivateOrigin = process.env.NYX_PRIVATE_PRO_URL || '';
 const report = publicMegaActivationPreflight(process.env, {
   existingPrivateOrigin: oldPrivateOrigin,
 });
