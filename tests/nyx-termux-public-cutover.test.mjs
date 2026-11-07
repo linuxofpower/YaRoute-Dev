@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validNeonUrl, inspectState, buildPatch} from '../scripts/nyx-termux-public-cutover.mjs';
+import {validNeonUrl, inspectState, buildPatch, encryptedDevRecoveryPayload} from '../scripts/nyx-termux-public-cutover.mjs';
+import {scryptSync, createDecipheriv} from 'node:crypto';
 
 const devUrl = 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
 const proUrl = 'https://nest-nyx-pro-example.herokuapp.com';
@@ -78,4 +79,53 @@ test('prevents silent encryption-key rotation after successful public cutover',(
 test('rejects ambiguous partial public environment',()=>{
   assert.throws(()=>inspectState({...dev,NYX_DEPLOYMENT_MODE:'public'},pro,
     devApp,proApp),/PARTIAL_PUBLIC_CONFIG_REQUIRES_MANUAL_REVIEW/);
+});
+
+test('explicit Dev-only pilot defers Pro singleton without allowing any Pro mutation',()=>{
+  const privatePro={...pro,NYX_PRIVATE_SINGLE_GOOGLE_OWNER:'false'};
+  assert.throws(()=>inspectState(dev,privatePro,devApp,proApp),/PRO_SINGLE_GOOGLE_OWNER_NOT_VERIFIED/);
+  const before=structuredClone(privatePro);
+  const state=inspectState(dev,privatePro,devApp,proApp,[],[{size:'eco',quantity:1}],{deferProOwnerLock:true});
+  const patch=buildPatch(dev,state,input());
+  assert.equal(patch.NYX_DEPLOYMENT_MODE,'public');
+  assert.equal(patch.NYX_MULTIUSER_RCLONE_ENABLED,'true');
+  assert.equal(patch.NYX_PRIVATE_OWNER_LINK_ENABLED,'false');
+  assert.equal(patch.NYX_PRIVATE_BROKER_CLIENT_ENABLED,'false');
+  for(const key of ['RCLONE_CONFIG_B64','NYX_PRIVATE_OAUTH_SUBJECTS',
+      'NYX_PRIVATE_BROKER_SHARED_KEY_B64','NYX_API_KEY']) assert.equal(patch[key],null);
+  assert.deepEqual(privatePro,before);
+});
+
+test('Dev-only override cannot bypass Pro baseline, same Heroku origin or unsafe paid plan',()=>{
+  const options={deferProOwnerLock:true};
+  const priv={...pro,NYX_PRIVATE_SINGLE_GOOGLE_OWNER:'false'};
+  assert.throws(()=>inspectState(dev,{...priv,RCLONE_CONFIG_B64:''},devApp,proApp,[],[],options),
+    /PRO_PRIVATE_BASELINE_INCOMPLETE/);
+  assert.throws(()=>inspectState(dev,priv,devApp,{...proApp,web_url:devUrl},[],[],options),
+    /HEROKU_ORIGINS_NOT_VERIFIED/);
+  assert.throws(()=>inspectState(dev,priv,devApp,proApp,
+    [{plan:{name:'heroku-postgresql:essential-0'}}],[],options),/HEROKU_POSTGRES_ADDON_PRESENT/);
+});
+
+test('Dev recovery backup encrypts private config and detects tampering',()=>{
+  const config={RCLONE_CONFIG_B64:'test-private-rclone-placeholder',DATABASE_URL:devDb};
+  const passphrase='test-only-recovery-passphrase';
+  const payload=encryptedDevRecoveryPayload(config,passphrase);
+  assert.equal(payload.algorithm,'aes-256-gcm+scrypt');
+  assert.doesNotMatch(JSON.stringify(payload),/test-private-rclone-placeholder|private-dev.invalid/);
+  const decipher=createDecipheriv('aes-256-gcm',
+    scryptSync(passphrase,Buffer.from(payload.salt,'base64'),32),
+    Buffer.from(payload.iv,'base64'));
+  decipher.setAuthTag(Buffer.from(payload.tag,'base64'));
+  const plain=Buffer.concat([decipher.update(Buffer.from(payload.data,'base64')),decipher.final()]);
+  const recovered=JSON.parse(plain.toString('utf8'));
+  assert.deepEqual(recovered.config,config);
+  const altered=Buffer.from(payload.data,'base64');
+  altered[0]^=0x01;
+  const reject=createDecipheriv('aes-256-gcm',
+    scryptSync(passphrase,Buffer.from(payload.salt,'base64'),32),
+    Buffer.from(payload.iv,'base64'));
+  reject.setAuthTag(Buffer.from(payload.tag,'base64'));
+  assert.throws(()=>Buffer.concat([reject.update(altered),reject.final()]));
+  assert.throws(()=>encryptedDevRecoveryPayload(config,'short'),/DEV_RECOVERY_PASSPHRASE_TOO_SHORT/);
 });

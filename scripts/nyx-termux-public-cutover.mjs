@@ -11,7 +11,10 @@
  * No Neon project, Heroku app/dyno/add-on, or private Pro config is changed.
  */
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, scryptSync, createCipheriv } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const DEV = 'dev-nest-nyx';
 const PRO = 'nest-nyx-pro';
@@ -70,14 +73,17 @@ function exactPrivateGoogleOwner(config) {
     raw === pinned;
 }
 
-export function inspectState(dev, pro, devApp, proApp, addons = [], formations = []) {
+export function inspectState(dev, pro, devApp, proApp, addons = [], formations = [], options = {}) {
   if (dev?.NYX_DEPLOYMENT_MODE !== 'private' && dev?.NYX_DEPLOYMENT_MODE !== 'public')
     throw Error('DEV_MODE_UNEXPECTED');
   if (pro?.NYX_DEPLOYMENT_MODE !== 'private' ||
       !privateKeyNames(pro).some(key=>key.startsWith('RCLONE_CONFIG') && Boolean(pro[key])) ||
       !pro.NYX_PRIVATE_OAUTH_SUBJECTS || !pro.DATABASE_URL || !pro.NYX_STORAGE_ENCRYPTION_KEY)
     throw Error('PRO_PRIVATE_BASELINE_INCOMPLETE');
-  if (!exactPrivateGoogleOwner(pro))
+  // The default production-oriented cutover still requires the Pro singleton.
+  // The explicit Dev-only pilot may DEFER that Pro change, but must preserve
+  // Pro's private mode, Rclone credentials, allowlist and separate database.
+  if (!exactPrivateGoogleOwner(pro) && options.deferProOwnerLock !== true)
     throw Error('PRO_SINGLE_GOOGLE_OWNER_NOT_VERIFIED');
   const devOrigin = httpsOrigin(devApp?.web_url);
   const proOrigin = httpsOrigin(proApp?.web_url);
@@ -148,6 +154,32 @@ export function buildPatch(dev, state, secrets) {
   return patch;
 }
 
+/** Encrypted local recovery snapshot before any Dev-only mutation.
+ * Never print raw config, password or derived encryption material. */
+export function encryptedDevRecoveryPayload(config, passphrase, salt = randomBytes(16), iv = randomBytes(12)) {
+  if (typeof passphrase !== 'string' || passphrase.length < 16)
+    throw Error('DEV_RECOVERY_PASSPHRASE_TOO_SHORT');
+  const key = scryptSync(passphrase, salt, 32);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const contents = Buffer.from(JSON.stringify({schema:'nyx.dev-heroku-config-backup.v1',app:DEV,config}), 'utf8');
+  const sealed = Buffer.concat([cipher.update(contents), cipher.final()]);
+  return {
+    schema:'nyx.dev-heroku-encrypted-recovery.v1',
+    algorithm:'aes-256-gcm+scrypt',
+    salt:salt.toString('base64'),iv:iv.toString('base64'),
+    tag:cipher.getAuthTag().toString('base64'),
+    data:sealed.toString('base64'),
+  };
+}
+
+function saveDevRecovery(config,passphrase) {
+  const dir = join(homedir(), '.nyx-dev-recovery');
+  mkdirSync(dir,{recursive:true,mode:0o700});
+  const filename = join(dir, 'dev-before-public-' + randomBytes(8).toString('hex') + '.enc.json');
+  writeFileSync(filename,JSON.stringify(encryptedDevRecoveryPayload(config,passphrase)),{flag:'wx',mode:0o600});
+  return filename;
+}
+
 function herokuIdentity(command) {
   const r = spawnSync('heroku', command, {encoding:'utf8', shell:false,
     env:{...process.env, HEROKU_SKIP_UPDATE_CHECK:'1'}, timeout:20000, maxBuffer:1024*1024});
@@ -199,7 +231,7 @@ async function prompt(label, hidden = false) {
 
 async function run() {
   const mode=process.argv[2] || '--plan';
-  if (!['--plan','--apply'].includes(mode) || process.argv.length > 3)
+  if (!['--plan','--apply','--dev-only-plan','--dev-only-apply'].includes(mode) || process.argv.length > 3)
     throw Error('USAGE_node_scripts_nyx-termux-public-cutover.mjs_[--plan|--apply]');
   const whoami=herokuIdentity(['auth:whoami']);
   const token=herokuIdentity(['auth:token']);
@@ -213,19 +245,21 @@ async function run() {
   ]);
   if (whoami.toLowerCase() !== String(devApp?.owner?.email || '').toLowerCase())
     throw Error('HEROKU_OPERATOR_UNEXPECTED');
-  const state=inspectState(dev,pro,devApp,proApp,addons,formation);
+  const devOnly=mode.startsWith('--dev-only-');
+  const state=inspectState(dev,pro,devApp,proApp,addons,formation,{deferProOwnerLock:devOnly});
   console.log(JSON.stringify({schema:'nyx.termux-public-cutover.v1', mode,
     target:DEV, untouched:PRO, existingNeonProject:'nestnyx-public',
     usesHerokuPostgres:false, createsDynos:false, addonsCreated:0,
     proPrivateConfigured:true, proRemoteReadsNotTestedByThisScript:true,
     proOwnerGateRuntimeNotTestedByThisScript:true,
-    proSingleGoogleOwnerConfigured:true,
+    proSingleGoogleOwnerConfigured:exactPrivateGoogleOwner(pro),
+    proOwnerLockDeferred:devOnly&&!exactPrivateGoogleOwner(pro),
     devPrivateKeyNamesToRemove:state.sensitiveKeys,
     publicOrigin:state.devOrigin, proOrigin:state.proOrigin,
     googleDriveCallback:state.devOrigin+'/connect/google/callback',
     alreadyPublic:state.alreadyPublic, secretsPrinted:false,
     warning:'This script does not verify Auth0 refresh, private Google owner linkage, or two real public users.'},null,2));
-  if (mode==='--plan' || state.alreadyPublic) return;
+  if (mode==='--plan' || mode==='--dev-only-plan' || state.alreadyPublic) return;
   console.log('This will restart existing Dev via ONE config-var PATCH. Pro and Neon remain untouched.');
   console.log('Use the free Neon nestnyx-public project URL, NOT a Heroku Postgres URL.');
   const databaseUrl=await prompt('Free Neon nestnyx-public pooled DATABASE_URL (hidden): ',true);
@@ -234,6 +268,13 @@ async function run() {
   const encryptionKey=randomBytes(32).toString('base64');
   const patch=buildPatch(dev,state,{databaseUrl,googleClientId,googleClientSecret,
     encryptionKey,proDatabaseUrl:pro.DATABASE_URL});
+  let recoveryFilename=null;
+  if (devOnly) {
+    const passphrase=await prompt('Choose a NEW local Dev recovery passphrase, at least 16 characters (hidden): ',true);
+    recoveryFilename=saveDevRecovery(dev,passphrase);
+    console.log('Encrypted Dev recovery file created locally: '+recoveryFilename);
+    console.log('Preserve its passphrase separately; never share either with ChatGPT or GitHub.');
+  }
   const confirmation=await prompt(`Type CUTOVER ${DEV} to remove ONLY Dev legacy credentials: `);
   if (confirmation !== `CUTOVER ${DEV}`) throw Error('CUTOVER_NOT_CONFIRMED');
   // One atomic Heroku update: no transient public runtime with private secrets.
@@ -247,7 +288,8 @@ async function run() {
     devConfigUpdated:true, devReadbackVerified:true, proConfigWriteCalls:0,
     secretValuesPrinted:false, newHerokuApps:0, newHerokuAddons:0,
     publicRuntimeOnlineTested:false, multiuserAcceptancePending:true,
-    ownerGoogleIdentityLinkPending:true, monthlyOAuthRefreshProofPending:true},null,2));
+    ownerGoogleIdentityLinkPending:true, monthlyOAuthRefreshProofPending:true,
+    proUnchanged:true,proOwnerGateDeferred:devOnly},null,2));
   console.log('NEXT: node scripts/nyx-heroku-two-app-audit.mjs');
 }
 
