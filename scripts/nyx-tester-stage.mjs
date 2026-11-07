@@ -17,6 +17,8 @@ const IGNORE=new Set([
   'tests/nyx-bot-master-release.test.cjs',
  // Imports the Dev-only reviewed migration helper; never ship this test to Tester.
  'tests/nyx-reviewed-profile-migration.test.cjs',
+ // Dev-only offline audit planner is intentionally excluded from Tester.
+ 'tests/nyx-dev-public-plan.test.mjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy
