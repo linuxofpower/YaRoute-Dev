@@ -2,7 +2,12 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {createHash}=require('node:crypto');
-const sourceText=fs.readFileSync('config/nyx-runtime-profile.json','utf8');
+// The one-time 2026-11-01 review remains pinned to the historical H31 blob.
+// Reconstruct that exact reviewed input from the H32-only CLI pin change;
+// never expand the fixed Tester promotion allowlist to arbitrary H32 profiles.
+const activeProfile=JSON.parse(fs.readFileSync('config/nyx-runtime-profile.json','utf8'));
+assert.equal(activeProfile.cliSha256,'00c35ace15c0a004506659ccd9922b8aff446f15ea1863ce6d52d780dae527f8');
+const sourceText=JSON.stringify({...activeProfile,cliSha256:'090f31ab61ce4228148cb9b551299667072c8ce9c3151bab3c48ab81b7112a4f'},null,2)+'\n';
 const blob=text=>createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest('hex');
 const text=obj=>JSON.stringify(obj,null,2)+'\n';
 
