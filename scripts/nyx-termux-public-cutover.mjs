@@ -15,7 +15,6 @@ import { randomBytes } from 'node:crypto';
 
 const DEV = 'dev-nest-nyx';
 const PRO = 'nest-nyx-pro';
-const OPERATOR = 'ya.moroz.yaroslav@gmail.com';
 const NEON_HOST = 'ep-falling-silence-b9rcrzay.c-7.eu-central-1.aws.neon.tech';
 const AUTH0_HOST = 'dev-q8g77208l2kp7iqu.eu.auth0.com';
 const API = 'https://api.heroku.com';
@@ -72,6 +71,9 @@ export function inspectState(dev, pro, devApp, proApp, addons = [], formations =
     throw Error('PRO_PRIVATE_BASELINE_INCOMPLETE');
   const devOrigin = httpsOrigin(devApp?.web_url);
   const proOrigin = httpsOrigin(proApp?.web_url);
+  const devOwner = String(devApp?.owner?.email || '').toLowerCase();
+  const proOwner = String(proApp?.owner?.email || '').toLowerCase();
+  if (!devOwner || devOwner !== proOwner) throw Error('APP_OWNERS_DIFFER');
   if (!devOrigin || !proOrigin || devOrigin === proOrigin ||
       httpsOrigin(dev.NYX_PUBLIC_URL) !== devOrigin ||
       httpsOrigin(pro.NYX_PUBLIC_URL) !== proOrigin)
@@ -190,7 +192,6 @@ async function run() {
   if (!['--plan','--apply'].includes(mode) || process.argv.length > 3)
     throw Error('USAGE_node_scripts_nyx-termux-public-cutover.mjs_[--plan|--apply]');
   const whoami=herokuIdentity(['auth:whoami']);
-  if (whoami.toLowerCase() !== OPERATOR) throw Error('HEROKU_OPERATOR_UNEXPECTED');
   const token=herokuIdentity(['auth:token']);
   const [dev,pro,devApp,proApp,addons,formation] = await Promise.all([
     apiJson(token,`/apps/${DEV}/config-vars`),
@@ -200,6 +201,8 @@ async function run() {
     apiJson(token,`/apps/${DEV}/addons`),
     apiJson(token,`/apps/${DEV}/formation`),
   ]);
+  if (whoami.toLowerCase() !== String(devApp?.owner?.email || '').toLowerCase())
+    throw Error('HEROKU_OPERATOR_UNEXPECTED');
   const state=inspectState(dev,pro,devApp,proApp,addons,formation);
   console.log(JSON.stringify({schema:'nyx.termux-public-cutover.v1', mode,
     target:DEV, untouched:PRO, existingNeonProject:'nestnyx-public',
