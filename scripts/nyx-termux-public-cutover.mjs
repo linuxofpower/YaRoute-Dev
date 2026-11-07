@@ -62,6 +62,14 @@ function privateKeyNames(config) {
     (key.startsWith('NYX_PRIVATE_') && !publicSafe.has(key)) || key === 'NYX_API_KEY');
 }
 
+function exactPrivateGoogleOwner(config) {
+  const raw = String(config?.NYX_PRIVATE_OAUTH_SUBJECTS || '');
+  const pinned = String(config?.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT || '');
+  return config?.NYX_PRIVATE_SINGLE_GOOGLE_OWNER === 'true' &&
+    /^google-oauth2\|[A-Za-z0-9_-]{8,128}$/.test(pinned) &&
+    raw === pinned;
+}
+
 export function inspectState(dev, pro, devApp, proApp, addons = [], formations = []) {
   if (dev?.NYX_DEPLOYMENT_MODE !== 'private' && dev?.NYX_DEPLOYMENT_MODE !== 'public')
     throw Error('DEV_MODE_UNEXPECTED');
@@ -69,6 +77,8 @@ export function inspectState(dev, pro, devApp, proApp, addons = [], formations =
       !privateKeyNames(pro).some(key=>key.startsWith('RCLONE_CONFIG') && Boolean(pro[key])) ||
       !pro.NYX_PRIVATE_OAUTH_SUBJECTS || !pro.DATABASE_URL || !pro.NYX_STORAGE_ENCRYPTION_KEY)
     throw Error('PRO_PRIVATE_BASELINE_INCOMPLETE');
+  if (!exactPrivateGoogleOwner(pro))
+    throw Error('PRO_SINGLE_GOOGLE_OWNER_NOT_VERIFIED');
   const devOrigin = httpsOrigin(devApp?.web_url);
   const proOrigin = httpsOrigin(proApp?.web_url);
   const devOwner = String(devApp?.owner?.email || '').toLowerCase();
@@ -207,7 +217,9 @@ async function run() {
   console.log(JSON.stringify({schema:'nyx.termux-public-cutover.v1', mode,
     target:DEV, untouched:PRO, existingNeonProject:'nestnyx-public',
     usesHerokuPostgres:false, createsDynos:false, addonsCreated:0,
-    proPrivateVerified:true, proRemoteReadsNotTestedByThisScript:true,
+    proPrivateConfigured:true, proRemoteReadsNotTestedByThisScript:true,
+    proOwnerGateRuntimeNotTestedByThisScript:true,
+    proSingleGoogleOwnerConfigured:true,
     devPrivateKeyNamesToRemove:state.sensitiveKeys,
     publicOrigin:state.devOrigin, proOrigin:state.proOrigin,
     googleDriveCallback:state.devOrigin+'/connect/google/callback',

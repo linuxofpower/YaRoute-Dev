@@ -17,6 +17,7 @@ const NON_SECRET_KEYS = [
 const PRIVATE_KEY_NAMES = [
   'RCLONE_CONFIG_B64','RCLONE_CONFIG_PATH','RCLONE_CONFIG',
   'NYX_SHARED_ROOTS_JSON','NYX_PRIVATE_OAUTH_SUBJECTS',
+  'NYX_PRIVATE_SINGLE_GOOGLE_OWNER',
 ];
 function fetchJson(args) {
   const result = spawnSync('heroku', args, {
@@ -41,6 +42,14 @@ function dbHost(value) {
 function keyPresent(c,key) {
   return typeof c[key] === 'string' && c[key].trim().length>0;
 }
+function singleGoogleOwnerConfigured(c) {
+  const subjects=c.NYX_PRIVATE_OAUTH_SUBJECTS;
+  return c.NYX_DEPLOYMENT_MODE==='private' &&
+    c.NYX_PRIVATE_SINGLE_GOOGLE_OWNER==='true' &&
+    typeof subjects==='string' &&
+    /^google-oauth2\|[A-Za-z0-9_-]{8,128}$/.test(subjects) &&
+    subjects===c.NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT;
+}
 function reportApp(name,config,meta) {
   const flags=Object.fromEntries(NON_SECRET_KEYS.map(k=>[k,config[k]||null]));
   const actualOrigin=origin(meta.web_url || meta.webUrl || meta.app?.web_url);
@@ -52,6 +61,7 @@ function reportApp(name,config,meta) {
     hasEncryptedDatabase:Boolean(keyPresent(config,'DATABASE_URL') &&
       keyPresent(config,'NYX_STORAGE_ENCRYPTION_KEY')),
     hasOwnerAllowlist:keyPresent(config,'NYX_PRIVATE_OAUTH_SUBJECTS'),
+    singleGoogleOwnerConfigured:singleGoogleOwnerConfigured(config),
     // A public broker client legitimately holds a dedicated delegation key and
     // an approved MCP subject; neither is the private legacy Rclone config.
     // The private broker SERVER, however, must never run on public Dev.
@@ -73,7 +83,7 @@ function main() {
   const pro=reportApp(PRO,proCfg,proMeta);
   const proPrivateConfigured=pro.flags.NYX_DEPLOYMENT_MODE==='private' &&
     pro.hasLegacyPrivateRcloneConfig && pro.hasOwnerAllowlist &&
-    pro.hasEncryptedDatabase;
+    pro.hasEncryptedDatabase && pro.singleGoogleOwnerConfigured;
   const devPublicConfigReady=dev.flags.NYX_DEPLOYMENT_MODE==='public' &&
     dev.flags.NYX_PUBLIC_CONNECTORS_ENABLED==='true' &&
     dev.flags.NYX_MULTIUSER_RCLONE_ENABLED==='true' &&
