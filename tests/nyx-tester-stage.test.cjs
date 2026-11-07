@@ -85,3 +85,15 @@ test('public activation preflight runtime and tests stage together; Dev script s
    'tests/public-mega-activation-preflight.test.cjs',
  ]);
 });
+
+
+test('one-time stale Tester test cleanup is SHA pinned and never deletes changed files',()=>{
+ const path='tests/nyx-dev-public-plan.test.mjs';
+ const expected='facb3c3eb418dc7a7ad40820e1a7492f7fe39a9a';
+ const target=(sha)=>({truncated:false,tree:sha?[{path,type:'blob',sha}]:[]});
+ assert.deepEqual(m.staleDevOnlyTesterCleanup(target(expected)),[{path,sourceBlob:null,targetBlob:expected}]);
+ assert.deepEqual(m.staleDevOnlyTesterCleanup(target(null)),[]);
+ assert.throws(()=>m.staleDevOnlyTesterCleanup(target(SHA)),/OBSOLETE_TESTER_FILE_CHANGED_REVIEW_REQUIRED/);
+ assert.throws(()=>m.staleDevOnlyTesterCleanup({truncated:true,tree:[]}),/TRUNCATED_TREE/);
+ assert.equal(m.stageRequired(m.staleDevOnlyTesterCleanup(target(expected)),null),true);
+});

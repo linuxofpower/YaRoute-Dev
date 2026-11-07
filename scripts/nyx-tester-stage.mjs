@@ -73,6 +73,18 @@ export function adaptMcpForTester(src){
  if(schemas!==3||middle.includes('nyx/*')||!middle.includes('main/master/default'))fail('TESTER_SCHEMA_CONTRACT_UNSATISFIED');
  return before+middle+after;
 }
+/** One-time exact-blob cleanup of an unexecuted Dev-only test accidentally
+ * copied to Tester. Any changed target blob aborts rather than delete. */
+const STALE_TESTER_BLOB='facb3c3eb418dc7a7ad40820e1a7492f7fe39a9a';
+const STALE_TESTER_PATH='tests/nyx-dev-public-plan.test.mjs';
+export function staleDevOnlyTesterCleanup(target){
+ if(target?.truncated!==false||!Array.isArray(target.tree))fail('TRUNCATED_TREE');
+ const matches=target.tree.filter(x=>x.path===STALE_TESTER_PATH);
+ if(matches.length===0)return [];
+ if(matches.length!==1||matches[0].type!=='blob'||matches[0].sha!==STALE_TESTER_BLOB)
+   fail('OBSOLETE_TESTER_FILE_CHANGED_REVIEW_REQUIRED');
+ return [{path:STALE_TESTER_PATH,sourceBlob:null,targetBlob:STALE_TESTER_BLOB}];
+}
 export function validateCandidate({sourceSha,testerSha,sourceRef,testerRef,masterRef,paths}){
  if(![sourceSha,testerSha,sourceRef,testerRef,masterRef].every(x=>SHA.test(x??'')))fail('SHA_INVALID');
  if(sourceSha!==sourceRef||testerSha!==testerRef)fail('BRANCH_MOVED');
@@ -149,15 +161,17 @@ async function stage(){
   if(resolution.changed)profileUpgrade=resolution.content;
  }
  const paths=candidatePaths(source,target);
+ const staleCleanup=staleDevOnlyTesterCleanup(target);
+ const candidate=[...paths,...staleCleanup];
  if(reviewedMigration&&!paths.some(p=>p.path==='src/nyx/runtime.schema.ts'&&
    p.sourceBlob===reviewedProfileBlobs.sourceSchema&&p.targetBlob===reviewedProfileBlobs.targetSchema))
    fail('REVIEWED_MIGRATION_SCHEMA_NOT_STAGED');
- if(!stageRequired(paths,profileUpgrade)){
+ if(!stageRequired(candidate,profileUpgrade)){
   stageReceipt(false);console.log(JSON.stringify({status:'NO_TESTER_CODE_CHANGES',sourceSha,targetSha}));
   return;
  }
  validateCandidate({sourceSha,testerSha:targetSha,sourceRef:devBranch.commit?.sha,
-   testerRef:testerBranch.commit?.sha,masterRef:masterBranch.commit?.sha,paths});
+   testerRef:testerBranch.commit?.sha,masterRef:masterBranch.commit?.sha,paths:candidate});
  if(!SHA.test(stagingCommit.tree?.sha??''))fail('TESTER_BASE_TREE_INVALID');
  const reviewBranch='nyx/promote-'+sourceSha.slice(0,10)+'-'+targetSha.slice(0,10);
  const prs=await api(TARGET,'/pulls?state=open&base=tester&per_page=100',testerToken);
@@ -175,6 +189,8 @@ async function stage(){
   const adjusted=p.path==='src/mcp/mcp.service.ts'?adaptMcpForTester(content):content;
   tree.push({path:p.path,mode:'100644',type:'blob',content:adjusted});
  }
+ // Delete only the explicitly SHA-pinned stale test path, never arbitrary files.
+ for(const item of staleCleanup) tree.push({path:item.path,mode:'100644',type:'blob',sha:null});
  // Recheck both refs immediately before *any* write.
  const [devAgain,testAgain]=await Promise.all([
   api(sourceRepo,'/branches/main',sourceToken),api(TARGET,'/branches/tester',testerToken)]);
@@ -201,13 +217,13 @@ async function stage(){
    '\n- Existing Tester-specific files preserved: workflows, install-rclone, deployment config, app metadata, CODEOWNERS, github-api-writes contract test.'+
    '\n- No modification to master/main, live secrets or Heroku config.\n- Reviewed exact-blob NoteFlow profile migration: '+reviewedMigration+
    '\n- Routine warning-only draft profile upgrade: '+Boolean(profileUpgrade&&!reviewedMigration)+'\n- Changed source/test paths: '+paths.length+
-   '\n- Auth and tenant isolation require separate runtime acceptance before production.\n',
+   '\n- Exact stale-test cleanup: '+staleCleanup.length+ '\n- Auth and tenant isolation require separate runtime acceptance before production.\n',
  });
  if(pr.draft!==true||pr.base?.ref!=='tester'||pr.head?.ref!==reviewBranch)fail('PR_RESPONSE_INVALID');
  stageReceipt(true);
  console.log(JSON.stringify({status:'DRAFT_REVIEW_READY',number:pr.number,url:pr.html_url,
   sourceSha,testerParentSha:targetSha,stagedSha:commit.sha,fileCount:tree.length,
-  fingerprint:createHash('sha256').update(JSON.stringify(paths)).digest('hex')}));
+  fingerprint:createHash('sha256').update(JSON.stringify(candidate)).digest('hex')}));
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)
  stage().catch(error=>{console.error(error.message);process.exitCode=1});
