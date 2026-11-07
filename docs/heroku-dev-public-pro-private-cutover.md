@@ -49,7 +49,22 @@ do not create another app or add-on, or wake sleeping dynos to inspect.
    runtime, without writes, bulk transfers or credential exposure.
 3. Verify the intended Google account through the separate identity
    linking flow. An MCP Google social subject does NOT prove the email.
+   Obtain the exact signed Auth0 Google-social MCP subject for the approved
+   Google account, using operator-only Auth0 inspection. On private Pro, set
+   `NYX_PRIVATE_OAUTH_SUBJECTS` to that ONE subject and set
+   `NYX_PRIVATE_LEGACY_OWNER_MCP_SUBJECT` to the exact same subject. Only
+   after verifying it is your identity and that you can still sign in, enable
+   `NYX_PRIVATE_SINGLE_GOOGLE_OWNER=true`. This opt-in causes the private MCP
+   auth gate to reject all other subjects and malformed/multi-owner ACLs.
+   Do not publish the subject or configure it in public Dev. Subject binding
+   alone does not establish a verified Google email; document the independent
+   identity check in an operator-private record.
 4. Preserve old Dev Neon state and a secure operator-only rollback method.
+
+The Termux `--plan` and `--apply` cutover now refuse to proceed unless the
+private Pro singleton guard is configured exactly. They never modify Pro.
+If the guard is missing, complete the private owner verification first;
+do not bypass this cutover check or reuse the old broad allowlist.
 
 ## Phase C: convert existing Dev, NOT a third Heroku app
 
