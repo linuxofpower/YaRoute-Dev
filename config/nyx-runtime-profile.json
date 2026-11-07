@@ -1,7 +1,7 @@
 {
   "schema": "nyx.runtime-profile.v1",
   "authority": "user-authorized-runtime-configuration",
-  "cliSha256": "090f31ab61ce4228148cb9b551299667072c8ce9c3151bab3c48ab81b7112a4f",
+  "cliSha256": "00c35ace15c0a004506659ccd9922b8aff446f15ea1863ce6d52d780dae527f8",
   "commands": {
     "hel": {
       "adapter": "context.help.v1",
