@@ -12,6 +12,7 @@ test('candidate preserves target-owned configuration, workflows and regression t
   blob('src/mcp/mcp.service.ts',SHA),blob('tests/tenant-rclone-auth.test.cjs',SHA),
   blob('tests/github-api-writes.test.cjs',SHA),blob('tests/nyx-bot-master-release.test.cjs',SHA),blob('tests/nyx-tester-stage.test.cjs',SHA),blob('tests/nyx-tester-auto-merge.test.cjs',SHA),blob('tests/branding.test.cjs',SHA),
   blob('tests/nyx-reviewed-profile-migration.test.cjs',SHA),
+  blob('tests/nyx-dev-public-plan.test.mjs',SHA),
   blob('scripts/install-rclone.mjs',SHA),blob('app.json',SHA),
   blob('.github/workflows/ci.yml',SHA),blob('config/nyx-runtime-profile.json',SHA)]};
  const target={truncated:false,tree:[
