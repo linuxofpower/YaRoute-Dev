@@ -19,6 +19,8 @@ const IGNORE=new Set([
  'tests/nyx-reviewed-profile-migration.test.cjs',
  // Dev-only offline audit planner is intentionally excluded from Tester.
  'tests/nyx-dev-public-plan.test.mjs',
+ // Dev-only Heroku operator cutover test must not stage without its script.
+ 'tests/nyx-termux-public-cutover.test.mjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy
