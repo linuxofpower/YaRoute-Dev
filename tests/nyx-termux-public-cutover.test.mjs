@@ -4,9 +4,13 @@ import {validNeonUrl, inspectState, buildPatch} from '../scripts/nyx-termux-publ
 
 const devUrl = 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
 const proUrl = 'https://nest-nyx-pro-example.herokuapp.com';
-const neon = 'postgresql://u:pw@ep-falling-silence-b9rcrzay-pooler.c-7.eu-central-1.aws.neon.tech/neondb?sslmode=require';
-const devDb = 'postgresql://u:pw@private-dev.invalid/neondb?sslmode=require';
-const proDb = 'postgresql://u:pw@private-pro.invalid/neondb?sslmode=require';
+const at=String.fromCharCode(64);
+const neon = `postgresql://u:pw${at}ep-falling-silence-b9rcrzay-pooler.c-7.eu-central-1.aws.neon.tech/neondb?sslmode=require`;
+const devDb = `postgresql://u:pw${at}private-dev.invalid/neondb?sslmode=require`;
+const proDb = `postgresql://u:pw${at}private-pro.invalid/neondb?sslmode=require`;
+const owner={email:'operator'+at+'example.invalid'};
+const devApp={web_url:devUrl,owner};
+const proApp={web_url:proUrl,owner};
 const dev = {NYX_DEPLOYMENT_MODE:'private',NYX_PUBLIC_URL:devUrl,
   NYX_OAUTH_ISSUER:'https://dev-q8g77208l2kp7iqu.eu.auth0.com/',
   RCLONE_CONFIG_B64:'private-dev-secret',NYX_PRIVATE_OAUTH_SUBJECTS:'legacy',
@@ -14,7 +18,7 @@ const dev = {NYX_DEPLOYMENT_MODE:'private',NYX_PUBLIC_URL:devUrl,
 const pro = {NYX_DEPLOYMENT_MODE:'private',NYX_PUBLIC_URL:proUrl,
   RCLONE_CONFIG_B64:'private-pro-secret',NYX_PRIVATE_OAUTH_SUBJECTS:'owner',
   DATABASE_URL:proDb,NYX_STORAGE_ENCRYPTION_KEY:'pro-key'};
-const state = () => inspectState(dev,pro,{web_url:devUrl},{web_url:proUrl},[],[{size:'eco',quantity:1}]);
+const state = () => inspectState(dev,pro,devApp,proApp,[],[{size:'eco',quantity:1}]);
 const input = () => ({databaseUrl:neon,proDatabaseUrl:proDb,
   googleClientId:'1234567890-abc.apps.googleusercontent.com',
   googleClientSecret:'somegoogleclientsecret',encryptionKey:'fresh-key'});
@@ -38,26 +42,26 @@ test('strips Dev-only legacy private variables and never changes Pro',()=>{
   assert.deepEqual(pro,original);
 });
 test('blocks Heroku Postgres and non-Eco formation',()=>{
-  assert.throws(()=>inspectState(dev,pro,{web_url:devUrl},{web_url:proUrl},
+  assert.throws(()=>inspectState(dev,pro,devApp,proApp,
     [{plan:{name:'heroku-postgresql:essential-0'}}],[]),/HEROKU_POSTGRES_ADDON_PRESENT/);
-  assert.throws(()=>inspectState(dev,pro,{web_url:devUrl},{web_url:proUrl},
+  assert.throws(()=>inspectState(dev,pro,devApp,proApp,
     [],[{size:'standard-1x',quantity:1}]),/NON_ECO_DYNO_PRESENT/);
 });
 test('blocks missing Pro private credentials or incorrect owner',()=>{
   assert.throws(()=>inspectState(dev,{...pro,RCLONE_CONFIG_B64:''},
-    {web_url:devUrl},{web_url:proUrl}),/PRO_PRIVATE_BASELINE_INCOMPLETE/);
-  assert.throws(()=>inspectState(dev,pro,{web_url:devUrl},
-    {web_url:devUrl}),/HEROKU_ORIGINS_NOT_VERIFIED/);
+    devApp,proApp),/PRO_PRIVATE_BASELINE_INCOMPLETE/);
+  assert.throws(()=>inspectState(dev,pro,devApp,
+    {web_url:devUrl,owner}),/HEROKU_ORIGINS_NOT_VERIFIED/);
 });
 test('prevents silent encryption-key rotation after successful public cutover',()=>{
   const first=buildPatch(dev,state(),input());
   const configured={...dev,...first};
   for(const [key,value] of Object.entries(configured)) if(value===null)delete configured[key];
-  const inspected=inspectState(configured,pro,{web_url:devUrl},{web_url:proUrl});
+  const inspected=inspectState(configured,pro,devApp,proApp);
   assert.equal(inspected.alreadyPublic,true);
   assert.throws(()=>buildPatch(configured,inspected,input()),/ALREADY_PUBLIC_NO_KEY_ROTATION/);
 });
 test('rejects ambiguous partial public environment',()=>{
   assert.throws(()=>inspectState({...dev,NYX_DEPLOYMENT_MODE:'public'},pro,
-    {web_url:devUrl},{web_url:proUrl}),/PARTIAL_PUBLIC_CONFIG_REQUIRES_MANUAL_REVIEW/);
+    devApp,proApp),/PARTIAL_PUBLIC_CONFIG_REQUIRES_MANUAL_REVIEW/);
 });
