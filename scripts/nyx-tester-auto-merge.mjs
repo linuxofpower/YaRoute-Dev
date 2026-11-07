@@ -9,6 +9,12 @@ const SHA=/^[0-9a-f]{40}$/;
 const fail=code=>{throw Error('NYX_TESTER_AUTOMERGE_'+code)};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const targetPath=path=>/^(src|tests)\/[A-Za-z0-9._/-]+$/.test(path)&&!path.includes('..')&&!path.includes('//')&&!path.endsWith('/');
+// Only this exact now-obsolete Dev-only test is eligible for deletion.
+const STALE_TESTER_PATH='tests/nyx-dev-public-plan.test.mjs';
+export function safeTesterChange(file){
+ if(file?.status==='removed')return file.filename===STALE_TESTER_PATH;
+ return targetPath(file?.filename)&&['added','modified'].includes(file.status);
+}
 
 export function validatePull({pr,branch,master,sourceSha,files,commit,profileReviewed=false}){
  if(!SHA.test(sourceSha??'')||!SHA.test(branch?.commit?.sha??'')||!SHA.test(master?.commit?.sha??''))fail('REF_INVALID');
@@ -18,7 +24,7 @@ export function validatePull({pr,branch,master,sourceSha,files,commit,profileRev
     pr.head.ref!=='nyx/promote-'+sourceSha.slice(0,10)+'-'+branch.commit.sha.slice(0,10))fail('SOURCE_UNVERIFIED');
  if(!pr.draft&&pr.mergeable===false)fail('NOT_MERGEABLE');
  if(pr.changed_files!==files?.length||!files.length||files.length>=100)fail('FILE_INVENTORY_INCOMPLETE');
- if(files.some(f=>!(targetPath(f.filename)||(profileReviewed&&f.filename==='config/nyx-runtime-profile.json'))||!['added','modified'].includes(f.status)))fail('UNSAFE_PATH');
+ if(files.some(f=>!(safeTesterChange(f)||(profileReviewed&&f.filename==='config/nyx-runtime-profile.json'&&['added','modified'].includes(f.status)))))fail('UNSAFE_PATH');
  if(commit?.sha!==pr.head.sha||commit.parents?.length!==1||commit.parents[0]?.sha!==branch.commit.sha)fail('PARENT_UNVERIFIED');
  // A requested review is advisory on the unprotected Tester branch. Do not
  // equate an unsubmitted request with CHANGES_REQUESTED or a pending review.
