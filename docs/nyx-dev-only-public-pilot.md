@@ -2,7 +2,7 @@
 
 ## Agreed scope (2026-11-07)
 
-- Work in linuxofpower/YaRoute-Dev and yaMorozYaroslav/YaRoute:tester only.
+- Work in the approved Dev repository and the dedicated Tester branch only.
 - Do not touch nest-nyx-pro live settings, protected master/main, or private Rclone credentials.
 - Keep Heroku CLI administration with the existing ya.moroz.yaroslav login; connect or delegate an independent Heroku integration later.
 - Public pilot target remains the EXISTING Dev app using free nestnyx-public Neon and a separate tenant key.
