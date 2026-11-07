@@ -79,3 +79,17 @@ test('profile change requires independent exact-mode verification',()=>{
  const bad={...c,files:[...c.files.slice(0,2),{filename:'config/heroku-public.json',status:'modified'}]};
  assert.throws(()=>mod.validatePull({...bad,profileReviewed:true}),/UNSAFE_PATH/);
 });
+
+
+test('allow only exact stale Dev-only test removal, reject every other deletion',()=>{
+ const c=candidate();
+ c.files[0]={filename:'tests/nyx-dev-public-plan.test.mjs',status:'removed'};
+ assert.equal(mod.validatePull(c),true);
+ for(const path of ['tests/tenant.test.cjs','src/mcp/mcp.service.ts',
+   'scripts/nyx-tester-stage.mjs','config/nyx-runtime-profile.json']){
+   const bad=candidate();
+   bad.files[0]={filename:path,status:'removed'};
+   assert.throws(()=>mod.validatePull(bad),/UNSAFE_PATH/);
+ }
+ assert.equal(mod.safeTesterChange({filename:'tests/nyx-dev-public-plan.test.mjs',status:'removed'}),true);
+});
