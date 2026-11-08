@@ -121,6 +121,33 @@ export function inspectState(dev, pro, devApp, proApp, addons = [], formations =
   return {devOrigin, proOrigin, sensitiveKeys, alreadyPublic};
 }
 
+/**
+ * Refuse reusing a detectable legacy Rclone/Dev/Pro Google OAuth client.
+ * The RclonePnP public Web client must be independent of historical remotes.
+ * Reads config values in process memory only, never records or prints them.
+ * Local Rclone config files cannot be proven absent by this comparison.
+ */
+export function matchesLegacyGoogleClient(id, ...configs) {
+  if (typeof id !== 'string' || !id) return false;
+  for (const config of configs) {
+    if (!config || typeof config !== 'object') continue;
+    for (const [key, value] of Object.entries(config)) {
+      if (typeof value !== 'string' || !value) continue;
+      if (key === 'NYX_GOOGLE_CLIENT_ID' ||
+          (key.startsWith('RCLONE_CONFIG_') && key.endsWith('_CLIENT_ID'))) {
+        if (value.trim() === id) return true;
+      }
+      if (key !== 'RCLONE_CONFIG_B64' && key !== 'RCLONE_CONFIG') continue;
+      let body = key === 'RCLONE_CONFIG_B64'
+        ? Buffer.from(value, 'base64').toString('utf8') : value;
+      if (body.length > 1024 * 1024) continue;
+      const rows = body.matchAll(/^\s*client_id\s*=\s*(\S+)\s*$/gm);
+      for (const row of rows) if (row[1] === id) return true;
+    }
+  }
+  return false;
+}
+
 export function buildPatch(dev, state, secrets) {
   if (state.alreadyPublic) throw Error('ALREADY_PUBLIC_NO_KEY_ROTATION');
   if (!validNeonUrl(secrets.databaseUrl, dev.DATABASE_URL, secrets.proDatabaseUrl))
@@ -129,6 +156,8 @@ export function buildPatch(dev, state, secrets) {
     throw Error('GOOGLE_CLIENT_ID_INVALID');
   if (secrets.googleClientSecret.length < 12 || /[\r\n]/.test(secrets.googleClientSecret))
     throw Error('GOOGLE_CLIENT_SECRET_INVALID');
+  if (matchesLegacyGoogleClient(secrets.googleClientId, dev, secrets.proConfig))
+    throw Error('PUBLIC_GOOGLE_CLIENT_REUSES_LEGACY');
   const patch = Object.fromEntries(state.sensitiveKeys.map(key => [key, null]));
   Object.assign(patch, {
     NYX_DEPLOYMENT_MODE: 'public',
@@ -263,11 +292,11 @@ async function run() {
   console.log('This will restart existing Dev via ONE config-var PATCH. Pro and Neon remain untouched.');
   console.log('Use the free Neon nestnyx-public project URL, NOT a Heroku Postgres URL.');
   const databaseUrl=await prompt('Free Neon nestnyx-public pooled DATABASE_URL (hidden): ',true);
-  const googleClientId=await prompt('Drive-specific Google OAuth Web Client ID (hidden): ',true);
+  const googleClientId=await prompt('NEW RclonePnP public Web OAuth client ID (hidden): ',true);
   const googleClientSecret=await prompt('Drive-specific Google OAuth Client Secret (hidden): ',true);
   const encryptionKey=randomBytes(32).toString('base64');
   const patch=buildPatch(dev,state,{databaseUrl,googleClientId,googleClientSecret,
-    encryptionKey,proDatabaseUrl:pro.DATABASE_URL});
+    encryptionKey,proDatabaseUrl:pro.DATABASE_URL,proConfig:pro});
   let recoveryFilename=null;
   if (devOnly) {
     const passphrase=await prompt('Choose a NEW local Dev recovery passphrase, at least 16 characters (hidden): ',true);

@@ -94,3 +94,54 @@ The NON_ECO_DYNO_PRESENT condition signals an active Heroku dyno size
 outside the operator tool's budget allowlist. Inspect the actual active
 size before changing a plan, purchasing a dyno or considering exceptions.
 No CLI command here changes Heroku, Pro, Neon, OAuth or any storage.
+
+
+## RclonePnP public OAuth client and the legacy client
+
+The user created a NEW Google OAuth Web application client named RclonePnP
+under the existing Google Cloud project. The client name is public metadata,
+NOT the client ID. Exact client ID/secret are provided only interactively to
+the Dev-only apply tool; never commit or upload either.
+
+Public Dev uses one shared OAuth Web *client application* (NYX_GOOGLE_CLIENT_ID,
+NYX_GOOGLE_CLIENT_SECRET) for both users' independent Google Drive grants.
+Each tenant's tokens, roots, refresh and access controls remain separate.
+Do not import any old rclone.conf or tokens into the public tenant vault.
+The cutover now rejects the newly entered client ID if it equals a detectable
+legacy Dev/Pro Rclone or Google OAuth client ID. Inaccessible local config files
+cannot be inferred or read by this check.
+
+The existing legacy Rclone OAuth client is reserved for the separate historical
+ya.moroz.yaroslav environment, as requested. That is the desired future account
+boundary, not proof of current token ownership or a request to modify Pro.
+Existing Pro and local Rclone configs are NOT changed in this Dev phase.
+Do not revoke any existing account tokens or rename remotes automatically.
+
+The Web client needs exactly this redirect:
+https://dev-nest-nyx-0df80c227630.herokuapp.com/connect/google/callback
+The user-shared hyperlink may be truncated; do not assume Google's registered
+redirect has been verified by backend or provider until the consent callback
+succeeds. Heroku's OAuth login/administrator account is a separate identity.
+
+## Immediate Nyxpad capture convention
+
+For Dev/Tester operator diagnostics, always provide the existing safe
+capturing command rather than raw command output copy/paste:
+
+    node scripts/nyx-termux-dev-preflight-capture.mjs
+
+This runs the guarded read-only Dev-only plan and sanitized two-app audit,
+records each allowlisted command name and outcome, inspects only active Dev
+Heroku formation, writes a single privacy-filtered local report, immediately
+uploads to Documents/Nyxpad/CommandOutputs/termux/nestnyx-dev-preflight,
+and verifies the uploaded SHA-256 before reporting verified success.
+
+When the user later says 'done', SEARCH the actual Drive Nyxpad folder for the
+latest report and READ it. Do not ask for raw terminal output if the uploaded
+report is available. If no new uploaded file exists, accurately report that
+the capture/upload is missing or failed and use the local fallback.
+
+This applies to explicit privacy-reviewed command capture, not an unverified
+always-on shell hook. Never auto-upload Heroku config exports, Google OAuth
+secrets, passwords, tokens, recovery/2FA codes, full terminal history, or
+the encrypted Dev rollback artifact.
