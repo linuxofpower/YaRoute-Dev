@@ -66,3 +66,31 @@ token refresh, restart persistence or revocation.
 Pro remains unchanged during this pilot. Public Dev must keep all private
 broker linking OFF, NO inherited global Rclone credentials, and NO private
 owner allowlist.
+
+## Safe automatic upload of Dev-only preflight reports
+
+The existing v001 capture kit was manual, and the later v002 global capture hook
+was never verified installed. Avoid suggesting users manually paste CLI output.
+
+From a current Dev checkout on an authenticated Termux machine with the
+existing private Rclone remote, run this single command:
+
+    node scripts/nyx-termux-dev-preflight-capture.mjs
+
+It runs the read-only Dev-only cutover plan and separately reads only Heroku
+Dev formation type, size and quantity. It writes a sanitized JSON report to
+the private Termux folder under ~/NYXCaptures/termux/nestnyx-dev-preflight.
+The script automatically uploads the JSON into the historical
+Documents/Nyxpad/CommandOutputs/termux/nestnyx-dev-preflight Drive archive
+and downloads it again to check the SHA-256 before reporting success.
+
+It never uploads Heroku access tokens, raw Heroku configuration, process
+environment, rclone.conf, private OAuth fields, full stdout or stderr.
+Error code 2 means the sanitized evidence uploaded successfully but
+the read-only cutover plan remains blocked. Error code 3 means the
+capture or upload was not verified; local evidence is retained.
+
+The NON_ECO_DYNO_PRESENT condition signals an active Heroku dyno size
+outside the operator tool's budget allowlist. Inspect the actual active
+size before changing a plan, purchasing a dyno or considering exceptions.
+No CLI command here changes Heroku, Pro, Neon, OAuth or any storage.
