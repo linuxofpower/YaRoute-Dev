@@ -97,6 +97,11 @@ async function main(){
  const audit=run(process.execPath,[join(ROOT,'scripts/nyx-heroku-two-app-audit.mjs')]);
  const report={schema:'nyx.dev-preflight-capture.v1',timeUTC:new Date().toISOString(),
    app:APP,readOnly:true,secretValuesCaptured:false,herokuWrites:0,proWrites:0,
+   executedCommands:[
+     {name:'nyx.dev-public-plan',args:['--dev-only-plan'],exitCode:Number.isInteger(result.status)?result.status:null},
+     {name:'nyx.heroku-two-app-audit',args:[],exitCode:Number.isInteger(audit.status)?audit.status:null},
+     {name:'heroku.dev-formation',method:'GET',target:APP},
+   ],
    plan:safePlan(result.status,result.stdout,result.stderr),
    audit:safeAudit(audit.status,audit.stdout),
    formation:await formation()};
