@@ -163,3 +163,35 @@ deployed source is **not** authorization for a live cutover. If the deployment
 is older, use the approved existing Dev-only Heroku deployment process,
 verify its new health commit, and rerun the safe capture. Do not touch Pro
 or pay for additional dynos/addons. Do not paste raw release or Heroku config.
+
+
+## Heroku Git non-fast-forward diagnostic (read-only)
+
+The existing Dev Git remote may have commits missing from the public Dev
+repository. A `git push nyx-dev-heroku main:main` can be rejected with
+`fetch first` even when GitHub CI passed. Do NOT automatically force-push,
+reset Git histories, merge Heroku source into canonical GitHub Dev main,
+or use `git pull nyx-dev-heroku main`.
+
+The existing capture command now first validates the exact Heroku Git URL,
+then fetches the Heroku main branch into *local FETCH_HEAD only*. It reports
+only non-secret commit SHAs, source-tree equality, and an ancestry
+classification: ALREADY_SYNCED, REMOTE_BEHIND_LOCAL, LOCAL_BEHIND_REMOTE,
+DIVERGED, UNRELATED_HISTORIES, or safe unavailable status. It neither
+deploys nor changes either remote Git branch. Existing Heroku tokens, source
+files, commit messages, file paths, raw logs and configs are NEVER uploaded.
+
+Operator:
+    cd ~/nestnyx-cutover-audit
+    git pull --ff-only
+    node scripts/nyx-termux-dev-preflight-capture.mjs
+
+That command saves the sanitized report immediately in the existing NYX
+Nyxpad CommandOutputs Drive folder and verifies the SHA-256 download.
+After operator says "done", retrieve the newest report directly from Drive.
+Only then decide whether a *separate, reviewed deployment branch* can safely
+preserve existing Heroku Git history and carry the exact reviewed source.
+Any resulting merge commit has a distinct SHA and must be the locally
+checked-out SHA for the deployed-release parity check. Never change
+protected GitHub main or master to solve an app-specific deployment conflict.
+The existing single Eco dyno and zero additional paid plans remain mandatory.
