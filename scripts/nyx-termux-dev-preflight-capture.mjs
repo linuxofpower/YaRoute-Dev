@@ -33,6 +33,36 @@ export function safePlan(status,stdout,stderr){
  const match=typeof stderr==='string'?stderr.match(/^CUTOVER_STOPPED: ([A-Z0-9_]{3,80})$/m):null;
  return {status:'BLOCKED',code:match?.[1]||'PREFLIGHT_FAILED'};
 }
+/**
+ * Allowlisted two-app audit data from the already sanitized CLI.
+ * This is safe to upload to Nyxpad immediately, even when blocked.
+ * No arbitrary stdout, stderr, config var values or user subjects are saved.
+ */
+export function safeAudit(status, stdout) {
+  if (status!==0 && status!==2) return {status:'AUDIT_UNAVAILABLE'};
+  let audit;
+  try { audit=JSON.parse(stdout); }
+  catch { return {status:'AUDIT_UNAVAILABLE'}; }
+  if (audit?.schema!=='nyx.heroku-two-app-audit.v1' ||
+      audit?.changesApplied!==false || audit?.secretsPrinted!==false ||
+      audit.dev?.name!=='dev-nest-nyx' || audit.pro?.name!=='nest-nyx-pro')
+    return {status:'AUDIT_UNAVAILABLE'};
+  const flags=audit.dev.flags||{};
+  return {
+    status:'READ',
+    devMode:flags.NYX_DEPLOYMENT_MODE==='public'?'public':
+      flags.NYX_DEPLOYMENT_MODE==='private'?'private':'unknown',
+    devLegacyRclonePresent:audit.dev.hasLegacyPrivateRcloneConfig===true,
+    devEncryptedDatabasePresent:audit.dev.hasEncryptedDatabase===true,
+    publicNeonMatched:audit.dev.databaseHostMatchesPublicNeon===true,
+    distinctDatabases:audit.distinctDatabases===true,
+    distinctEncryptionKeys:audit.distinctEncryptionKeys===true,
+    proMode:audit.pro.flags?.NYX_DEPLOYMENT_MODE==='private'?'private':'unknown',
+    devPublicConfigReady:audit.devPublicConfigReady===true,
+    liveTwoUserSecurityVerified:false,
+  };
+}
+
 function run(binary,args,timeout=25000){
  return spawnSync(binary,args,{cwd:ROOT,encoding:'utf8',timeout,maxBuffer:262144,
    stdio:['ignore','pipe','pipe'],env:{...process.env,HEROKU_SKIP_UPDATE_CHECK:'1'}});
@@ -64,9 +94,11 @@ async function main(){
  if(process.argv.length!==2)throw Error('NO_ARGUMENTS_ALLOWED');
  const result=run(process.execPath,
    [join(ROOT,'scripts/nyx-termux-public-cutover.mjs'),'--dev-only-plan']);
+ const audit=run(process.execPath,[join(ROOT,'scripts/nyx-heroku-two-app-audit.mjs')]);
  const report={schema:'nyx.dev-preflight-capture.v1',timeUTC:new Date().toISOString(),
    app:APP,readOnly:true,secretValuesCaptured:false,herokuWrites:0,proWrites:0,
    plan:safePlan(result.status,result.stdout,result.stderr),
+   audit:safeAudit(audit.status,audit.stdout),
    formation:await formation()};
  const dir=join(homedir(),'NYXCaptures','termux','nestnyx-dev-preflight');
  mkdirSync(dir,{recursive:true,mode:0o700});
@@ -75,7 +107,7 @@ async function main(){
  const local=join(dir,name),remote=REMOTE+'/'+name;
  writeFileSync(local,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
  const uploaded=uploadAndVerify(local,remote);
- console.log(JSON.stringify({plan:report.plan,formation:report.formation,
+ console.log(JSON.stringify({plan:report.plan,audit:report.audit,formation:report.formation,
     localFile:local,drivePath:remote,upload:uploaded,changed:false},null,2));
  if(uploaded!=='SHA256_VERIFIED')process.exitCode=3;
  else if(report.plan.status==='BLOCKED')process.exitCode=2;
