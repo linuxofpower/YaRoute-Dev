@@ -45,6 +45,10 @@ test('strips Dev-only legacy private variables and never changes Pro',()=>{
   assert.equal(patch.NYX_PRIVATE_BROKER_CLIENT_ENABLED,'false');
   assert.deepEqual(pro,original);
 });
+test('Heroku API capitalized Eco is accepted without exceeding existing budget',()=>{
+  assert.doesNotThrow(()=>inspectState(dev,pro,devApp,proApp,[],[{size:'Eco',quantity:1}]));
+  assert.doesNotThrow(()=>inspectState(dev,pro,devApp,proApp,[],[{size:'eco',quantity:1}]));
+});
 test('blocks Heroku Postgres and non-Eco formation',()=>{
   assert.throws(()=>inspectState(dev,pro,devApp,proApp,
     [{plan:{name:'heroku-postgresql:essential-0'}}],[]),/HEROKU_POSTGRES_ADDON_PRESENT/);
