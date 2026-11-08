@@ -99,7 +99,7 @@ export function inspectState(dev, pro, devApp, proApp, addons = [], formations =
     throw Error('AUTH0_ISSUER_UNEXPECTED');
   if (addons.some(addon => /^heroku-postgresql(?::|$)/.test(addon?.plan?.name || '')))
     throw Error('HEROKU_POSTGRES_ADDON_PRESENT');
-  if (formations.some(f => Number(f?.quantity) > 0 && f?.size !== 'eco'))
+  if (formations.some(f => Number(f?.quantity) > 0 && String(f?.size || '').toLowerCase() !== 'eco'))
     throw Error('NON_ECO_DYNO_PRESENT');
   const sensitiveKeys = privateKeyNames(dev).filter(key =>
     typeof dev[key] === 'string' && dev[key].length);
