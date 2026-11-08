@@ -145,3 +145,21 @@ This applies to explicit privacy-reviewed command capture, not an unverified
 always-on shell hook. Never auto-upload Heroku config exports, Google OAuth
 secrets, passwords, tokens, recovery/2FA codes, full terminal history, or
 the encrypted Dev rollback artifact.
+
+## Release-source safety gate before public Dev switching
+
+Before applying public Dev config, the operator-only cutover now makes a
+read-only HTTPS request to the EXISTING Dev `/health` endpoint and compares
+its reported Git source commit against the checked-out Dev repository HEAD.
+If the release commit is absent, mismatched, or health is unavailable,
+`--dev-only-apply` stops with `CUTOVER_STOPPED: DEV_DEPLOYED_RELEASE_NOT_CURRENT`
+BEFORE any new credential prompts or Heroku mutations. The strict default
+production cutover remains unchanged; Pro and protected master remain untouched.
+
+The normal safe Nyxpad capture also reads this public health endpoint and
+saves only its sanitized status and commits in its regular SHA-256-verified
+command-output report. A green configuration preflight without a verified
+deployed source is **not** authorization for a live cutover. If the deployment
+is older, use the approved existing Dev-only Heroku deployment process,
+verify its new health commit, and rerun the safe capture. Do not touch Pro
+or pay for additional dynos/addons. Do not paste raw release or Heroku config.

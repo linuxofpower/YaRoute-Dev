@@ -14,6 +14,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes, scryptSync, createCipheriv } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { requireCurrentDevDeployment } from './nyx-dev-deployment-guard.mjs';
 import { join } from 'node:path';
 
 const DEV = 'dev-nest-nyx';
@@ -289,6 +290,9 @@ async function run() {
     alreadyPublic:state.alreadyPublic, secretsPrinted:false,
     warning:'This script does not verify Auth0 refresh, private Google owner linkage, or two real public users.'},null,2));
   if (mode==='--plan' || mode==='--dev-only-plan' || state.alreadyPublic) return;
+  // Public Dev must already run the reviewed tenant-capable source before changing configuration.
+  // This is a read-only HTTPS health/commit comparison, not a deployment or Pro change.
+  if(devOnly) await requireCurrentDevDeployment(state.devOrigin);
   console.log('This will restart existing Dev via ONE config-var PATCH. Pro and Neon remain untouched.');
   console.log('Use the free Neon nestnyx-public project URL, NOT a Heroku Postgres URL.');
   const databaseUrl=await prompt('Free Neon nestnyx-public pooled DATABASE_URL (hidden): ',true);
