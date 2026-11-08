@@ -19,7 +19,7 @@ export function safeFormation(input){
       !Number.isInteger(x.quantity)||x.quantity<0||x.quantity>100)throw Error('FORMATION_INVALID');
    return {type:x.type,size:x.size,quantity:x.quantity};
  }).filter(x=>x.quantity>0);
- return {status:'READ',active,nonEcoActive:active.some(x=>x.size!=='eco')};
+ return {status:'READ',active,nonEcoActive:active.some(x=>x.size.toLowerCase()!=='eco')};
 }
 export function safePlan(status,stdout,stderr){
  if(status===0){
