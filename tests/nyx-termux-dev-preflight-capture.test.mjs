@@ -7,6 +7,7 @@ test('only allowed process fields are captured, stopped dynos ignored',()=>{
  assert.deepEqual(r,{status:'READ',active:[{type:'web',size:'basic',quantity:1}],nonEcoActive:true});
  assert.doesNotMatch(JSON.stringify(r),/DO_NOT_COPY/);
  assert.equal(safeFormation([{type:'web',size:'eco',quantity:1}]).nonEcoActive,false);
+ assert.equal(safeFormation([{type:'web',size:'Eco',quantity:1}]).nonEcoActive,false);
 });
 test('invalid provider formation cannot be captured',()=>{
  for(const bad of [null,{},[{type:'web',size:'basic',quantity:-1}],
