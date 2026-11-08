@@ -25,6 +25,8 @@ const IGNORE=new Set([
  'tests/nyx-termux-dev-preflight-capture.test.mjs',
  // Dev operator-only deployed release probe must not stage without its script.
  'tests/nyx-dev-deployment-guard.test.mjs',
+ // Dev-only Git deployment history diagnostic must not promote without its script.
+ 'tests/nyx-heroku-git-divergence.test.mjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy

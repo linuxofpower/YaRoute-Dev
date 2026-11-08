@@ -8,6 +8,7 @@ import {homedir} from 'node:os';
 import {dirname,resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {inspectDevDeployment} from './nyx-dev-deployment-guard.mjs';
+import {inspectHerokuGit} from './nyx-heroku-git-divergence.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const APP='dev-nest-nyx';
@@ -103,11 +104,13 @@ async function main(){
      {name:'nyx.heroku-two-app-audit',args:[],exitCode:Number.isInteger(audit.status)?audit.status:null},
      {name:'heroku.dev-formation',method:'GET',target:APP},
      {name:'nyx.dev-deployment-health',method:'GET',target:APP},
+     {name:'nyx.heroku-git-history',method:'FETCH',target:APP},
    ],
    plan:safePlan(result.status,result.stdout,result.stderr),
    audit:safeAudit(audit.status,audit.stdout),
    formation:await formation(),
-   deployment:await inspectDevDeployment()};
+   deployment:await inspectDevDeployment(),
+   herokuGit:inspectHerokuGit()};
  const dir=join(homedir(),'NYXCaptures','termux','nestnyx-dev-preflight');
  mkdirSync(dir,{recursive:true,mode:0o700});
  const name='preflight-'+new Date().toISOString().replace(/[:.]/g,'-')+
@@ -115,7 +118,7 @@ async function main(){
  const local=join(dir,name),remote=REMOTE+'/'+name;
  writeFileSync(local,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
  const uploaded=uploadAndVerify(local,remote);
- console.log(JSON.stringify({plan:report.plan,audit:report.audit,formation:report.formation, deployment:report.deployment,
+ console.log(JSON.stringify({plan:report.plan,audit:report.audit,formation:report.formation, deployment:report.deployment,herokuGit:report.herokuGit,
     localFile:local,drivePath:remote,upload:uploaded,changed:false},null,2));
  if(uploaded!=='SHA256_VERIFIED')process.exitCode=3;
  else if(report.plan.status==='BLOCKED')process.exitCode=2;
