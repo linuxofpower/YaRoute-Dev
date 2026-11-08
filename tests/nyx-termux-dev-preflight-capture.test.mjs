@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {safeFormation,safePlan} from '../scripts/nyx-termux-dev-preflight-capture.mjs';
+import {safeFormation,safePlan,safeAudit} from '../scripts/nyx-termux-dev-preflight-capture.mjs';
 test('only allowed process fields are captured, stopped dynos ignored',()=>{
  const r=safeFormation([{type:'web',size:'basic',quantity:1,secret:'DO_NOT_COPY'},
     {type:'worker',size:'eco',quantity:0}]);
@@ -28,4 +28,26 @@ test('passing preflight filters untrusted extra fields',()=>{
  assert.equal(r.oldDevConfigKeysToRemove,1);
  assert.doesNotMatch(JSON.stringify(r),/SECRET/);
  assert.throws(()=>safePlan(0,JSON.stringify({...p,mode:'--apply'}),''),/PLAN_INVALID/);
+});
+
+test('Nyxpad report records only whitelisted audit booleans and never raw values',()=>{
+  const data={
+    schema:'nyx.heroku-two-app-audit.v1', changesApplied:false,secretsPrinted:false,
+    dev:{name:'dev-nest-nyx',
+      flags:{NYX_DEPLOYMENT_MODE:'private',NYX_GOOGLE_CLIENT_SECRET:'DO_NOT_CAPTURE'},
+      hasLegacyPrivateRcloneConfig:true,hasEncryptedDatabase:false,
+      databaseHostMatchesPublicNeon:false,rawConfig:'SECRET'},
+    pro:{name:'nest-nyx-pro',flags:{NYX_DEPLOYMENT_MODE:'private'},database:'NEVER'},
+    devPublicConfigReady:false,distinctDatabases:true,distinctEncryptionKeys:false,
+    privateSubject:'PRIVATE',
+  };
+  const result=safeAudit(2,JSON.stringify(data));
+  assert.equal(result.status,'READ');
+  assert.equal(result.devMode,'private');
+  assert.equal(result.devLegacyRclonePresent,true);
+  assert.equal(result.proMode,'private');
+  assert.equal(result.liveTwoUserSecurityVerified,false);
+  assert.doesNotMatch(JSON.stringify(result),/SECRET|DO_NOT_CAPTURE|PRIVATE|NEVER/);
+  assert.deepEqual(safeAudit(3,'wrong'),{status:'AUDIT_UNAVAILABLE'});
+  assert.deepEqual(safeAudit(0,JSON.stringify({...data,changesApplied:true})),{status:'AUDIT_UNAVAILABLE'});
 });
