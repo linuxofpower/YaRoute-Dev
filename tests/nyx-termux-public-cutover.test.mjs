@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validNeonUrl, inspectState, buildPatch, encryptedDevRecoveryPayload} from '../scripts/nyx-termux-public-cutover.mjs';
+import {validNeonUrl, inspectState, buildPatch, encryptedDevRecoveryPayload, matchesLegacyGoogleClient} from '../scripts/nyx-termux-public-cutover.mjs';
 import {scryptSync, createDecipheriv} from 'node:crypto';
 
 const devUrl = 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
@@ -132,4 +132,22 @@ test('Dev recovery backup encrypts private config and detects tampering',()=>{
   reject.setAuthTag(Buffer.from(payload.tag,'base64'));
   assert.throws(()=>Buffer.concat([reject.update(altered),reject.final()]));
   assert.throws(()=>encryptedDevRecoveryPayload(config,'short'),/DEV_RECOVERY_PASSPHRASE_TOO_SHORT/);
+});
+
+test('new public RclonePnP OAuth client never reuses detectable legacy Rclone client',()=>{
+  const fresh='1111111111-newpnp.apps.googleusercontent.com';
+  const legacy='2222222222-legacy.apps.googleusercontent.com';
+  const config=Buffer.from('[oldremote]\ntype = drive\nclient_id = '+legacy+'\n','utf8').toString('base64');
+  assert.equal(matchesLegacyGoogleClient(fresh,{RCLONE_CONFIG_B64:config}),false);
+  assert.equal(matchesLegacyGoogleClient(legacy,{RCLONE_CONFIG_B64:config}),true);
+  assert.equal(matchesLegacyGoogleClient(legacy,{RCLONE_CONFIG_OLD_CLIENT_ID:legacy}),true);
+  assert.equal(matchesLegacyGoogleClient(legacy,{NYX_GOOGLE_CLIENT_ID:legacy}),true);
+  const stateNow=state();
+  assert.throws(()=>buildPatch({...dev,RCLONE_CONFIG_B64:config},
+    stateNow,{...input(),googleClientId:legacy}),/PUBLIC_GOOGLE_CLIENT_REUSES_LEGACY/);
+  assert.throws(()=>buildPatch(dev,stateNow,
+    {...input(),googleClientId:legacy,proConfig:{NYX_GOOGLE_CLIENT_ID:legacy}}),
+    /PUBLIC_GOOGLE_CLIENT_REUSES_LEGACY/);
+  assert.equal(buildPatch(dev,stateNow,{...input(),googleClientId:fresh,
+    proConfig:{RCLONE_CONFIG_B64:config}}).NYX_GOOGLE_CLIENT_ID,fresh);
 });
