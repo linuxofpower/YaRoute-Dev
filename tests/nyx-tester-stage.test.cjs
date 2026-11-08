@@ -15,6 +15,7 @@ test('candidate preserves target-owned configuration, workflows and regression t
   blob('tests/nyx-dev-public-plan.test.mjs',SHA),
   blob('tests/nyx-termux-public-cutover.test.mjs',SHA),
   blob('tests/nyx-termux-dev-preflight-capture.test.mjs',SHA),
+  blob('tests/nyx-dev-deployment-guard.test.mjs',SHA),
   blob('scripts/install-rclone.mjs',SHA),blob('app.json',SHA),
   blob('.github/workflows/ci.yml',SHA),blob('config/nyx-runtime-profile.json',SHA)]};
  const target={truncated:false,tree:[
