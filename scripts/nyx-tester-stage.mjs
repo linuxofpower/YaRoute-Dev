@@ -21,6 +21,8 @@ const IGNORE=new Set([
  'tests/nyx-dev-public-plan.test.mjs',
  // Dev-only Heroku operator cutover test must not stage without its script.
  'tests/nyx-termux-public-cutover.test.mjs',
+ // Dev-only Heroku preflight uploader must not stage without its script.
+ 'tests/nyx-termux-dev-preflight-capture.test.mjs',
 ]);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy
