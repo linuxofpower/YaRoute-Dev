@@ -109,7 +109,7 @@ async function main(){
    plan:safePlan(result.status,result.stdout,result.stderr),
    audit:safeAudit(audit.status,audit.stdout),
    formation:await formation(),
-   deployment:await inspectDevDeployment(),
+   deployment:await inspectDevDeployment()};
 
  const dir=join(homedir(),'NYXCaptures','termux','nestnyx-dev-preflight');
  mkdirSync(dir,{recursive:true,mode:0o700});
