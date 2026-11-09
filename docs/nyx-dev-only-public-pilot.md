@@ -146,52 +146,46 @@ always-on shell hook. Never auto-upload Heroku config exports, Google OAuth
 secrets, passwords, tokens, recovery/2FA codes, full terminal history, or
 the encrypted Dev rollback artifact.
 
-## Release-source safety gate before public Dev switching
+## Canonical GitHub promotion and Heroku deployment sources
 
-Before applying public Dev config, the operator-only cutover now makes a
-read-only HTTPS request to the EXISTING Dev `/health` endpoint and compares
-its reported Git source commit against the checked-out Dev repository HEAD.
-If the release commit is absent, mismatched, or health is unavailable,
-`--dev-only-apply` stops with `CUTOVER_STOPPED: DEV_DEPLOYED_RELEASE_NOT_CURRENT`
-BEFORE any new credential prompts or Heroku mutations. The strict default
-production cutover remains unchanged; Pro and protected master remain untouched.
+**Corrected and verified 2026-11-09**: the actual release route is:
 
-The normal safe Nyxpad capture also reads this public health endpoint and
-saves only its sanitized status and commits in its regular SHA-256-verified
-command-output report. A green configuration preflight without a verified
-deployed source is **not** authorization for a live cutover. If the deployment
-is older, use the approved existing Dev-only Heroku deployment process,
-verify its new health commit, and rerun the safe capture. Do not touch Pro
-or pay for additional dynos/addons. Do not paste raw release or Heroku config.
+- linuxofpower/YaRoute-Dev `main`: source development, then CI-gated
+  promotion into YaRoute `tester`; never push this branch directly to Heroku.
+- yaMorozYaroslav/YaRoute `tester`: deployed into EXISTING `dev-nest-nyx`.
+- yaMorozYaroslav/YaRoute protected `master`: deployed into `nest-nyx-pro`.
 
+Use the Heroku Dashboard Deploy tab's configured GitHub integration or
+its already-authorized Tester deployment process. Confirm the connected
+repository and branch before any manual deployment. Dev code should reach
+Heroku only after its promotion to Tester and passing Tester CI.
 
-## Heroku Git non-fast-forward diagnostic (read-only)
+Heroku's GitHub integration does NOT synchronize its source into the app's
+separate Heroku Git repository. Heroku Git may have unrelated history without
+any issue for the GitHub-based release workflow. A rejected attempt to
+`git push nyx-dev-heroku main:main` from the Dev repo must NOT trigger
+a force push, history rewrite, unrelated-history merge, new Heroku app,
+or a transfer of protected master.
 
-The existing Dev Git remote may have commits missing from the public Dev
-repository. A `git push nyx-dev-heroku main:main` can be rejected with
-`fetch first` even when GitHub CI passed. Do NOT automatically force-push,
-reset Git histories, merge Heroku source into canonical GitHub Dev main,
-or use `git pull nyx-dev-heroku main`.
+## Correct source-integrity gate for the public Dev cutover
 
-The existing capture command now first validates the exact Heroku Git URL,
-then fetches the Heroku main branch into *local FETCH_HEAD only*. It reports
-only non-secret commit SHAs, source-tree equality, and an ancestry
-classification: ALREADY_SYNCED, REMOTE_BEHIND_LOCAL, LOCAL_BEHIND_REMOTE,
-DIVERGED, UNRELATED_HISTORIES, or safe unavailable status. It neither
-deploys nor changes either remote Git branch. Existing Heroku tokens, source
-files, commit messages, file paths, raw logs and configs are NEVER uploaded.
+The read-only Dev /health check must match the **current GitHub Tester HEAD**,
+not local Dev `main`. The operator preflight fetches that HEAD from the
+public official GitHub API and compares it to the /health Git commit.
+It never exposes private tokens, scripts, or config values.
+A missing/stale Tester ref or inaccessible/mismatched health response is a
+fail-closed status: `DEV_DEPLOYED_TESTER_RELEASE_NOT_VERIFIED`.
+This verification happens before the Dev-only apply asks for secrets
+or changes Heroku config. Pro remains untouched.
 
-Operator:
-    cd ~/nestnyx-cutover-audit
-    git pull --ff-only
-    node scripts/nyx-termux-dev-preflight-capture.mjs
+The safe Nyxpad preflight records this Tester-to-Heroku parity result and
+Dev/Pro config booleans, preserving a SHA-256-verified read-back.
+Heroku Git history inspection is not a readiness gate and is no longer
+automatically run. The separate historical operator diagnostic is not
+evidence that the app must be rebased onto the Dev repository.
 
-That command saves the sanitized report immediately in the existing NYX
-Nyxpad CommandOutputs Drive folder and verifies the SHA-256 download.
-After operator says "done", retrieve the newest report directly from Drive.
-Only then decide whether a *separate, reviewed deployment branch* can safely
-preserve existing Heroku Git history and carry the exact reviewed source.
-Any resulting merge commit has a distinct SHA and must be the locally
-checked-out SHA for the deployed-release parity check. Never change
-protected GitHub main or master to solve an app-specific deployment conflict.
-The existing single Eco dyno and zero additional paid plans remain mandatory.
+If live source matches current Tester and the other preflight checks pass,
+there is no reason to redeploy the same code. Only after the public
+Dev-only cutover and first-user tenant isolation acceptance can the
+second independent Google user safely connect. Maintain one Eco dyno,
+existing free Neon and the $5 total monthly plan ceiling.
