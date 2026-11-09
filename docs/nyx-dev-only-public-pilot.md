@@ -150,7 +150,7 @@ the encrypted Dev rollback artifact.
 
 **Corrected and verified 2026-11-09**: the actual release route is:
 
-- linuxofpower/YaRoute-Dev `main`: source development, then CI-gated
+- The separate Dev repository `main`: source development, then CI-gated
   promotion into YaRoute `tester`; never push this branch directly to Heroku.
 - yaMorozYaroslav/YaRoute `tester`: deployed into EXISTING `dev-nest-nyx`.
 - yaMorozYaroslav/YaRoute protected `master`: deployed into `nest-nyx-pro`.
