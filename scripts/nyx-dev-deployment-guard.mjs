@@ -1,49 +1,61 @@
 #!/usr/bin/env node
-/** Read-only Dev source/deployment parity. Never print HTTP payloads, headers, tokens or errors. */
-import {spawnSync} from 'node:child_process';
-import {dirname,resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
-
-const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+/** Read-only Dev deployment proof against YaRoute TESTER, never Dev main.
+ * Source authority: yaMorozYaroslav/YaRoute branch tester -> dev-nest-nyx.
+ * Protected master -> Pro is out of scope. Only public commit SHAs are emitted.
+ */
 const COMMIT=/^[0-9a-f]{7,40}$/;
+const FULL_COMMIT=/^[0-9a-f]{40}$/;
 const EXACT_ORIGIN='https://dev-nest-nyx-0df80c227630.herokuapp.com';
+const TESTER_API='https://api.github.com/repos/yaMorozYaroslav/YaRoute/branches/tester';
 
-export function safeDevDeployment(health, localCommit) {
-  if(typeof localCommit!=='string'||!/^[0-9a-f]{40}$/.test(localCommit))
-    return {status:'LOCAL_COMMIT_UNAVAILABLE',deployedCurrentSource:false};
-  if(!health||health.ok!==true||typeof health.commit!=='string'||
-     !COMMIT.test(health.commit)||!localCommit.startsWith(health.commit))
-    return {status:'DEPLOYMENT_NOT_CURRENT',deployedCurrentSource:false,
-      localCommit, deployedCommit:COMMIT.test(health?.commit||'')?health.commit:null};
-  return {status:'CURRENT_SOURCE_VERIFIED',deployedCurrentSource:true,
-    localCommit,deployedCommit:health.commit};
+export function safeTesterBranch(data) {
+  const sha=data?.commit?.sha;
+  return typeof sha==='string' && FULL_COMMIT.test(sha) ? sha : '';
 }
 
-function localHead() {
-  const r=spawnSync('git',['-C',ROOT,'rev-parse','HEAD'],{
-    encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:12000,maxBuffer:8192});
-  if(r.error||r.status!==0)return '';
-  return r.stdout.trim();
+export function safeDevDeployment(health, testerCommit) {
+  if(typeof testerCommit!=='string'||!FULL_COMMIT.test(testerCommit))
+    return {status:'TESTER_COMMIT_UNAVAILABLE',sourceBranch:'tester',
+      deployedCurrentSource:false};
+  const deployed=typeof health?.commit==='string' && COMMIT.test(health.commit)
+    ? health.commit : null;
+  if(health?.ok!==true||!deployed||!testerCommit.startsWith(deployed))
+    return {status:'DEPLOYMENT_NOT_TESTER',sourceBranch:'tester',
+      deployedCurrentSource:false,expectedTesterCommit:testerCommit,
+      deployedCommit:deployed};
+  return {status:'CURRENT_TESTER_SOURCE_VERIFIED',sourceBranch:'tester',
+    deployedCurrentSource:true,expectedTesterCommit:testerCommit,
+    deployedCommit:deployed};
+}
+
+async function readSmallJson(url) {
+  try {
+    const response=await fetch(url,{redirect:'error',
+      signal:AbortSignal.timeout(15000),headers:{
+        Accept:'application/vnd.github+json, application/json',
+        'User-Agent':'Nyx-Dev-Deployment-Preflight',
+      },cache:'no-store'});
+    if(!response.ok)return null;
+    const body=await response.text();
+    if(body.length>8192)return null;
+    return JSON.parse(body);
+  }catch{return null;}
 }
 
 export async function inspectDevDeployment(origin=EXACT_ORIGIN) {
-  const commit=localHead();
-  if(origin!==EXACT_ORIGIN)return {status:'DEV_ORIGIN_UNEXPECTED',deployedCurrentSource:false};
-  try {
-    const response=await fetch(origin+'/health',{
-      redirect:'error',signal:AbortSignal.timeout(15000),
-      headers:{Accept:'application/json'},cache:'no-store',
-    });
-    if(!response.ok)return {status:'HEALTH_READ_UNAVAILABLE',deployedCurrentSource:false};
-    const body=await response.text();
-    if(body.length>8192)return {status:'HEALTH_READ_UNAVAILABLE',deployedCurrentSource:false};
-    const health=JSON.parse(body);
-    return safeDevDeployment(health,commit);
-  }catch{return {status:'HEALTH_READ_UNAVAILABLE',deployedCurrentSource:false};}
+  if(origin!==EXACT_ORIGIN)
+    return {status:'DEV_ORIGIN_UNEXPECTED',deployedCurrentSource:false};
+  const tester=safeTesterBranch(await readSmallJson(TESTER_API));
+  if(!tester)return {status:'TESTER_COMMIT_UNAVAILABLE',
+    sourceBranch:'tester',deployedCurrentSource:false};
+  const health=await readSmallJson(origin+'/health');
+  if(!health)return {status:'HEALTH_READ_UNAVAILABLE',sourceBranch:'tester',
+    expectedTesterCommit:tester,deployedCurrentSource:false};
+  return safeDevDeployment(health,tester);
 }
 
 export async function requireCurrentDevDeployment(origin) {
   const current=await inspectDevDeployment(origin);
-  if(!current.deployedCurrentSource)throw Error('DEV_DEPLOYED_RELEASE_NOT_CURRENT');
+  if(!current.deployedCurrentSource)throw Error('DEV_DEPLOYED_TESTER_RELEASE_NOT_VERIFIED');
   return current;
 }
