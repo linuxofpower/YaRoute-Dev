@@ -162,7 +162,7 @@ function easyWayFixture(resources, options = {}) {
   const { manifest = true, config = true, state = true, status = 'active' } = options;
   const prefix = 'areas/EasyWay';
   resources.files.set('paths.md', resources.files.get('paths.md') +
-    '| EasyWay.area_paths | MAIN | ' + prefix + '/area_paths.json |\\n');
+    '| EasyWay.area_paths | MAIN | ' + prefix + '/area_paths.json |\n');
   if (manifest) resources.files.set(prefix + '/area_paths.json', JSON.stringify({
     area: 'EasyWay',
     central_mutable_state: { file: '0_state/state.json' },
@@ -239,7 +239,7 @@ test('EasyWay valid manifest, active state and config produce exact hidden sourc
 test('stale EasyWay Todo blocks a FIF even with healthy Area owners', async () => {
   const r = new MemoryResources();
   easyWayFixture(r);
-  r.files.set('todo.md', '# Todo\\n\\n# Day[0] — Sunday, 1 November\\n1. Unresolved\\n');
+  r.files.set('todo.md', '# Todo\n\n# Day[0] — Sunday, 1 November\n1. Unresolved\n');
   await assert.rejects(
     () => executor(r).execute({ command: 'ini', args: ['EasyWay', 'GNo'], conversationId: 'stale-easyway-todo' }),
     /STALE_TODAY_UNRECONCILED/,
