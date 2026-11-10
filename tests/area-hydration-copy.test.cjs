@@ -234,3 +234,15 @@ test('EasyWay valid manifest, active state and config produce exact hidden sourc
   assert.equal(out.fif.verified, true);
   assert.equal(out.files_to_paste.some(f => /area_paths|state|config/.test(f.name)), false);
 });
+
+
+test('stale EasyWay Todo blocks a FIF even with healthy Area owners', async () => {
+  const r = new MemoryResources();
+  easyWayFixture(r);
+  r.files.set('todo.md', '# Todo\\n\\n# Day[0] — Sunday, 1 November\\n1. Unresolved\\n');
+  await assert.rejects(
+    () => executor(r).execute({ command: 'ini', args: ['EasyWay', 'GNo'], conversationId: 'stale-easyway-todo' }),
+    /STALE_TODAY_UNRECONCILED/,
+  );
+  assert.deepEqual(r.writes, []);
+});
