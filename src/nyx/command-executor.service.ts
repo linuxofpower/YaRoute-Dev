@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NyxExecutionProfileService } from './execution-profile.service';
+import { staleTodayLabel } from './todo-freshness';
 import { CommandRequest } from './runtime.schema';
 import { NyxBootstrapService } from './bootstrap.service';
 import { NyxCliRegistryService } from './cli-registry.service';
@@ -165,6 +166,15 @@ export class NyxCommandExecutor {
     }
 
     const loaded = await this.resources.load(locator, plan);
+    // Head's stale_today_gate: an old Day[0] must be reconciled by NoteFlow,
+    // not silently treated as fresh or completed by initialization.
+    if (plan.contract.adapter === 'context.initialize.v1' && plan.targets.length) {
+      const todo = loaded.files.find(file => file.key === 'todo');
+      if (todo) {
+        const freshness = staleTodayLabel(todo.content);
+        if (freshness.stale) throw new Error(`STALE_TODAY_UNRECONCILED:${freshness.observed}:${freshness.expected}`);
+      }
+    }
     for (const file of loaded.files) assertNoSecrets(file.content);
     const chatState = this.chatState(plan);
     const fif = plan.contract.adapter === 'context.initialize.v1' ? await this.handoffs.initialize(owner, plan.conversationId, loaded.handoffs!, {
