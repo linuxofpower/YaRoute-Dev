@@ -181,3 +181,23 @@ test('++ and -- keep FIF identity, preserve depth and append scope history', asy
   fif = JSON.parse(r.files.get(down.fif.ref.path));
   assert.deepEqual(fif.chat_config.history.map(x => x.operation), ['++', '--']);
 });
+
+
+test('Head inherited GNo selects Global Normal without becoming an Area target', () => {
+  const resolver = new NyxCommandResolver();
+  const result = resolver.resolve(makeCli(), { command: 'ini', args: ['EasyWay', 'GNo'] });
+  assert.deepEqual(result.targets, ['EasyWay']);
+  assert.equal(result.scope, 'global');
+  assert.equal(result.depth, 'normal');
+  assert.equal(result.modifier, 'oGN');
+  assert.equal(result.modifierSource, 'inherited');
+});
+
+test('command-local modifier takes precedence over inherited GNo', () => {
+  const resolver = new NyxCommandResolver();
+  const result = resolver.resolve(makeCli(), { command: 'ini', args: ['EasyWay', 'GNo', 'oLB'] });
+  assert.equal(result.scope, 'local');
+  assert.equal(result.depth, 'basic');
+  assert.equal(result.modifierSource, 'explicit');
+  assert.throws(() => resolver.resolve(makeCli(), { command: 'ini', args: ['EasyWay', 'GNo', 'LNo'] }), /MODIFIER_CONFLICT/);
+});
