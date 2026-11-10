@@ -102,7 +102,12 @@ export class NyxResourceResolver {
     const seen = new Set(files.map(file => JSON.stringify(file.ref)));
     for (const target of plan.targets) {
       const manifestRef = this.route(resources, `${target}.area_paths`);
-      if (!manifestRef) continue;
+      // EasyWay is a typed Area in canonical Head. A targeted init may not
+      // silently succeed when its Area route is missing from Basic Paths.
+      if (!manifestRef) {
+        if (target.toLowerCase() === 'easyway') throw new Error(`REQUIRED_TARGET_ROUTE_MISSING:${target}.area_paths`);
+        continue;
+      }
       this.assertScope(plan, manifestRef, `${target}.area_paths`);
       let manifestText: string;
       try { manifestText = await this.store.read(manifestRef); }
@@ -117,10 +122,16 @@ export class NyxResourceResolver {
       let manifest: any;
       try { manifest = parseJson(manifestText); }
       catch { throw new Error(`AREA_MANIFEST_INVALID:${target}`); }
+      if (typeof manifest !== 'object' || !manifest || String(manifest.area ?? '').toLowerCase() !== target.toLowerCase()) {
+        throw new Error(`AREA_MANIFEST_OWNER_MISMATCH:${target}`);
+      }
       const candidates = [
         ['config', manifest?.config?.file ?? manifest?.configs?.file],
         ['state', manifest?.central_mutable_state?.file ?? manifest?.main_state?.file],
       ].filter((item): item is [string, string] => typeof item[1] === 'string' && item[1].length > 0);
+      for (const role of ['config', 'state']) {
+        if (!candidates.some(item => item[0] === role)) throw new Error(`REQUIRED_SOURCE_ROUTE_MISSING:${target}.${role}`);
+      }
       const base = path.posix.dirname(manifestRef.path);
       for (const [role, relative] of candidates) {
         const ref = { ...manifestRef, path: path.posix.join(base, relative) };
@@ -129,10 +140,22 @@ export class NyxResourceResolver {
         if (seen.has(identity)) continue;
         try {
           const content = await this.store.read(ref);
+          if (role === 'state') {
+            let state: any;
+            try { state = parseJson(content); }
+            catch { throw new Error(`AREA_STATE_INVALID:${target}`); }
+            if (state?.area && String(state.area).toLowerCase() !== target.toLowerCase()) {
+              throw new Error(`AREA_STATE_OWNER_MISMATCH:${target}`);
+            }
+            if (target.toLowerCase() === 'easyway' && state?.status !== 'active') {
+              throw new Error(`AREA_STATE_NOT_ACTIVE:${target}`);
+            }
+          }
           files.push({ key: `${target}.${role}`, ref, content, sha256: sha256(content), bytes: Buffer.byteLength(content), visible: false });
           seen.add(identity);
-        } catch {
-          warnings.push(`OPTIONAL_SOURCE_UNAVAILABLE:${target}.${role}`);
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith('AREA_STATE_')) throw error;
+          throw new Error(`REQUIRED_SOURCE_UNAVAILABLE:${target}.${role}`);
         }
       }
     }
