@@ -5,7 +5,7 @@ const { staleTodayLabel } = require('../dist/nyx/todo-freshness');
 const now = new Date('2026-11-10T12:00:00.000Z');
 
 test('a Nov 1 Day[0] cannot satisfy Nov 10 Normal initialization', () => {
-  const result = staleTodayLabel('# Todo\\n\\n# Day[0] — Sunday, 1 November\\n1. Still pending\\n', now);
+  const result = staleTodayLabel('# Todo\n\n# Day[0] — Sunday, 1 November\n1. Still pending\n', now);
   assert.deepEqual(result, { stale: true, observed: '2026-11-01', expected: '2026-11-10' });
 });
 
@@ -20,5 +20,5 @@ test('date matching uses Warsaw timezone across UTC midnight', () => {
 });
 
 test('unlabeled task files do not invent an owner rollover', () => {
-  assert.deepEqual(staleTodayLabel('# Todo\\n1. Pending\\n', now), { stale: false, expected: '2026-11-10' });
+  assert.deepEqual(staleTodayLabel('# Todo\n1. Pending\n', now), { stale: false, expected: '2026-11-10' });
 });
