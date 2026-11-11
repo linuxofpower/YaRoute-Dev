@@ -100,3 +100,37 @@ test('one-time stale Tester test cleanup is SHA pinned and never deletes changed
  assert.throws(()=>m.staleDevOnlyTesterCleanup({truncated:true,tree:[]}),/TRUNCATED_TREE/);
  assert.equal(m.stageRequired(m.staleDevOnlyTesterCleanup(target(expected)),null),true);
 });
+
+
+test('stage only the two approved blue icons, not Pro purple or arbitrary public files',()=>{
+ const src={truncated:false,tree:[
+  blob('public/branding/icon.png',SHA),
+  blob('public/branding/nestnyx-dev.png',SHA),
+  blob('public/branding/nestnyx-prod.png',SHA),
+  blob('public/readme.html',SHA),
+  blob('src/branding.controller.ts',SHA),
+  blob('tests/branding-runtime.test.cjs',SHA),
+ ]};
+ const dst={truncated:false,tree:[]};
+ assert.deepEqual(m.candidatePaths(src,dst).map(x=>x.path),[
+  'public/branding/icon.png','public/branding/nestnyx-dev.png',
+  'src/branding.controller.ts','tests/branding-runtime.test.cjs'
+ ]);
+});
+
+test('target-owned tester module gains only exact branding import and controller',()=>{
+ const dev=String.raw`import { HealthController } from './health.controller';
+import { BrandingController } from './branding.controller';
+controllers: [HealthController, BrandingController]`;
+ const original=String.raw`import { HealthController } from './health.controller';
+import { PersistentService } from './persistent.service';
+controllers: [HealthController],
+providers: [PersistentService]`;
+ const changed=m.adaptTesterAppBranding(dev,original);
+ assert.match(changed,/import \{ BrandingController \}/);
+ assert.match(changed,/controllers: \[HealthController, BrandingController\]/);
+ assert.match(changed,/providers: \[PersistentService\]/);
+ assert.equal(m.adaptTesterAppBranding(dev,changed),null);
+ assert.throws(()=>m.adaptTesterAppBranding(dev,'controllers: [HealthController, OtherController],'),/TESTER_MODULE_BRANDING_REVIEW_REQUIRED/);
+ assert.throws(()=>m.adaptTesterAppBranding('',original),/DEV_BRANDING_MODULE_NOT_READY/);
+});
