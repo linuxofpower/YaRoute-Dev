@@ -9,7 +9,7 @@ const SHA=/^[a-f0-9]{40}$/,REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const fail=x=>{throw Error('NYX_TESTER_STAGE_'+x)};
 const TARGET='yaMorozYaroslav/YaRoute';
 const IGNORE=new Set([
- 'src/app.module.ts','src/branding.controller.ts',
+ 'src/app.module.ts',
  'tests/branding.test.cjs','tests/devpronestnyx-stage.test.cjs',
  'tests/nyx-promotion-pipeline.test.cjs','tests/nyx-tester-stage.test.cjs',
  'tests/github-api-writes.test.cjs',
@@ -28,6 +28,8 @@ const IGNORE=new Set([
  // Dev-only Git deployment history diagnostic must not promote without its script.
  'tests/nyx-heroku-git-divergence.test.mjs',
 ]);
+// Only explicitly approved blue Dev/Tester assets may cross the binary stage.
+const TESTER_BLUE_BRANDING=new Set(['public/branding/icon.png','public/branding/nestnyx-dev.png']);
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy
  * code with obsolete authority/key pins. Reconcile through a reviewed PR first. */
@@ -43,13 +45,32 @@ export function candidatePaths(source,target){
  const b=new Map(target.tree?.filter(x=>x.type==='blob').map(x=>[x.path,x.sha])??[]);
  if(source.truncated!==false||target.truncated!==false)fail('TRUNCATED_TREE');
  return [...a.entries()].filter(([p,sha])=>
-  (p.startsWith('src/')||p.startsWith('tests/'))&&
-  !IGNORE.has(p)&&!(p.startsWith('tests/nyx-tester-')&&p.endsWith('.test.cjs'))&&!NO_COPY.test(p)&&
+  (p.startsWith('src/')||p.startsWith('tests/')||TESTER_BLUE_BRANDING.has(p))&&
+  !IGNORE.has(p)&&!(p.startsWith('tests/nyx-tester-')&&p.endsWith('.test.cjs'))&&
+  (!NO_COPY.test(p)||TESTER_BLUE_BRANDING.has(p))&&
   /^[A-Za-z0-9._/-]+$/.test(p)&&
   !p.includes('..')&&
   SHA.test(sha)&&b.get(p)!==sha
  ).map(([path,sourceBlob])=>({path,sourceBlob,targetBlob:b.get(path)??null}));
 }
+/** The Tester app module is target-owned. Add ONLY the reviewed blue
+ * branding route registration, preserving every unrelated provider/import. */
+export function adaptTesterAppBranding(source,target){
+ if(typeof source!=='string'||!source.includes("import { BrandingController } from './branding.controller';")||
+    !source.includes('controllers: [HealthController, BrandingController]'))
+   fail('DEV_BRANDING_MODULE_NOT_READY');
+ if(typeof target!=='string')fail('TESTER_MODULE_MISSING');
+ if(target.includes("import { BrandingController } from './branding.controller';")&&
+    target.includes('controllers: [HealthController, BrandingController]'))return null;
+ if(target.includes('BrandingController')||
+    !target.includes("import { HealthController } from './health.controller';")||
+    !target.includes('controllers: [HealthController],'))fail('TESTER_MODULE_BRANDING_REVIEW_REQUIRED');
+ return target.replace(
+   "import { HealthController } from './health.controller';",
+   "import { HealthController } from './health.controller';\nimport { BrandingController } from './branding.controller';")
+   .replace('controllers: [HealthController],','controllers: [HealthController, BrandingController],');
+}
+
 export function adaptMcpForTester(src){
  if(typeof src!=='string'||!src.includes("server.registerTool('nyx_connection_github_branch_create'"))fail('MCP_SOURCE_INVALID');
  const begin=src.indexOf("server.registerTool('nyx_connection_github_branch_create'");
@@ -167,12 +188,21 @@ async function stage(){
   if(resolution.changed)profileUpgrade=resolution.content;
  }
  const paths=candidatePaths(source,target);
+ let brandingModuleUpgrade=null;
+ if(paths.some(p=>p.path==='src/branding.controller.ts'||TESTER_BLUE_BRANDING.has(p.path))){
+   const srcApp=source.tree?.find(x=>x.type==='blob'&&x.path==='src/app.module.ts')?.sha;
+   const dstApp=target.tree?.find(x=>x.type==='blob'&&x.path==='src/app.module.ts')?.sha;
+   if(!SHA.test(srcApp??'')||!SHA.test(dstApp??''))fail('BRANDING_MODULE_BLOB_MISSING');
+   brandingModuleUpgrade=adaptTesterAppBranding(
+     await sourceBlobText(sourceRepo,srcApp,sourceToken),
+     await sourceBlobText(TARGET,dstApp,testerToken));
+ }
  const staleCleanup=staleDevOnlyTesterCleanup(target);
  const candidate=[...paths,...staleCleanup];
  if(reviewedMigration&&!paths.some(p=>p.path==='src/nyx/runtime.schema.ts'&&
    p.sourceBlob===reviewedProfileBlobs.sourceSchema&&p.targetBlob===reviewedProfileBlobs.targetSchema))
    fail('REVIEWED_MIGRATION_SCHEMA_NOT_STAGED');
- if(!stageRequired(candidate,profileUpgrade)){
+ if(!stageRequired(candidate,profileUpgrade||brandingModuleUpgrade)){
   stageReceipt(false);console.log(JSON.stringify({status:'NO_TESTER_CODE_CHANGES',sourceSha,targetSha}));
   return;
  }
@@ -186,10 +216,20 @@ async function stage(){
  if(existing){stageReceipt(true);console.log(JSON.stringify({status:'EXISTING_DRAFT',url:existing.html_url,number:existing.number,branch:reviewBranch}));return}
  const tree=[];
  if(profileUpgrade)tree.push({path:'config/nyx-runtime-profile.json',mode:'100644',type:'blob',content:profileUpgrade});
+ if(brandingModuleUpgrade)tree.push({path:'src/app.module.ts',mode:'100644',type:'blob',content:brandingModuleUpgrade});
  for(const p of paths){
   const blob=await api(sourceRepo,'/git/blobs/'+p.sourceBlob,sourceToken);
   if(blob.encoding!=='base64'||typeof blob.content!=='string'||blob.size>65536)fail('NON_TEXT_OR_OVERSIZED_'+p.path);
   const bytes=Buffer.from(blob.content.replace(/\s/g,''),'base64');
+  if(TESTER_BLUE_BRANDING.has(p.path)){
+    if(bytes.length>10000||bytes.length<24||bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||
+       bytes.readUInt32BE(16)!==96||bytes.readUInt32BE(20)!==96)fail('BLUE_ICON_INVALID');
+    const uploaded=await api(TARGET,'/git/blobs',testerToken,'POST',{
+      content:bytes.toString('base64'),encoding:'base64'});
+    if(uploaded.sha!==p.sourceBlob)fail('BLUE_ICON_BLOB_MISMATCH');
+    tree.push({path:p.path,mode:'100644',type:'blob',sha:uploaded.sha});
+    continue;
+  }
   const content=bytes.toString('utf8');
   if(bytes.includes(0)||!Buffer.from(content,'utf8').equals(bytes))fail('NON_UTF8_'+p.path);
   const adjusted=p.path==='src/mcp/mcp.service.ts'?adaptMcpForTester(content):content;
