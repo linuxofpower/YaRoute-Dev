@@ -74,3 +74,17 @@ test('public KEY staging is disabled without flag and rejects unauthenticated ow
   if(saved===undefined)delete process.env.NYX_KEY_TENANT_ENABLED;else process.env.NYX_KEY_TENANT_ENABLED=saved;
  }
 });
+
+test('tenant KEY executes on explicit authenticated input with flag absent and Neon configured',async()=>{
+ const saved={flag:process.env.NYX_KEY_TENANT_ENABLED,url:process.env.DATABASE_URL};
+ try{
+  delete process.env.NYX_KEY_TENANT_ENABLED;
+  process.env.DATABASE_URL='postgres://mock/key';
+  const result=await run(service(),'oauth:opt-in-user','oF','txn_default_live','Implement exact KEY receipts');
+  assert.equal(result.status,'APPLIED');
+  assert.equal(result.canonicalChanged,false);
+ }finally{
+  if(saved.flag===undefined)delete process.env.NYX_KEY_TENANT_ENABLED;else process.env.NYX_KEY_TENANT_ENABLED=saved.flag;
+  if(saved.url===undefined)delete process.env.DATABASE_URL;else process.env.DATABASE_URL=saved.url;
+ }
+});
