@@ -54,5 +54,5 @@ test('blue Dev pilot and purple private Pro get distinct branded MCP Apps resour
  assert.match(dev.homeHtml,/<span class="muted">Home<\/span>/);
  assert.match(dev.connectionsHtml,/<span class="muted">Connections<\/span>/);
  assert.match(dev.connectionsHtml,/\/branding\/icon\.png/);
- assert.doesNotMatch(pro.connectionsHtml,/src="https:\/\/example\.com\/branding\/icon\.png"/);
+ assert.match(pro.connectionsHtml,/\/branding\/icon\.png/);
 });
