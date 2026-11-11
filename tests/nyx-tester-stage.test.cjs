@@ -134,3 +134,10 @@ providers: [PersistentService]`;
  assert.throws(()=>m.adaptTesterAppBranding(dev,'controllers: [HealthController, OtherController],'),/TESTER_MODULE_BRANDING_REVIEW_REQUIRED/);
  assert.throws(()=>m.adaptTesterAppBranding('',original),/DEV_BRANDING_MODULE_NOT_READY/);
 });
+
+test('only the MCP registry receives the larger bounded text blob limit',()=>{
+ assert.equal(m.maxTesterSourceBlobBytes('src/mcp/mcp.service.ts'),98304);
+ for(const p of ['src/mcp/mcp.controller.ts','src/app.module.ts',
+   'tests/other.test.cjs','public/branding/icon.png','config/runtime.json',
+   'src/mcp/../sneaky.ts'])assert.equal(m.maxTesterSourceBlobBytes(p),65536);
+});
