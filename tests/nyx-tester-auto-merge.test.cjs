@@ -93,3 +93,26 @@ test('allow only exact stale Dev-only test removal, reject every other deletion'
  }
  assert.equal(mod.safeTesterChange({filename:'tests/nyx-dev-public-plan.test.mjs',status:'removed'}),true);
 });
+
+
+test('auto-merger admits only the SHA-pinned blue branding candidate',()=>{
+ const c=candidate();
+ const reviewed=[
+  {filename:'public/branding/icon.png',status:'added',sha:'a6561b94097482505ac9712a44ededc4a5e64f02'},
+  {filename:'public/branding/nestnyx-dev.png',status:'added',sha:'a6561b94097482505ac9712a44ededc4a5e64f02'},
+  {filename:'src/branding.controller.ts',status:'added',sha:'f2fa360a2ea5cc95c2dea9671642c1332bcaf0cc'},
+  {filename:'src/app.module.ts',status:'modified',sha:'75e7b545f5568ca832ef01b2532e9b1705c115bb'},
+  {filename:'tests/branding-runtime.test.cjs',status:'added',sha:'1f33690a977996d328063dd80e7b280bbdeef215'},
+ ];
+ assert.equal(mod.validatePull({...c,files:reviewed,pr:{...c.pr,changed_files:reviewed.length}}),true);
+ for(const file of reviewed.slice(0,4)){
+  assert.equal(mod.safeTesterChange(file),true);
+  assert.equal(mod.safeTesterChange({...file,sha:'e'.repeat(40)}),false);
+  assert.equal(mod.safeTesterChange({...file,status:'removed'}),false);
+ }
+ for(const forbidden of [
+  {filename:'public/branding/nestnyx-prod.png',status:'added',sha:'f'.repeat(40)},
+  {filename:'public/favicon.ico',status:'added',sha:'a'.repeat(40)},
+  {filename:'src/app.module.ts',status:'modified',sha:'a'.repeat(40)},
+ ])assert.equal(mod.safeTesterChange(forbidden),false);
+});
