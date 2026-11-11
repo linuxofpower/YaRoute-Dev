@@ -24,6 +24,7 @@ import { TenantMegaEnrollmentService } from '../connectors/tenant-mega-enrollmen
 import { publicTenantMegaOnly } from '../connectors/public-tenant-provider.policy';
 import { PrivateLegacyOwnerLinkService } from '../connectors/private-legacy-owner-link.service';
 import { PrivateLegacyBrokerClient } from '../connectors/private-legacy-broker.client';
+import { OwnerGooglePhotosService } from '../connectors/owner-google-photos.service';
 import { GithubReadonlyConnector } from '../connectors/github-readonly';
 import { GithubWriteConnector } from '../connectors/github-writes';
 import { HerokuBrokerClient } from '../connectors/heroku-broker.client';
@@ -58,6 +59,7 @@ export class McpService {
     private readonly maintenance: RuntimeMaintenanceService,
     private readonly ownerLink: PrivateLegacyOwnerLinkService,
     private readonly privateBroker: PrivateLegacyBrokerClient,
+    private readonly ownerPhotos: OwnerGooglePhotosService,
   ) {
     const handler = createMcpHandler(() => this.buildServer());
     this.nodeHandler = toNodeHandler(handler, {
@@ -139,6 +141,9 @@ export class McpService {
            ...(process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true' ? ['nyx_private_owner_link_status','nyx_private_owner_link_begin'] : []),
             ...(process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED === 'true' ? ['nyx_private_legacy_roots','nyx_private_legacy_list'] : []),
            ...(process.env.NYX_HEROKU_READ_ENABLED === 'true' ? ['nyx_heroku_app_info','nyx_heroku_releases'] : [])] : ['nyx_mega_accounts', 'nyx_mega_list', 'nyx_mega_stat', 'nyx_mega_capacity', 'nyx_global_index', 'nyx_copy_file', 'nyx_risk_preview','nyx_connections_home','nyx_connections_panel','nyx_rclone_connections_list','nyx_head_status','nyx_areas','nyx_list','nyx_stat','nyx_capacity','nyx_job_status','nyx_maintenance_runtime_inspect','nyx_maintenance_runtime_prepare',
+           ...(process.env.NYX_GPHOTOS_OWNER_READ_ENABLED === 'true' &&
+               process.env.NYX_SERVICE_NAME !== 'NestNyxPro' ?
+             ['nyx_gphotos_yaro_probe','nyx_gphotos_yaro_list'] : []),
            ...(process.env.NYX_HEROKU_READ_ENABLED === 'true' ? ['nyx_heroku_app_info','nyx_heroku_releases'] : [])],
         note: 'This inventory does not assert that a backend command is executable; use backend command resolution and verified receipts.',
       })),
@@ -653,6 +658,26 @@ export class McpService {
       }, async ({id,provider,rootId,path}) => this.safeTool(() =>
         this.tenantRclone.probeAuthorizedRoot(
           this.connectorOwner(),id,provider,rootId,path || '')));
+    }
+
+    // Private-only gphotos_yaro diagnostics. Never register on the public
+    // multi-tenant process or Pro, regardless of flag configuration.
+    if (process.env.NYX_GPHOTOS_OWNER_READ_ENABLED === 'true' &&
+        process.env.NYX_DEPLOYMENT_MODE === 'private' &&
+        process.env.NYX_SERVICE_NAME !== 'NestNyxPro') {
+      server.registerTool('nyx_gphotos_yaro_probe', {
+        title: 'Check my private Google Photos remote',
+        description: 'Owner-only read connectivity check for gphotos_yaro. No secrets, uploads or downloads.',
+        inputSchema: z.object({}),
+        annotations: {readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+      }, async () => this.safeTool(() => this.ownerPhotos.probe(this.connectorOwner())));
+      server.registerTool('nyx_gphotos_yaro_list', {
+        title: 'List my private Google Photos collection',
+        description: 'Owner-only read metadata from an explicitly read-only gphotos_yaro remote. Limited to 100 entries per request. Google Photos API may omit photos not uploaded by rclone.',
+        inputSchema: z.object({path:z.string().max(1024).optional()}),
+        annotations: {readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+      }, async ({path}) => this.safeTool(() =>
+        this.ownerPhotos.list(this.connectorOwner(),path || '')));
     }
 
     // Isolated, owner-bound HEROKU read-only metadata bridge (OFF by default).

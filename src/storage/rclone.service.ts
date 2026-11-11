@@ -67,6 +67,40 @@ export class RcloneService implements OnModuleInit {
   }
 
   /**
+   * Never return configuration contents. Refuse any ambiguous or environment-
+   * overridden Google Photos remote before running owner-only diagnostics.
+   * Rclone's backend read_only option must be explicitly enabled.
+   */
+  isGooglePhotosRemoteReadOnly(remote: 'gphotos_yaro'): boolean {
+    if (process.env.NYX_DEPLOYMENT_MODE !== 'private') return false;
+    if (Object.keys(process.env).some(key =>
+      key.toUpperCase().startsWith('RCLONE_CONFIG_GPHOTOS_YARO_'))) return false;
+    try {
+      const stat = fs.statSync(this.configPath);
+      if (!stat.isFile() || stat.size > 512 * 1024) return false;
+      const raw = fs.readFileSync(this.configPath, 'utf8');
+      let found = 0, active = false;
+      const fields = new Map<string, string>();
+      for (const line of raw.split(/\r?\n/)) {
+        const section = line.match(/^\s*\[([^\]\r\n]+)\]\s*$/);
+        if (section) {
+          active = section[1] === remote;
+          if (active) found++;
+          continue;
+        }
+        if (!active || /^\s*[#;]/.test(line) || !line.trim()) continue;
+        const option = line.match(/^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+        if (!option) return false;
+        const key = option[1].toLowerCase();
+        if (fields.has(key)) return false;
+        fields.set(key, option[2]);
+      }
+      return found === 1 && fields.get('type') === 'google photos' &&
+        fields.get('read_only') === 'true';
+    } catch { return false; }
+  }
+
+  /**
    * Private-operator-only safe configuration summary.
    * Never return a configuration value other than a fixed, recognized scope;
    * never return token, secret, user ID, path or root identifier.
@@ -190,7 +224,7 @@ export class RcloneService implements OnModuleInit {
     return JSON.parse(stdout);
   }
 
-  async run(args: string[], maxOutputBytes?: number): Promise<{ stdout: string; stderr: string }> {
+  async run(args: string[], maxOutputBytes?: number, timeoutMs?: number): Promise<{ stdout: string; stderr: string }> {
     if (process.env.NYX_DEPLOYMENT_MODE === 'public') {
       throw new Error('PRIVATE_RCLONE_CONNECTIONS_ONLY');
     }
@@ -199,6 +233,11 @@ export class RcloneService implements OnModuleInit {
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      const timer = timeoutMs && Number.isSafeInteger(timeoutMs) && timeoutMs > 0
+        ? setTimeout(() => {
+          child.kill('SIGKILL');
+          reject(new Error('rclone read timed out'));
+        }, timeoutMs) : undefined;
       let stdout = '';
       let stderr = '';
       child.stdout.setEncoding('utf8');
@@ -211,8 +250,9 @@ export class RcloneService implements OnModuleInit {
         }
       });
       child.stderr.on('data', (chunk) => { stderr += chunk; });
-      child.on('error', reject);
+      child.on('error', error => { if (timer) clearTimeout(timer); reject(error); });
       child.on('close', (code) => {
+        if (timer) clearTimeout(timer);
         if (code === 0) return resolve({ stdout, stderr });
         reject(new Error(`rclone exited ${code}: ${stderr.trim() || stdout.trim()}`));
       });

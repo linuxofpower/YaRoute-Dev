@@ -3,6 +3,7 @@ import { StorageModule } from '../storage/storage.module';
 import { PrivateLegacyBrokerService } from './private-legacy-broker.service';
 import { PrivateLegacyBrokerController } from './private-legacy-broker.controller';
 import { PrivateLegacyBrokerClient } from './private-legacy-broker.client';
+import { OwnerGooglePhotosService } from './owner-google-photos.service';
 import { ConnectorsService } from './connectors.service';
 import { TenantRcloneService } from './tenant-rclone.service';
 import { TenantGoogleOAuthService } from './tenant-google-oauth.service';
@@ -21,7 +22,7 @@ import { GithubOAuthController } from './github-oauth.controller';
   imports:[StorageModule],
   controllers:[GithubOAuthController,GoogleOAuthController,MegaEnrollmentController,PrivateLegacyOwnerLinkController,PrivateLegacyBrokerController],
   providers:[
-    ConnectorsService, GithubAppService, HerokuBrokerClient, PrivateLegacyBrokerService, PrivateLegacyBrokerClient, TenantRcloneService, TenantGoogleOAuthService, TenantMegaEnrollmentService, PrivateLegacyOwnerLinkService,
+    ConnectorsService, GithubAppService, HerokuBrokerClient, PrivateLegacyBrokerService, PrivateLegacyBrokerClient, OwnerGooglePhotosService, TenantRcloneService, TenantGoogleOAuthService, TenantMegaEnrollmentService, PrivateLegacyOwnerLinkService,
     {provide: GithubReadonlyConnector,
       useFactory:(connections:ConnectorsService,credentials:GithubAppService)=>
         new GithubReadonlyConnector(connections.registryPolicy(),credentials),
@@ -32,6 +33,6 @@ import { GithubOAuthController } from './github-oauth.controller';
         new GithubWriteConnector(connections.registryPolicy(),credentials),
       inject:[ConnectorsService,GithubAppService]},
   ],
-  exports:[HerokuBrokerClient,PrivateLegacyBrokerClient,ConnectorsService,GithubAppService,GithubReadonlyConnector,GithubWriteConnector,TenantRcloneService,TenantGoogleOAuthService,TenantMegaEnrollmentService,PrivateLegacyOwnerLinkService],
+  exports:[HerokuBrokerClient,PrivateLegacyBrokerClient,OwnerGooglePhotosService,ConnectorsService,GithubAppService,GithubReadonlyConnector,GithubWriteConnector,TenantRcloneService,TenantGoogleOAuthService,TenantMegaEnrollmentService,PrivateLegacyOwnerLinkService],
 })
 export class ConnectorsModule {}
