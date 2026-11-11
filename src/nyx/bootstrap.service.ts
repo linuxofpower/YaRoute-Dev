@@ -14,12 +14,28 @@ export class NyxBootstrapService {
       const located = locatorSchema.parse(parseJson(await this.store.read(ref, 64 * 1024)));
       const normal = located.paths.normal ?? this.configuredPath(process.env.NYX_NORMAL_PATHS_PATH, area);
       const deep = located.paths.deep ?? this.configuredPath(process.env.NYX_DEEP_PATHS_PATH, area) ?? (normal ? { ...normal, path: normal.path.replace(/n_paths\.json$/i, 'd_paths.json') } : undefined);
-      return locatorSchema.parse({
+      const resolved = locatorSchema.parse({
         ...located,
         humanCli: located.humanCli ?? { area, path: process.env.NYX_CLI_MIRROR_PATH || 'Documents/Nyxpad/nyxcli.md' },
         paths: { ...located.paths, ...(normal ? { normal } : {}), ...(deep ? { deep } : {}) },
       });
-    } catch { throw new Error('BOOTSTRAP_INVALID_OR_UNAVAILABLE'); }
+      // Explicit expected CAN pointers are a release guard, not an alternative
+      // Head authority. Reject stale private runtime configuration before INI.
+      for (const [part, env] of [
+        ['head', 'NYX_EXPECTED_CANONICAL_HEAD'],
+        ['body', 'NYX_EXPECTED_CANONICAL_BODY'],
+        ['footer', 'NYX_EXPECTED_CANONICAL_FOOTER'],
+      ] as const) {
+        const expected = process.env[env];
+        if (expected && resolved.canonical[part] !== expected) {
+          throw new Error('CANONICAL_POINTER_STALE:' + part);
+        }
+      }
+      return resolved;
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('CANONICAL_POINTER_STALE:')) throw error;
+      throw new Error('BOOTSTRAP_INVALID_OR_UNAVAILABLE');
+    }
   }
   private configuredPath(value: string | undefined, area: string) {
     if (!value) return undefined;

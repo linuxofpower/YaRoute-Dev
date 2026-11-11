@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import path from 'node:path';
 import { LoadedSource, Locator, ResourceRef, parseJson, refSchema, routingSchema } from './runtime.schema';
 import { NyxResourceStore, sha256 } from './resource-store.service';
+import { hydrateVoice } from './voice-init';
 import { NyxCommandResolver } from './command-resolver';
 type Plan = ReturnType<NyxCommandResolver['resolve']>;
 
@@ -50,6 +51,9 @@ export class NyxResourceResolver {
     }
     await this.readPending(pending, files, warnings);
     await this.hydrateTargetOwners(plan, resources, files, warnings);
+    if (plan.targets.some(t => t.toLowerCase() === 'voice')) {
+      await hydrateVoice(resources, files, this.store, (ref, key) => this.assertScope(plan, ref, key));
+    }
     const handoffs = plan.contract.handoffsKey ? this.route(resources, plan.contract.handoffsKey) : undefined;
     if (plan.contract.mutation === 'conversation-artifact' && !handoffs) throw new Error('HANDOFFS_ROUTE_MISSING');
     if (handoffs) this.assertScope(plan, handoffs, plan.contract.handoffsKey!);
@@ -101,6 +105,7 @@ export class NyxResourceResolver {
     if (!plan.contract.scope || !plan.targets.length) return;
     const seen = new Set(files.map(file => JSON.stringify(file.ref)));
     for (const target of plan.targets) {
+      if (target.toLowerCase() === 'voice') continue; // Strict Voice owner hydration is handled separately.
       const manifestRef = this.route(resources, `${target}.area_paths`);
       if (!manifestRef) continue;
       this.assertScope(plan, manifestRef, `${target}.area_paths`);

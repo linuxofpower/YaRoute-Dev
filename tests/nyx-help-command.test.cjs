@@ -59,6 +59,10 @@ test('real hel and help return consistent, canonical executable inventory withou
  const compat=await executor.execute({command:'help'});
  assert.deepEqual(compat,canonical);
  assert.equal(canonical.status,'COMPLETE');
+ assert.equal(canonical.ai_instructions.schema,'nyx.ai_instruction.v1');
+ assert.equal(canonical.ai_instructions.command,'hel');
+ assert.deepEqual(canonical.ai_instructions.required_outputs,['command_reference']);
+ assert.equal(canonical.ai_instructions.delivery.required,false);
  assert.match(canonical.markdown,/# Nyx CLI — canonical command reference/);
  assert.match(canonical.markdown,/nyx hel/);
  assert.match(canonical.markdown,/nyx ini/);
