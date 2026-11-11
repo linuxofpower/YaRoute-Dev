@@ -15,7 +15,7 @@ export type ChatConfigState = {
   scope: ChatScope;
   depth: ChatDepth;
   access: ChatAccess;
-  source: 'default' | 'explicit' | 'request' | 'operation';
+  source: 'default' | 'explicit' | 'inherited' | 'request' | 'operation';
 };
 export type ChatConfigChange = {
   operation: '++' | '--';

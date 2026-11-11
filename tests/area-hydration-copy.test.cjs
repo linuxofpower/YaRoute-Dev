@@ -156,3 +156,93 @@ test('same-area copy can establish owner trust from verified source owner when d
   assert.equal(out.verification.trusted, true);
   assert.equal(out.verification.ownerSource, 'same-area-source-owner');
 });
+
+
+function easyWayFixture(resources, options = {}) {
+  const { manifest = true, config = true, state = true, status = 'active' } = options;
+  const prefix = 'areas/EasyWay';
+  resources.files.set('paths.md', resources.files.get('paths.md') +
+    '| EasyWay.area_paths | MAIN | ' + prefix + '/area_paths.json |\n');
+  if (manifest) resources.files.set(prefix + '/area_paths.json', JSON.stringify({
+    area: 'EasyWay',
+    central_mutable_state: { file: '0_state/state.json' },
+    config: { file: '0_state/config.json' },
+  }));
+  if (config) resources.files.set(prefix + '/0_state/config.json',
+    JSON.stringify({ area: 'EasyWay', rules: [] }));
+  if (state) resources.files.set(prefix + '/0_state/state.json',
+    JSON.stringify({ area: 'EasyWay', status, revision: 1 }));
+}
+
+test('EasyWay global Normal cannot silently complete without an Area owner route', async () => {
+  const r = new MemoryResources();
+  await assert.rejects(
+    () => executor(r).execute({ command: 'ini', args: ['EasyWay', 'oGN'], conversationId: 'missing-easyway-route' }),
+    /REQUIRED_TARGET_ROUTE_MISSING:EasyWay.area_paths/,
+  );
+  assert.deepEqual(r.writes, []);
+});
+
+test('EasyWay missing manifest or required config/state blocks before FIF creation', async () => {
+  for (const [options, expected] of [
+    [{ manifest: false }, /REQUIRED_SOURCE_UNAVAILABLE:EasyWay.area_paths/],
+    [{ config: false }, /REQUIRED_SOURCE_UNAVAILABLE:EasyWay.config/],
+    [{ state: false }, /REQUIRED_SOURCE_UNAVAILABLE:EasyWay.state/],
+  ]) {
+    const r = new MemoryResources();
+    easyWayFixture(r, options);
+    await assert.rejects(
+      () => executor(r).execute({ command: 'ini', args: ['EasyWay', 'oGN'], conversationId: 'unavailable-owner' }),
+      expected,
+    );
+    assert.deepEqual(r.writes, []);
+  }
+});
+
+test('EasyWay inactive state and wrong owner fail closed', async () => {
+  const inactive = new MemoryResources();
+  easyWayFixture(inactive, { status: 'inactive' });
+  await assert.rejects(
+    () => executor(inactive).execute({ command: 'ini', args: ['EasyWay', 'oGN'], conversationId: 'inactive' }),
+    /AREA_STATE_NOT_ACTIVE:EasyWay/,
+  );
+  assert.deepEqual(inactive.writes, []);
+  const mismatch = new MemoryResources();
+  easyWayFixture(mismatch);
+  mismatch.files.set('areas/EasyWay/area_paths.json', JSON.stringify({
+    area: 'OtherArea',
+    central_mutable_state: { file: '0_state/state.json' },
+    config: { file: '0_state/config.json' },
+  }));
+  await assert.rejects(
+    () => executor(mismatch).execute({ command: 'ini', args: ['EasyWay', 'oGN'], conversationId: 'wrong-owner' }),
+    /AREA_MANIFEST_OWNER_MISMATCH:EasyWay/,
+  );
+  assert.deepEqual(mismatch.writes, []);
+});
+
+test('EasyWay valid manifest, active state and config produce exact hidden source receipts', async () => {
+  const r = new MemoryResources();
+  easyWayFixture(r);
+  const out = await executor(r).execute({ command: 'ini', args: ['EasyWay', 'oGN'], conversationId: 'ready-owner' });
+  const sourceKeys = new Set(out.metadata.source_receipts.map(item => item.key));
+  for (const key of ['EasyWay.area_paths', 'EasyWay.config', 'EasyWay.state']) {
+    assert.equal(sourceKeys.has(key), true, key);
+  }
+  assert.equal(out.metadata.scope, 'global');
+  assert.equal(out.metadata.depth, 'normal');
+  assert.equal(out.fif.verified, true);
+  assert.equal(out.files_to_paste.some(f => /area_paths|state|config/.test(f.name)), false);
+});
+
+
+test('stale EasyWay Todo blocks a FIF even with healthy Area owners', async () => {
+  const r = new MemoryResources();
+  easyWayFixture(r);
+  r.files.set('todo.md', '# Todo\n\n# Day[0] — Sunday, 1 November\n1. Unresolved\n');
+  await assert.rejects(
+    () => executor(r).execute({ command: 'ini', args: ['EasyWay', 'GNo'], conversationId: 'stale-easyway-todo' }),
+    /STALE_TODAY_UNRECONCILED/,
+  );
+  assert.deepEqual(r.writes, []);
+});

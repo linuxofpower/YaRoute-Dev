@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Cli, CommandRequest, requestSchema } from './runtime.schema';
 
-const modifierPattern = /^o([lg])([bnd])$/i;
+const localModifierPattern = /^o([lg])([bnd])$/i;
+const inheritedModifierPattern = /^([lg])([bnd])o$/i;
 const depthByCode = { b: 'basic', n: 'normal', d: 'deep' } as const;
 const codeByDepth = { basic: 'B', normal: 'N', deep: 'D' } as const;
 
@@ -19,7 +20,9 @@ export class NyxCommandResolver {
     if (!contract) throw new Error('COMMAND_EXECUTION_CONTRACT_MISSING');
     if (Object.values(contract.sources).flat().some(s => s.perTarget && !s.key.includes('{target}'))) throw new Error('TARGET_CONTRACT_INVALID');
 
-    const modifiers: Array<{ scope: 'local' | 'global'; depth: 'basic' | 'normal' | 'deep' }> = [];
+    type Modifier = { scope: 'local' | 'global'; depth: 'basic' | 'normal' | 'deep' };
+    const locals: Modifier[] = [];
+    const inherited: Modifier[] = [];
     const operations: Array<'++' | '--'> = [];
     const targetArgs: string[] = [];
     for (const token of request.args) {
@@ -30,15 +33,20 @@ export class NyxCommandResolver {
         targetArgs.push(token);
         continue;
       }
-      const modifier = modifierPattern.exec(token);
-      if (modifier) {
-        modifiers.push({ scope: modifier[1].toLowerCase() === 'l' ? 'local' : 'global', depth: depthByCode[modifier[2].toLowerCase() as keyof typeof depthByCode] });
+      const local = localModifierPattern.exec(token);
+      const chain = inheritedModifierPattern.exec(token);
+      const parsed = local ?? chain;
+      if (parsed) {
+        const value: Modifier = { scope: parsed[1].toLowerCase() === 'l' ? 'local' : 'global',
+          depth: depthByCode[parsed[2].toLowerCase() as keyof typeof depthByCode] };
+        // Head: command-local values win over chain-inherited values.
+        (local ? locals : inherited).push(value);
       } else if (token === '++' || token === '--') operations.push(token);
       else targetArgs.push(token);
     }
-    if (modifiers.length > 1) throw new Error('MODIFIER_CONFLICT');
+    if (locals.length > 1 || inherited.length > 1) throw new Error('MODIFIER_CONFLICT');
     if (operations.length > 1) throw new Error('CONFIG_OPERATION_CONFLICT');
-    const explicit = modifiers[0];
+    const explicit = locals[0] ?? inherited[0];
 
     if ((explicit || request.scope || operations.length) && !contract.scope) throw new Error('SCOPE_NOT_SUPPORTED');
     if (request.depth && explicit && request.depth !== explicit.depth) throw new Error('MODIFIER_DEPTH_CONFLICT');
@@ -48,7 +56,7 @@ export class NyxCommandResolver {
     if (!contract.depth.allowed.includes(depth)) throw new Error('DEPTH_NOT_ALLOWED');
     const scope = request.scope ?? explicit?.scope ?? contract.scope?.default;
     const modifier = scope ? `o${scope === 'local' ? 'L' : 'G'}${codeByDepth[depth]}` : undefined;
-    const modifierSource = explicit ? 'explicit' : (request.scope || request.depth) ? 'request' : contract.scope ? 'default' : undefined;
+    const modifierSource = locals.length ? 'explicit' : inherited.length ? 'inherited' : (request.scope || request.depth) ? 'request' : contract.scope ? 'default' : undefined;
 
     if ((!contract.arguments.targets && targetArgs.length) || targetArgs.length > contract.arguments.maxTargets) throw new Error('ARGUMENTS_NOT_ALLOWED');
     const targets = Array.from(new Map(targetArgs.map(a => [a.toLowerCase(), a])).values());
