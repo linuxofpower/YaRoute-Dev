@@ -66,7 +66,7 @@ test('oS creates a pending-validation seed, not a canonical core or unreviewed p
 test('public KEY staging is disabled without flag and rejects unauthenticated owners',async()=>{
  const saved=process.env.NYX_KEY_TENANT_ENABLED;
  try{
-  delete process.env.NYX_KEY_TENANT_ENABLED;
+  process.env.NYX_KEY_TENANT_ENABLED='false';
   await assert.rejects(()=>run(service(),'oauth:user-four','oF','txn_4','Implement feature'),/KEY_TENANT_STAGE_NOT_ENABLED/);
   process.env.NYX_KEY_TENANT_ENABLED='true';
   await assert.rejects(()=>run(service(),'untrusted','oF','txn_5','Implement feature'),/KEY_OWNER_NOT_VERIFIED/);
