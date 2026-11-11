@@ -9,10 +9,21 @@ const SHA=/^[0-9a-f]{40}$/;
 const fail=code=>{throw Error('NYX_TESTER_AUTOMERGE_'+code)};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const targetPath=path=>/^(src|tests)\/[A-Za-z0-9._/-]+$/.test(path)&&!path.includes('..')&&!path.includes('//')&&!path.endsWith('/');
+// One-time reviewed blue-branding exception. This is deliberately exact-blob
+// pinned to Dev/main #102 and cannot promote arbitrary assets or an unrelated
+// target-owned Nest module change. Purple Pro artwork is never approved.
+const REVIEWED_BLUE_BRANDING=new Map([
+ ['public/branding/icon.png','a6561b94097482505ac9712a44ededc4a5e64f02'],
+ ['public/branding/nestnyx-dev.png','a6561b94097482505ac9712a44ededc4a5e64f02'],
+ ['src/branding.controller.ts','f2fa360a2ea5cc95c2dea9671642c1332bcaf0cc'],
+ ['src/app.module.ts','75e7b545f5568ca832ef01b2532e9b1705c115bb'],
+]);
 // Only this exact now-obsolete Dev-only test is eligible for deletion.
 const STALE_TESTER_PATH='tests/nyx-dev-public-plan.test.mjs';
 export function safeTesterChange(file){
  if(file?.status==='removed')return file.filename===STALE_TESTER_PATH;
+ if(REVIEWED_BLUE_BRANDING.has(file?.filename))
+   return ['added','modified'].includes(file.status)&&file.sha===REVIEWED_BLUE_BRANDING.get(file.filename);
  return targetPath(file?.filename)&&['added','modified'].includes(file.status);
 }
 
