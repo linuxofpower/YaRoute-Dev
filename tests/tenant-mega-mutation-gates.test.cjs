@@ -25,7 +25,7 @@ test('Single-file rubbish-bin deletion never hard-deletes and requires no second
  assert.match(api,/registerTool\('nyx_storage_mega_file_mutate'/);
  assert.match(api,/destructiveHint:true/);
  assert.match(ui,/Delete to trash/);
- assert.match(ui,/act\('trash'\)/);
+ assert.match(ui,/mutate\('trash'\)/);
  assert.doesNotMatch(ui,/confirm\([^\n]*Delete to trash/);
 });
 test('Move/rename is confined to one exact root and does not overwrite',()=>{
