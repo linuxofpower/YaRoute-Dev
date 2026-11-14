@@ -416,51 +416,70 @@ function renderTenant(connections){
       show('Active '+provider+' read verified on your selected root.');
     }));
     const filePanel=el('div');filePanel.setAttribute('aria-live','polite');
-    box.append(button(provider==='mega' && megaMutationEnabled ?
-       'Browse and manage MEGA files' : 'Browse selected folder (read only)',async()=>{
-     const rootId=root.value.trim();
-     if(!rootId || !(item.resources||[]).some(r=>r.kind===kind&&r.id===rootId))
-      throw Error('Select and save the granted root first');
-     const data=await call('nyx_storage_connection_list_files',{
-      id:item.id,provider,rootId,path:''
-     });
-     if(!data||!Array.isArray(data.items)||typeof data.truncated!=='boolean')
-      throw Error('Storage listing not available');
-     filePanel.replaceChildren(el('p',data.items.length+' items'+(data.truncated?' (additional items hidden)':'')));
-     const ul=el('ul');
+    const folder=input('');folder.maxLength=2048;
+    folder.placeholder='Relative folder path';folder.setAttribute('aria-label','Browse folder path');
+    const navigation=el('div');navigation.className='row';
+    navigation.append(el('label','Folder'),folder);
+    navigation.append(button('Up',async()=>{
+      const parts=folder.value.trim().split('/').filter(Boolean);
+      parts.pop();folder.value=parts.join('/');await browse();
+    }));
+    box.append(navigation);
+    const browse=async()=>{
+      const rootId=root.value.trim();
+      if(!rootId || !(item.resources||[]).some(r=>r.kind===kind&&r.id===rootId))
+        throw Error('Select and save the granted root first');
+      const relativeFolder=folder.value.trim();
+      const data=await call('nyx_storage_connection_list_files',{
+        id:item.id,provider,rootId,path:relativeFolder
+      });
+      if(!data||!Array.isArray(data.items)||typeof data.truncated!=='boolean')
+        throw Error('Storage listing not available');
+      filePanel.replaceChildren(el('p','/'+relativeFolder+' — '+data.items.length+' items'+
+        (data.truncated?' (additional items hidden)':'')));
+      const list=el('ul');
       const can=(cap)=>provider==='mega' && megaMutationEnabled &&
         (item.capabilities||[]).includes(cap) &&
         (item.providerCapabilities||[]).includes(cap) &&
         (activeRoot?.capabilities||[]).includes(cap);
       for(const entry of data.items.slice(0,100)){
-       if(!entry||typeof entry.path!=='string')continue;
-       const li=el('li');li.append(el('span',(entry.isDir?'📁 ':'📄 ')+entry.path));
-       if(!entry.isDir && (can('storage:move')||can('storage:delete'))){
-         const actions=el('div');actions.className='controls';
-         const act=async(operation,destinationPath)=>{
-           const args={id:item.id,rootId,operation,sourcePath:entry.path};
-           if(destinationPath!==undefined)args.destinationPath=destinationPath;
-           const result=await call('nyx_storage_mega_file_mutate',args);
-           if(result.status!=='verified')throw Error('Operation needs audit reconciliation');
-           li.replaceChildren(el('span',operation==='trash'?'Moved to MEGA rubbish bin':operation+' complete'));
-           show('MEGA '+operation+' verified; receipt '+result.id);
-         };
-         if(can('storage:move')){
-           const name=input(entry.path);name.placeholder='Same-folder new name';
-           actions.append(name,button('Rename',()=>act('rename',name.value.trim())));
-           const move=input(entry.path);move.placeholder='Destination inside this root';
-           actions.append(move,button('Move',()=>act('move',move.value.trim())));
-         }
-         if(can('storage:delete')){
-           // One click, no extra dialog; server enforces provider trash policy.
-           actions.append(button('Delete to trash',()=>act('trash')));
-         }
-         li.append(actions);
-       }
-       ul.append(li);
+        if(!entry||typeof entry.path!=='string')continue;
+        const fullPath=[relativeFolder,entry.path].filter(Boolean).join('/');
+        const li=el('li');li.append(el('span',(entry.isDir?'📁 ':'📄 ')+entry.path));
+        if(entry.isDir){
+          li.append(button('Open folder',async()=>{
+            folder.value=fullPath;await browse();
+          }));
+        }else if(can('storage:move')||can('storage:delete')){
+          const actions=el('div');actions.className='controls';
+          const mutate=async(operation,destinationPath)=>{
+            const args={id:item.id,rootId,operation,sourcePath:fullPath};
+            if(destinationPath!==undefined)args.destinationPath=destinationPath;
+            const result=await call('nyx_storage_mega_file_mutate',args);
+            if(result.status!=='verified')throw Error('MEGA operation needs audit reconciliation');
+            await browse();
+            show('MEGA '+operation+' verified. Audit receipt '+result.id);
+          };
+          if(can('storage:move')){
+            const rename=input(fullPath);rename.maxLength=2048;
+            rename.placeholder='New name in same folder';
+            actions.append(rename,button('Rename',()=>mutate('rename',rename.value.trim())));
+            const move=input(fullPath);move.maxLength=2048;
+            move.placeholder='New path within selected root';
+            actions.append(move,button('Move',()=>mutate('move',move.value.trim())));
+          }
+          if(can('storage:delete')){
+            // Deliberately single click: authenticated owner + chosen grants; MEGA rubbish bin.
+            actions.append(button('Delete to trash',()=>mutate('trash')));
+          }
+          li.append(actions);
+        }
+        list.append(li);
       }
-      filePanel.append(ul);
-    }));
+      filePanel.append(list);
+    };
+    box.append(button(provider==='mega' && megaMutationEnabled ?
+      'Browse and manage MEGA files' : 'Browse selected folder (read only)',browse));
     box.append(filePanel);
    }
    host.append(box);
