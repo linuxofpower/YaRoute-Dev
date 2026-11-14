@@ -40,7 +40,7 @@ export function googleProfileFromVerifiedJwt(
       ? rawEmail : null;
   const rawName = typeof payload[namespace + 'name'] === 'string'
     ? payload[namespace + 'name'] : payload.name;
-  const name = typeof rawName === 'string' && rawName.trim().length > 0 &&
+  const name = verified && typeof rawName === 'string' && rawName.trim().length > 0 &&
     rawName.length <= 120 && !/[\x00-\x1f\x7f]/.test(rawName)
       ? rawName.trim() : null;
   const rawPicture = payload[namespace + 'picture'] ?? payload.picture;
