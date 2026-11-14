@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
+import { googleProfileFromVerifiedJwt } from './google-profile-claims';
 import { privateDevSingleGoogleOwnerAllowed, privateSingleGoogleOwnerAllowed } from './private-dev-google-login.policy';
 import { assertPublicTenantGoogleSubject } from '../connectors/public-tenant-provider.policy';
 
@@ -145,18 +146,15 @@ export class McpAuthService {
         });
         return false;
       }
-      // Display claims are trusted ONLY when signed by the configured issuer.
-      // An account's Google email may be absent from an OAuth access token.
-      // Never accept a client-supplied email, and never treat it as the owner key.
-      const verifiedEmail = payload.email_verified === true &&
-        typeof payload.email === 'string' &&
-        /^[^\s@\x00-\x1f]{1,100}@[^\s@\x00-\x1f]{1,150}$/.test(payload.email)
-          ? payload.email : null;
-      res.locals.nyxVerifiedEmail = verifiedEmail;
-      res.locals.nyxDisplayName = verifiedEmail &&
-        typeof payload.name === 'string' &&
-        payload.name.length <= 120 && !/[\x00-\x1f\x7f]/.test(payload.name)
-          ? payload.name : null;
+      // No client-supplied profile fields. Display metadata is allowed only
+      // from the already validated issuer JWT, and only after Google login gate.
+      const signedProfile = googleProfileFromVerifiedJwt(
+        payload, process.env.NYX_PUBLIC_URL || '',
+      );
+      res.locals.nyxVerifiedEmail = signedProfile.email;
+      res.locals.nyxDisplayName = signedProfile.name;
+      res.locals.nyxGoogleAvatarUrl = connectorMode
+        ? signedProfile.avatarUrl : null;
       res.locals.nyxSubject = payload.sub;
       return true;
     } catch (error) {
