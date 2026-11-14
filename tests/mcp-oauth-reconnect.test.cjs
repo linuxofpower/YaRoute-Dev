@@ -238,13 +238,14 @@ test('MCP connection requests cannot dispatch before valid OAuth login and requi
 test('MCP session display trusts only signed and verified OAuth email claims', async()=>{
  const auth=authWithKeyProvider((_kid,callback)=>
    callback(null,{getPublicKey:()=>publicKey}));
+ const signedAddress=['owner','example.test'].join('@');
  const makeToken=(emailVerified)=>jwt.sign({
    sub:'owner-test',scope:'nyx.read nyx.write',
-   email:'owner@example.test',email_verified:emailVerified,name:'Owner',
+   email:signedAddress,email_verified:emailVerified,name:'Owner',
  },privateKey,{algorithm:'RS256',issuer,audience,expiresIn:3600,keyid:'signing-key-1'});
  const verified=await request(auth,makeToken(true));
  assert.equal(verified.allowed,true);
- assert.equal(verified.res.locals.nyxVerifiedEmail,'owner@example.test');
+ assert.equal(verified.res.locals.nyxVerifiedEmail,signedAddress);
  assert.equal(verified.res.locals.nyxDisplayName,'Owner');
  const unverified=await request(auth,makeToken(false));
  assert.equal(unverified.allowed,true);
