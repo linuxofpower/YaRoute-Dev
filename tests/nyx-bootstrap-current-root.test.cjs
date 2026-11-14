@@ -77,10 +77,10 @@ test('bootstrap normalizes only legacy decorated YaRoute fallback paths', async 
   });
 });
 
-test('deployed runtime profile is bound to H31 and current readable mirrors', () => {
+test('staged runtime profile is bound to H32 and current readable mirrors', () => {
   const raw = JSON.parse(fs.readFileSync('config/nyx-runtime-profile.json', 'utf8'));
   const profile = profileSchema.parse(raw);
-  assert.equal(profile.cliSha256, '090f31ab61ce4228148cb9b551299667072c8ce9c3151bab3c48ab81b7112a4f');
+  assert.equal(profile.cliSha256, '00c35ace15c0a004506659ccd9922b8aff446f15ea1863ce6d52d780dae527f8');
   const byKey = Object.fromEntries(profile.keySources.map(source => [source.key, source]));
   assert.equal(byKey.temp_paths.ref.path, 'YaRoute/0_repository/3_template/staging/drafts/temp_paths.json');
   assert.equal(byKey.temp_nyxcli.ref.path, 'YaRoute/0_repository/3_template/staging/drafts/temp_nyxcli.json');
