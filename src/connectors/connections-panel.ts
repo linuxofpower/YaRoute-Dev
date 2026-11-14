@@ -19,6 +19,7 @@ const publicTenantStorage = process.env.NYX_DEPLOYMENT_MODE === 'public' &&
   process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true' &&
   process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true';
 const publicMegaOnly = publicTenantStorage && process.env.NYX_PUBLIC_TENANT_MEGA_ONLY === 'true';
+const megaMutationEnabled = publicTenantStorage && process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true';
 const ownerLinkEnabled = publicTenantStorage && process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true';
 const privateBrokerEnabled = ownerLinkEnabled && process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED === 'true';
 const iconOrigin = process.env.NYX_PUBLIC_URL?.startsWith('https://')
@@ -123,6 +124,7 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 'use strict';
 const publicTenantStorage=${JSON.stringify(publicTenantStorage)};
 const publicMegaOnly=${JSON.stringify(publicMegaOnly)};
+const megaMutationEnabled=${JSON.stringify(megaMutationEnabled)};
 const ownerLinkEnabled=${JSON.stringify(ownerLinkEnabled)};
 const privateBrokerEnabled=${JSON.stringify(privateBrokerEnabled)};
 const root=document.getElementById('connection-list');
@@ -314,12 +316,44 @@ function renderTenant(connections){
    listCheck.checked=hasReadList;listCheck.disabled=true;
    scope.append(listCheck,el('span','Browse names (storage:list) — '+(hasReadList?'enabled':'not verified')));
    permissions.append(scope);
-   for(const label of ['Read or download file contents — unavailable in pilot',
-      'Upload, edit or move files — unavailable in pilot',
-      'Delete files — unavailable in pilot']){
-     const option=el('label');const check=el('input');
-     check.type='checkbox';check.disabled=true;check.checked=false;
-     option.append(check,el('span',label));permissions.append(option);
+   if(provider==='mega' && megaMutationEnabled && item.status==='active'){
+     const toggles=[];
+     for(const [label,cap] of [['Move/rename files','storage:move'],
+       ['Delete files to MEGA rubbish bin','storage:delete']]){
+       const row=el('label');const check=el('input');check.type='checkbox';
+       check.checked=(item.capabilities||[]).includes(cap) &&
+         (activeRoot?.capabilities||[]).includes(cap);
+       row.append(check,el('span',label));permissions.append(row);
+       toggles.push({cap,check});
+     }
+     permissions.append(button('Save file permissions',async()=>{
+       const caps=['storage:list',...toggles.filter(x=>x.check.checked).map(x=>x.cap)];
+       await call('nyx_storage_connection_permissions',{id:item.id,capabilities:caps});
+       await call('nyx_storage_connection_roots',{id:item.id,resources:[
+         {kind:'mega-root',id:root.value.trim(),capabilities:caps}]});
+       show('File permissions saved. Write access also requires MEGA reauthorization.');
+       await refreshTenantStorage();
+     }));
+     if(!['storage:move','storage:delete'].every(cap=>
+         (item.providerCapabilities||[]).includes(cap))){
+       permissions.append(button('Reauthorize MEGA for writes',async()=>{
+         const result=await call('nyx_storage_connection_begin_mega',
+           {id:item.id,rootPath:root.value.trim()});
+         const link=new URL(result.url);const base=${JSON.stringify(iconOrigin)};
+         if(link.protocol!=='https:' || !base || link.origin!==base ||
+           link.pathname!=='/connect/mega/setup')throw Error('Untrusted sign-in URL');
+         await request('ui/open-link',{url:result.url});
+         show('Reauthorize securely, then activate the pending MEGA credential.');
+       }));
+     }
+   }else{
+     for(const label of ['Read or download file contents — unavailable in pilot',
+       'Upload, edit or move files — unavailable in pilot',
+       'Delete files — unavailable in pilot']){
+       const option=el('label');const check=el('input');
+       check.type='checkbox';check.disabled=true;check.checked=false;
+       option.append(check,el('span',label));permissions.append(option);
+     }
    }
    permissions.append(el('p','These are server-enforced grants, not permissions assigned by ChatGPT. Private legacy Rclone remotes are separate.'));
    box.append(permissions);
@@ -374,7 +408,8 @@ function renderTenant(connections){
       show('Active '+provider+' read verified on your selected root.');
     }));
     const filePanel=el('div');filePanel.setAttribute('aria-live','polite');
-    box.append(button('Browse selected folder (read only)',async()=>{
+    box.append(button(provider==='mega' && megaMutationEnabled ?
+       'Browse and manage MEGA files' : 'Browse selected folder (read only)',async()=>{
      const rootId=root.value.trim();
      if(!rootId || !(item.resources||[]).some(r=>r.kind===kind&&r.id===rootId))
       throw Error('Select and save the granted root first');
@@ -385,11 +420,38 @@ function renderTenant(connections){
       throw Error('Storage listing not available');
      filePanel.replaceChildren(el('p',data.items.length+' items'+(data.truncated?' (additional items hidden)':'')));
      const ul=el('ul');
-     for(const entry of data.items.slice(0,100)){
-      if(!entry||typeof entry.path!=='string')continue;
-      ul.append(el('li',(entry.isDir?'📁 ':'📄 ')+entry.path));
-     }
-     filePanel.append(ul);
+      const can=(cap)=>provider==='mega' && megaMutationEnabled &&
+        (item.capabilities||[]).includes(cap) &&
+        (item.providerCapabilities||[]).includes(cap) &&
+        (activeRoot?.capabilities||[]).includes(cap);
+      for(const entry of data.items.slice(0,100)){
+       if(!entry||typeof entry.path!=='string')continue;
+       const li=el('li');li.append(el('span',(entry.isDir?'📁 ':'📄 ')+entry.path));
+       if(!entry.isDir && (can('storage:move')||can('storage:delete'))){
+         const actions=el('div');actions.className='controls';
+         const act=async(operation,destinationPath)=>{
+           const args={id:item.id,rootId,operation,sourcePath:entry.path};
+           if(destinationPath!==undefined)args.destinationPath=destinationPath;
+           const result=await call('nyx_storage_mega_file_mutate',args);
+           if(result.status!=='verified')throw Error('Operation needs audit reconciliation');
+           li.replaceChildren(el('span',operation==='trash'?'Moved to MEGA rubbish bin':operation+' complete'));
+           show('MEGA '+operation+' verified; receipt '+result.id);
+         };
+         if(can('storage:move')){
+           const name=input(entry.path);name.placeholder='Same-folder new name';
+           actions.append(name,button('Rename',()=>act('rename',name.value.trim())));
+           const move=input(entry.path);move.placeholder='Destination inside this root';
+           actions.append(move,button('Move',()=>act('move',move.value.trim())));
+         }
+         if(can('storage:delete')){
+           // One click, no extra dialog; server enforces provider trash policy.
+           actions.append(button('Delete to trash',()=>act('trash')));
+         }
+         li.append(actions);
+       }
+       ul.append(li);
+      }
+      filePanel.append(ul);
     }));
     box.append(filePanel);
    }
