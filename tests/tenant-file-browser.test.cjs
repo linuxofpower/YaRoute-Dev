@@ -89,7 +89,9 @@ test('connection listing remains read-only and owner-scoped; mutation actions ar
  const panel=fs.readFileSync('src/connectors/connections-panel.ts','utf8');
  assert.match(panel,/Browse selected folder \(read only\)/);
  assert.match(panel,/nyx_storage_connection_list_files/);
- assert.match(panel,/ul\.append\(li\)/);
+ assert.match(panel,/list\.append\(li\)/);
+ assert.match(panel,/folder\.value=fullPath;await browse\(\)/);
+ assert.match(panel,/sourcePath:fullPath/);
 });
 
 
