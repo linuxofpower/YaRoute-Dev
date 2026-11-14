@@ -9,8 +9,8 @@ const connectionsIsDev = process.env.NYX_DEPLOYMENT_MODE === 'public' ||
   process.env.NYX_SERVICE_NAME === 'DevProNestNyx' ||
   process.env.NYX_PUBLIC_URL === 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
 const connectionsKind = connectionsIsDev ? 'dev' : 'pro';
-export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v13.html';
-export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v13.html';
+export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v14.html';
+export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v14.html';
 export const CONNECTIONS_PANEL_LABEL = connectionsIsDev ? '🔵 NestNyx Dev · Connections' : '🟣 NestNyx Pro · Connections';
 export const CONNECTIONS_HOME_LABEL = connectionsIsDev ? '🏠 NestNyx Dev · Home' : '🏠 NestNyx Pro · Home';
 // Public users connect only their own storage; never show the operator's
@@ -25,6 +25,12 @@ const privateBrokerEnabled = ownerLinkEnabled && process.env.NYX_PRIVATE_BROKER_
 const iconOrigin = process.env.NYX_PUBLIC_URL?.startsWith('https://')
   ? new URL(process.env.NYX_PUBLIC_URL).origin : '';
 export const CONNECTIONS_PANEL_BRAND_ORIGIN = iconOrigin;
+// Google photos are optional, user-specific and served only from this exact
+// Google avatar CDN origin. The backend validates the issuer-signed URL.
+export const CONNECTIONS_PANEL_RESOURCE_DOMAINS = [
+  ...(iconOrigin ? [iconOrigin] : []),
+  ...(publicTenantStorage ? ['https://lh3.googleusercontent.com'] : []),
+];
 const iconMarkup = iconOrigin
   ? '<img src="'+iconOrigin+'/branding/icon.png" width="28" height="28" alt="" style="width:28px;height:28px;object-fit:contain" />'
   : '';
@@ -94,6 +100,16 @@ body{max-width:900px;padding:clamp(10px,2.8vw,22px);line-height:1.45}
 #nyx-account-bar .session-reference{font:11px ui-monospace,monospace;opacity:.68;margin-top:4px;overflow-wrap:anywhere}
 #nyx-account-bar .account-picker button{font-size:12px}
 #nyx-account-bar .session-label{overflow-wrap:anywhere}
+.nyx-auth-profile{display:flex;align-items:center;gap:12px;margin:10px 0}
+.nyx-auth-copy{min-width:0;flex:1}
+.nyx-google-avatar{width:54px;height:54px;min-width:54px;border:2px solid #4285f4;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#f1f5ff;color:#2563ba;font-size:25px;font-weight:700}
+.nyx-google-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.nyx-google-avatar [hidden]{display:none!important}
+.nyx-oauth-status{font-size:12px;font-weight:600;color:#21875b;margin-top:5px}
+#nyx-account-bar .session-reference{line-height:1.3}
+#nyx-account-bar .account-detail{font-size:12px}
+#nyx-quick{margin-top:9px}
+@media(max-width:520px){.nyx-auth-profile{align-items:flex-start}.nyx-google-avatar{width:46px;height:46px;min-width:46px}}
 #nyx-account-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,205px);gap:13px;padding:14px;border:1px solid var(--nyx-border);border-radius:14px;background:var(--nyx-surface);margin-bottom:17px}
 #nyx-account-bar .kicker{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.06em}
 #nyx-account-bar .session-label{font-weight:700;font-size:15px}
@@ -112,22 +128,34 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 @media(max-width:520px){#nyx-account-bar{grid-template-columns:1fr}#nyx-quick>.muted{display:none}}
 </style></head>
 <body>
+<div id="nyx-account-bar" aria-label="Google OAuth identity and selected cloud account">
+ <div class="nyx-auth-panel">
+  <div class="kicker">Step 1 · Google OAuth</div>
+  <div class="nyx-auth-profile">
+   <div class="nyx-google-avatar" aria-label="Google account profile">
+    <img id="nyx-google-avatar-image" alt="Google account profile photo" hidden>
+    <span id="nyx-google-avatar-fallback" aria-hidden="true">G</span>
+   </div>
+   <div class="nyx-auth-copy">
+    <div class="session-label" id="nyx-session-user">Verifying Google sign-in…</div>
+    <div class="session-reference" id="nyx-session-reference">Authentication required before storage access</div>
+    <div id="nyx-oauth-state" class="nyx-oauth-status" role="status">Checking session</div>
+   </div>
+  </div>
+  <button class="session-switch" id="nyx-switch-login" type="button">Switch Google account · Reconnect</button>
+  <p class="account-detail" id="nyx-avatar-note">Profile photo appears when your OAuth provider shares one.</p>
+ </div>
+ <div class="account-picker">
+  <div class="kicker">Step 2 · Your cloud storage</div>
+  <label for="nyx-account-select">Active authorized connection</label>
+  <select id="nyx-account-select" aria-label="Switch between your authorized storage accounts"><option value="">No active account</option></select>
+  <p class="account-detail" id="nyx-active-identity">No active cloud account selected.</p>
+  <button id="nyx-google-shortcut" type="button" ${publicMegaOnly ? 'disabled title="Google Drive is disabled in MEGA-only mode"' : ''}>Connect Google Drive</button>
+ </div>
+</div>
 <div id="nyx-quick">
 <strong class="brand"><span class="nyx-logo" aria-hidden="true">${iconMarkup || "🌀"}</span> ${connectionsIsDev ? '🔵 NestNyx Dev' : '🟣 NestNyx Pro'}</strong><span class="muted">Connections</span><span class="spacer"></span>
 <button id="nyx-add" type="button" title="Add a connection" aria-label="Add a connection" aria-expanded="false" aria-controls="nyx-add-menu"><span class="nyx-plus-mark" aria-hidden="true"></span></button>
-</div>
-<div id="nyx-account-bar" aria-label="Current session and selected storage account">
- <div><div class="kicker">Authenticated NestNyx session</div>
- <div class="session-label" id="nyx-session-user">Checking signed-in account…</div>
- <div class="session-reference" id="nyx-session-reference">OAuth verification pending</div>
- <button class="session-switch" id="nyx-switch-login" type="button">Change Google login</button>
- <p class="account-detail" id="nyx-active-identity">No active cloud account selected.</p>
- </div>
- <div class="account-picker">
- <label for="nyx-account-select">Selected cloud account</label>
- <select id="nyx-account-select" aria-label="Switch between your authorized storage accounts"><option value="">No active account</option></select>
- <button id="nyx-google-shortcut" type="button" ${publicMegaOnly ? 'disabled title="Google Drive is disabled in MEGA-only mode"' : ''}>Connect Google Drive</button>
- </div>
 </div>
 <section id="nyx-add-menu" hidden aria-label="Add a connection">
 <h2>Add a connection</h2>
@@ -333,21 +361,44 @@ async function refreshRclone(){
 let tenantToolsAvailable=false;
 let liveMegaWritesAvailable=megaMutationEnabled;
 let selectedTenantAccount='';
+function resetGoogleAvatar(){
+ const avatar=document.getElementById('nyx-google-avatar-image');
+ avatar.hidden=true;avatar.removeAttribute('src');
+ document.getElementById('nyx-google-avatar-fallback').hidden=false;
+}
 async function refreshSessionIdentity(){
+ const state=document.getElementById('nyx-oauth-state');
  try{
    const identity=await call('nyx_session_info',{});
    if(!identity || identity.authenticated!==true)throw Error('Verified session unavailable');
-   const label=identity.email || identity.displayName ||
-     (identity.provider+' · Account '+identity.accountHint);
+   const label=identity.displayName || identity.email ||
+     ('Google account · '+identity.accountHint);
    document.getElementById('nyx-session-user').textContent=label;
    document.getElementById('nyx-session-reference').textContent=
-     identity.provider+' · Session ID '+identity.accountHint+
-     (identity.email?' · verified email':' · email not provided by OAuth provider');
+     'Signed in via Google OAuth · Session '+identity.accountHint+
+     (identity.email?' · '+identity.email:' · email not shared');
+   state.textContent='Google account authenticated';
+   const fallback=document.getElementById('nyx-google-avatar-fallback');
+   fallback.textContent=(identity.displayName || identity.email || 'G').trim().slice(0,1).toUpperCase();
+   resetGoogleAvatar();
+   if(typeof identity.avatarUrl==='string'){
+     try{
+       const url=new URL(identity.avatarUrl);
+       if(url.protocol==='https:' && url.origin==='https://lh3.googleusercontent.com' &&
+          !url.username && !url.password && !url.hash){
+         const avatar=document.getElementById('nyx-google-avatar-image');
+         avatar.src=url.href;avatar.hidden=false;fallback.hidden=true;
+         document.getElementById('nyx-avatar-note').textContent='Google profile photo from your verified OAuth session';
+       }
+     }catch{}
+   }
    liveMegaWritesAvailable=identity.storageWriteAvailable===true;
  }catch{
-   document.getElementById('nyx-session-user').textContent='Authenticated session';
+   resetGoogleAvatar();
+   state.textContent='Session verified by NestNyx; profile details unavailable';
+   document.getElementById('nyx-session-user').textContent='Google session active';
    document.getElementById('nyx-session-reference').textContent=
-     'Identity details unavailable. Disconnect/reconnect to refresh tools.';
+     'Use ChatGPT Apps / Plugins to reconnect for updated profile data.';
    liveMegaWritesAvailable=false;
  }
 }
@@ -815,8 +866,12 @@ for(const choice of document.querySelectorAll('#nyx-provider-choices button[data
   quickAdd.setAttribute('aria-expanded','false');
  });
 }
+document.getElementById('nyx-google-avatar-image').addEventListener('error',()=>{
+ resetGoogleAvatar();
+ document.getElementById('nyx-avatar-note').textContent='Google photo unavailable; showing an account initial';
+});
 document.getElementById('nyx-switch-login').addEventListener('click',()=>{
- show('To change your Google login, disconnect NestNyx Dev in ChatGPT Apps / Plugins and reconnect with the other Google account. Selecting a MEGA account here only changes storage; it does not switch the authenticated user.');
+ show('To switch Google users, disconnect NestNyx Dev in ChatGPT Apps / Plugins, then reconnect and complete Google OAuth with the other account. This is required for secure tenant separation. The storage selector does not change your Google login.');
 });
 document.getElementById('nyx-account-select').addEventListener('change',e=>{
  selectedTenantAccount=e.target.value;refreshTenantStorage();
