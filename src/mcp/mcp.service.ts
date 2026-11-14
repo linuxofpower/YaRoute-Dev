@@ -30,14 +30,14 @@ import { GithubWriteConnector } from '../connectors/github-writes';
 import { HerokuBrokerClient } from '../connectors/heroku-broker.client';
 import { herokuReadAuthorization } from '../connectors/heroku-read-policy';
 import { githubInstallationUrl } from '../connectors/github-app.service';
-import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_HOME_URI, CONNECTIONS_HOME_HTML, CONNECTIONS_PANEL_LABEL, CONNECTIONS_HOME_LABEL, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
+import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_HOME_URI, CONNECTIONS_HOME_HTML, CONNECTIONS_PANEL_LABEL, CONNECTIONS_HOME_LABEL, CONNECTIONS_PANEL_BRAND_ORIGIN, CONNECTIONS_PANEL_RESOURCE_DOMAINS } from '../connectors/connections-panel';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
 
 @Injectable()
 export class McpService {
   private readonly ownerContext = new AsyncLocalStorage<string>();
   private readonly signedDisplayContext = new AsyncLocalStorage<{
-    email: string | null; name: string | null;
+    email: string | null; name: string | null; avatarUrl: string | null;
   }>();
   private readonly logger = new Logger(McpService.name);
   private readonly nodeHandler: ReturnType<typeof toNodeHandler>;
@@ -80,6 +80,7 @@ export class McpService {
     const display = {
       email: typeof res.locals.nyxVerifiedEmail === 'string' ? res.locals.nyxVerifiedEmail : null,
       name: typeof res.locals.nyxDisplayName === 'string' ? res.locals.nyxDisplayName : null,
+      avatarUrl: typeof res.locals.nyxGoogleAvatarUrl === 'string' ? res.locals.nyxGoogleAvatarUrl : null,
     };
     await this.ownerContext.run(`oauth:${res.locals.nyxSubject}`, () =>
       this.signedDisplayContext.run(display, () => this.nodeHandler(req, res, parsedBody)));
@@ -191,7 +192,7 @@ export class McpService {
         text:CONNECTIONS_PANEL_HTML,
         _meta:{
           ui:{prefersBorder:true,csp:{connectDomains:[],
-            resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]}},
+            resourceDomains:CONNECTIONS_PANEL_RESOURCE_DOMAINS}},
           'openai/widgetCSP':{redirect_domains:[
             'https://github.com','https://accounts.google.com',
             ...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]),
@@ -206,12 +207,12 @@ export class McpService {
     // after deployment. Keep v10-v12 URIs fetchable so ChatGPT doesn't display
     // "App unavailable" when it has cached an old Connections/Home template.
     // Each alias serves the current UI, with the requested URI in the response.
-    for (const version of [10,11,12]) {
+    for (const version of [10,11,12,13]) {
       for (const item of [
         {label:CONNECTIONS_PANEL_LABEL,uri:CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML},
         {label:CONNECTIONS_HOME_LABEL,uri:CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML},
       ]) {
-        const oldUri=item.uri.replace(/\/v13\.html$/, '/v'+version+'.html');
+        const oldUri=item.uri.replace(/\/v14\.html$/, '/v'+version+'.html');
         if (oldUri===item.uri)throw new Error('NYX_MCP_UI_ALIAS_URI_INVALID');
         server.registerResource(item.label+' (compatibility v'+version+')',oldUri,
           {mimeType:'text/html;profile=mcp-app'},
@@ -219,7 +220,7 @@ export class McpService {
             uri:oldUri,mimeType:'text/html;profile=mcp-app',text:item.html,
             _meta:{
               ui:{prefersBorder:true,csp:{connectDomains:[],
-                resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]}},
+                resourceDomains:CONNECTIONS_PANEL_RESOURCE_DOMAINS}},
               'openai/widgetCSP':{redirect_domains:[
                 'https://github.com','https://accounts.google.com',
                 ...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[])]},
@@ -238,7 +239,7 @@ export class McpService {
       async () => ({contents:[{
         uri:CONNECTIONS_PANEL_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_PANEL_HTML,
-        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_RESOURCE_DOMAINS}},
           'openai/widgetCSP':{redirect_domains:[
             'https://github.com','https://accounts.google.com',
             ...(CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []),
@@ -253,7 +254,7 @@ export class McpService {
       async () => ({contents:[{
         uri:CONNECTIONS_HOME_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_HOME_HTML,
-        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_RESOURCE_DOMAINS}},
           'openai/widgetCSP':{redirect_domains:[
             'https://github.com','https://accounts.google.com',
             ...(CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []),
@@ -301,6 +302,7 @@ export class McpService {
         accountHint:subjectHint,
         email:signed?.email||null,
         displayName:signed?.name||null,
+        avatarUrl:signed?.avatarUrl||null,
         storageWriteAvailable:process.env.NYX_DEPLOYMENT_MODE==='public' &&
           process.env.NYX_PUBLIC_CONNECTORS_ENABLED==='true' &&
           process.env.NYX_MULTIUSER_RCLONE_ENABLED==='true' &&
