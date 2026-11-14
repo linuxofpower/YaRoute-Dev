@@ -81,8 +81,10 @@ fieldset{border:1px solid #8885;border-radius:7px;margin:7px 0}
 body{max-width:900px;padding:clamp(10px,2.8vw,22px);line-height:1.45}
 #nyx-quick{background:var(--nyx-surface);border-color:var(--nyx-border);padding:13px}
 #nyx-quick .brand{display:flex;align-items:center;gap:8px;min-width:0}
-#nyx-add{background:var(--nyx-accent);border-color:var(--nyx-accent);font:600 26px system-ui}
+#nyx-add{background:var(--nyx-accent);border-color:var(--nyx-accent);font:600 26px system-ui;border-radius:50%;width:46px;height:46px;min-width:46px;aspect-ratio:1}
 #nyx-add:hover{background:#087362}
+.nyx-logo{width:38px;height:38px;min-width:38px;aspect-ratio:1;border-radius:50%;background:#087e52;color:white;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #229e90;box-sizing:border-box;font-size:19px;line-height:1}
+.nyx-logo img{width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%;display:block}
 #nyx-account-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,205px);gap:13px;padding:14px;border:1px solid var(--nyx-border);border-radius:14px;background:var(--nyx-surface);margin-bottom:17px}
 #nyx-account-bar .kicker{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.06em}
 #nyx-account-bar .session-label{font-weight:700;font-size:15px}
@@ -102,7 +104,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 </style></head>
 <body>
 <div id="nyx-quick">
-<strong class="brand">${iconMarkup} ${connectionsIsDev ? '🔵 NestNyx Dev' : '🟣 NestNyx Pro'}</strong><span class="muted">Connections</span><span class="spacer"></span>
+<strong class="brand"><span class="nyx-logo" aria-hidden="true">${iconMarkup || "🌀"}</span> ${connectionsIsDev ? '🔵 NestNyx Dev' : '🟣 NestNyx Pro'}</strong><span class="muted">Connections</span><span class="spacer"></span>
 <button id="nyx-add" type="button" title="Add a connection" aria-label="Add a connection" aria-expanded="false" aria-controls="nyx-add-menu">+</button>
 </div>
 <div id="nyx-account-bar" aria-label="Current session and selected storage account">
