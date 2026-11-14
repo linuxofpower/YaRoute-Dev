@@ -343,9 +343,17 @@ function renderTenant(connections){
          if(link.protocol!=='https:' || !base || link.origin!==base ||
            link.pathname!=='/connect/mega/setup')throw Error('Untrusted sign-in URL');
          await request('ui/open-link',{url:result.url});
-         show('Reauthorize securely, then activate the pending MEGA credential.');
+         show('Reauthorize securely, then finish activation here.');
        }));
      }
+     permissions.append(button('Finish pending MEGA reauthorization',async()=>{
+       const result=await call('nyx_storage_connection_test_pending',{id:item.id});
+       if(result!=='verified')throw Error('Pending MEGA credentials have not passed read probe');
+       const activated=await call('nyx_storage_connection_activate',{id:item.id});
+       if(activated.status!=='active')throw Error('MEGA activation failed');
+       show('Reauthorized MEGA account activated; permissions will be refreshed.');
+       await refreshTenantStorage();
+     }));
    }else{
      for(const label of ['Read or download file contents — unavailable in pilot',
        'Upload, edit or move files — unavailable in pilot',
