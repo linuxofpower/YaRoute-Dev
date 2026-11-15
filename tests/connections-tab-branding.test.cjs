@@ -103,3 +103,19 @@ test('verified profile avatar and Google-account addition guide are usable and n
  assert.match(html,/setAttribute\('aria-expanded',String\(!help\.hidden\)\)/);
  assert.doesNotMatch(html,/localStorage|sessionStorage|document\.cookie/);
 });
+
+test('current Google login is prominent and switch help never claims to swap an iframe OAuth identity',()=>{
+ const html=view('public','NestNyx','https://dev-nest-nyx-0df80c227630.herokuapp.com').connectionsHtml;
+ assert.match(html,/Current Google login for this panel/);
+ assert.match(html,/id="nyx-session-account-state" role="status"/);
+ assert.match(html,/Google account reference:/);
+ assert.match(html,/This login owns the connections below/);
+ assert.match(html,/id="nyx-switch-login" type="button" aria-expanded="false" aria-controls="nyx-switch-help"/);
+ assert.match(html,/id="nyx-switch-help" hidden/);
+ assert.match(html,/No reconnection required for already connected accounts/);
+ assert.match(html,/Open NestNyx Connections using Personal/);
+ assert.match(html,/Open NestNyx Connections using Primary/);
+ assert.match(html,/Switching here cannot replace ChatGPT's OAuth credentials/);
+ assert.match(html,/getElementById\('nyx-switch-login'\)\.setAttribute\('aria-expanded'/);
+ assert.doesNotMatch(html,/document\.cookie|localStorage|sessionStorage/);
+});
