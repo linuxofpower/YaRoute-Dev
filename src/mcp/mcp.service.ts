@@ -389,7 +389,7 @@ export class McpService {
           selected:filtered(c.capabilities),
           providerVerified:filtered(c.providerCapabilities),
           resourceCount:c.resources?.length??0,
-        })),process.env.NYX_STORAGE_ENCRYPTION_KEY||'');
+        })),process.env.NYX_STORAGE_ENCRYPTION_KEY||'',undefined,signed?.picture||null);
         return {schema:'nyx.account-view.export.v1',
           snapshot:token,expiresInSeconds:180,ownerHint:hint,
           connectionCount:connections.length,
