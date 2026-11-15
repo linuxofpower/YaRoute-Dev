@@ -48,6 +48,18 @@ function isTemporaryJwksFailure(error: Error): boolean {
   return false;
 }
 
+// A trusted issuer-signed profile claim may contain a Google avatar URL.
+// Never accept a caller-provided URL or arbitrary third-party image host.
+export function verifiedGooglePictureUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 1600) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'lh3.googleusercontent.com' &&
+      !url.port && !url.username && !url.password && !url.search && !url.hash
+      ? url.href : null;
+  } catch { return null; }
+}
+
 @Injectable()
 export class McpAuthService {
   private client?: ReturnType<typeof jwksClient>;
@@ -157,6 +169,11 @@ export class McpAuthService {
         typeof payload.name === 'string' &&
         payload.name.length <= 120 && !/[\x00-\x1f\x7f]/.test(payload.name)
           ? payload.name : null;
+      // Display only; never use avatar or email data for authorization.
+      // Most Auth0 MCP access tokens don't contain a picture claim until
+      // the identity provider is configured to emit one.
+      res.locals.nyxProfilePicture = payload.sub.startsWith('google-oauth2|')
+        ? verifiedGooglePictureUrl(payload.picture) : null;
       res.locals.nyxSubject = payload.sub;
       return true;
     } catch (error) {
