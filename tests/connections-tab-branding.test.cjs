@@ -89,3 +89,17 @@ test('signed-in account, storage switcher, CSS plus and truthful MEGA write-gati
  assert.match(html,/Refresh/);
  assert.doesNotMatch(html,/localStorage|sessionStorage|document\.cookie/);
 });
+
+test('verified profile avatar and Google-account addition guide are usable and never switch the tenant',()=>{
+ const html=view('public','NestNyx','https://dev-nest-nyx-0df80c227630.herokuapp.com').connectionsHtml;
+ assert.match(html,/id="nyx-session-avatar"/);
+ assert.match(html,/identity\.pictureUrl/);
+ assert.match(html,/lh3\.googleusercontent\.com/);
+ assert.match(html,/id="nyx-add-google-login"/);
+ assert.match(html,/aria-controls="nyx-login-add-help"/);
+ assert.match(html,/Connect another account/);
+ assert.match(html,/cannot start that native picker inside an MCP Apps iframe/);
+ assert.match(html,/id="nyx-login-add-help" hidden/);
+ assert.match(html,/setAttribute\('aria-expanded',String\(!help\.hidden\)\)/);
+ assert.doesNotMatch(html,/localStorage|sessionStorage|document\.cookie/);
+});
