@@ -192,7 +192,7 @@ export class McpService {
         text:CONNECTIONS_PANEL_HTML,
         _meta:{
           ui:{prefersBorder:true,csp:{connectDomains:[],
-            resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]}},
+            resourceDomains:[...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]),'https://lh3.googleusercontent.com']}},
           'openai/widgetCSP':{redirect_domains:[
             'https://github.com','https://accounts.google.com',
             ...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]),
@@ -220,7 +220,7 @@ export class McpService {
             uri:oldUri,mimeType:'text/html;profile=mcp-app',text:item.html,
             _meta:{
               ui:{prefersBorder:true,csp:{connectDomains:[],
-                resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]}},
+                resourceDomains:[...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]),'https://lh3.googleusercontent.com']}},
               'openai/widgetCSP':{redirect_domains:[
                 'https://github.com','https://accounts.google.com',
                 ...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[])]},
@@ -239,7 +239,7 @@ export class McpService {
       async () => ({contents:[{
         uri:CONNECTIONS_PANEL_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_PANEL_HTML,
-        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]),'https://lh3.googleusercontent.com']}},
           'openai/widgetCSP':{redirect_domains:[
             'https://github.com','https://accounts.google.com',
             ...(CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []),
@@ -254,7 +254,7 @@ export class McpService {
       async () => ({contents:[{
         uri:CONNECTIONS_HOME_URI, mimeType:'text/html;profile=mcp-app',
         text:CONNECTIONS_HOME_HTML,
-        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []}},
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[...(CONNECTIONS_PANEL_BRAND_ORIGIN?[CONNECTIONS_PANEL_BRAND_ORIGIN]:[]),'https://lh3.googleusercontent.com']}},
           'openai/widgetCSP':{redirect_domains:[
             'https://github.com','https://accounts.google.com',
             ...(CONNECTIONS_PANEL_BRAND_ORIGIN ? [CONNECTIONS_PANEL_BRAND_ORIGIN] : []),
