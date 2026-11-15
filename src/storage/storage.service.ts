@@ -112,7 +112,8 @@ export class StorageService {
         !/^[A-Za-z][A-Za-z0-9_.-]{0,119}$/.test(remote) ||
         typeof relativePath !== 'string' || relativePath.length > 1024 ||
         relativePath.startsWith('/') || /[:\\\x00-\x1f]/.test(relativePath) ||
-        relativePath.split('/').some(part => part === '.' || part === '..' || !part)) {
+        (relativePath.length > 0 &&
+         relativePath.split('/').some(part => part === '.' || part === '..' || !part))) {
       throw new Error('PRIVATE_RCLONE_PATH_DENIED');
     }
     const inventory = await this.rcloneConnections();
