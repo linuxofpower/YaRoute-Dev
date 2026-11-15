@@ -81,7 +81,7 @@ test('signed-in account, storage switcher, CSS plus and truthful MEGA write-gati
  assert.match(html,/call\('nyx_session_info',\{\}\)/);
  assert.match(html,/identity\.email \|\| identity\.displayName/);
  assert.match(html,/Disconnect\/reconnect to refresh tools/);
- assert.match(html,/Selecting a MEGA account only changes storage/);
+ assert.match(html,/The storage dropdown below only changes your current login's MEGA\/Drive connection/);
  assert.match(html,/class="nyx-plus-mark"/);
  assert.match(html,/nyx-plus-mark::before/);
  assert.match(html,/border-radius:999px!important/);
