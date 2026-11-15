@@ -61,7 +61,7 @@ test('ChatGPT gets separate authenticated conversation-tab and global-sidebar la
  assert.ok(global.includes('ui:{resourceUri:CONNECTIONS_HOME_URI'));
  assert.equal((mcp.match(/server\.registerResource\(/g)||[]).length,5);
  // The fifth source registration is inside a loop covering v10-v13 Home/Connections aliases.
- assert.match(mcp,/for \(const version of \[10,11,12\]\)/);
+ assert.match(mcp,/for \(const version of \[10,11,12,13\]\)/);
  assert.match(mcp,/legacyConnectionsResourceUri='ui:\/\/nestnyx\/connections\/v9\.html'/);
  assert.match(mcp,/uri:legacyConnectionsResourceUri,mimeType:'text\/html;profile=mcp-app'/);
  assert.match(mcp,/text:CONNECTIONS_PANEL_HTML/);
