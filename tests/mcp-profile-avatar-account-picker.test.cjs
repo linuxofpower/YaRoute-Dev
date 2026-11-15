@@ -33,3 +33,32 @@ test('MCP resource CSP permits only NestNyx brand and Google photo source',()=>{
  assert.match(source,/resourceDomains:\[\.\.\.\(CONNECTIONS_PANEL_BRAND_ORIGIN\?/);
  assert.match(source,/https:\/\/lh3\.googleusercontent\.com/);
 });
+
+test('namespaced issuer-signed Auth0 profile may supply image, without changing OAuth tenant',async t=>{
+ const {McpAuthService}=require('../dist/mcp/mcp-auth.service');
+ const keys=['NYX_DEPLOYMENT_MODE','NYX_PUBLIC_CONNECTORS_ENABLED',
+   'NYX_OAUTH_SCOPES','NYX_OAUTH_PROFILE_CLAIM'];
+ const saved=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+ t.after(()=>{for(const k of keys){
+   if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];
+ }});
+ Object.assign(process.env,{
+   NYX_DEPLOYMENT_MODE:'public',NYX_PUBLIC_CONNECTORS_ENABLED:'true',
+   NYX_OAUTH_SCOPES:'nyx.read,nyx.write',
+   NYX_OAUTH_PROFILE_CLAIM:'https://app.example.invalid/profile',
+ });
+ const auth=new McpAuthService();
+ auth.verify=async()=>({
+   sub:'google-oauth2|123456789012345678901',
+   scope:'nyx.read nyx.write',
+   'https://app.example.invalid/profile':{
+      picture:'https://lh3.googleusercontent.com/a/example=s96-c',
+   },
+ });
+ const response={locals:{},status(c){this.statusCode=c;return this;},
+   json(x){this.body=x;return this;}};
+ assert.equal(await auth.authorize({headers:{authorization:'Bearer sample'}},response),true);
+ assert.equal(response.locals.nyxSubject,'google-oauth2|123456789012345678901');
+ assert.equal(response.locals.nyxProfilePicture,'https://lh3.googleusercontent.com/a/example=s96-c');
+ assert.equal(response.locals.nyxVerifiedEmail,null);
+});
