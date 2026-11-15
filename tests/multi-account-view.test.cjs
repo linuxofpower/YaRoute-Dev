@@ -47,8 +47,11 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(source,/NYX_ACCOUNT_VIEW_CALLER_NOT_INCLUDED/);
  assert.match(source,/readOnly:true,noCrossTenantAuthorization:true/);
  assert.match(source,/ACCOUNT_VIEW_URI/);
- assert.match(ACCOUNT_VIEW_URI,/accounts?-view\/v1\.html|account-view\/v1\.html/);
+ assert.equal(ACCOUNT_VIEW_URI,'ui://nestnyx/dev/connections/multi-v1.html');
  assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
+ assert.match(ACCOUNT_VIEW_HTML,/authenticated accounts loaded together/);
+ assert.match(ACCOUNT_VIEW_HTML,/envelope\\?\\.result\\?\\?envelope/);
+ assert.match(ACCOUNT_VIEW_HTML,/v.label\\+' \\('+v.connections.length+'\\)'/);
  assert.match(ACCOUNT_VIEW_HTML,/Switching tabs changes only what you see/);
  assert.match(ACCOUNT_VIEW_HTML,/does not switch OAuth credentials/);
  assert.doesNotMatch(ACCOUNT_VIEW_HTML,/localStorage|sessionStorage|document\.cookie|fetch\(/);
