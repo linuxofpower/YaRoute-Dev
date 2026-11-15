@@ -20,8 +20,9 @@ test('separate OAuth principals yield distinct signed, read-only 3-minute views'
  assert.equal(va.connections[0].provider,'mega');
  assert.deepEqual(va.connections[0].providerVerified,['storage:list']);
  assert.deepEqual(vb.connections,[]);
+ assert.equal(va.pictureUrl,null);
  assert.equal(va.expiresAt-va.issuedAt,180);
- assert.deepEqual(Object.keys(va).sort(),['connections','display','expiresAt','issuedAt','ownerHint','schema'].sort());
+ assert.deepEqual(Object.keys(va).sort(),['connections','display','pictureUrl','expiresAt','issuedAt','ownerHint','schema'].sort());
  assert.doesNotMatch(JSON.stringify(va),/oauth:google-oauth2\|primary|obscuredPassword|rclone\.conf/);
 });
 
@@ -48,7 +49,7 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(source,/NYX_ACCOUNT_VIEW_CALLER_NOT_INCLUDED/);
  assert.match(source,/readOnly:true,noCrossTenantAuthorization:true/);
  assert.match(source,/ACCOUNT_VIEW_URI/);
- assert.equal(ACCOUNT_VIEW_URI,'ui://nestnyx/dev/connections/multi-v1.html');
+ assert.equal(ACCOUNT_VIEW_URI,'ui://nestnyx/dev/connections/multi-v2.html');
  assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
  assert.match(ACCOUNT_VIEW_HTML,/authenticated accounts loaded together/);
  assert.ok(ACCOUNT_VIEW_HTML.includes('envelope?.result??envelope'));
@@ -57,4 +58,19 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(ACCOUNT_VIEW_HTML,/does not switch OAuth credentials/);
  assert.doesNotMatch(ACCOUNT_VIEW_HTML,/localStorage|sessionStorage|document\.cookie|fetch\(/);
  assert.doesNotMatch(ACCOUNT_VIEW_HTML,/window\.openai\.callTool|tools\/call/);
+});
+
+test('signed Google photos stay owner-bound; untrusted image hosts are rejected',()=>{
+ const trusted='https://lh3.googleusercontent.com/a/example=s96-c';
+ const token=signStorageView('oauth:google-oauth2|owner','Owner',connections,key,10000,trusted);
+ assert.equal(verifyStorageView(token,key,10001).pictureUrl,trusted);
+ for(const bad of ['https://evil.example/a.png','http://lh3.googleusercontent.com/a/x',
+  'https://lh3.googleusercontent.com.evil.example/a/x',
+  'https://lh3.googleusercontent.com/a/x?private=1','data:image/png;base64,x']) {
+   const candidate=signStorageView('oauth:google-oauth2|owner','Owner',[],key,10000,bad);
+   assert.equal(verifyStorageView(candidate,key,10001).pictureUrl,null);
+ }
+ assert.match(ACCOUNT_VIEW_HTML,/referrerPolicy='no-referrer'/);
+ assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
+ assert.match(ACCOUNT_VIEW_HTML,/account-head/);
 });

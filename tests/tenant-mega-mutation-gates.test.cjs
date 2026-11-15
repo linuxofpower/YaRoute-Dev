@@ -49,10 +49,10 @@ test('Write grants require separate flag, user-selected capability, and provider
 
 test('MEGA enrollment honestly distinguishes login read check from write verification',()=>{
  const form=fs.readFileSync(path.join(root,'src/connectors/mega-enrollment.controller.ts'),'utf8');
- assert.match(form,/Verify MEGA credentials and connection/);
+ assert.match(form,/Verify login and selected permissions/);
  assert.match(form,/MEGA login and read connectivity verified/);
- assert.match(form,/It does not perform a write test/);
- assert.match(form,/No write was attempted in this step/);
+ assert.match(form,/This is a read-verification and grant-check step/);
+ assert.match(form,/Write probe: not attempted/);
  assert.doesNotMatch(form,/Verify read-only connection/);
  assert.doesNotMatch(form,/MEGA read access verified/);
  assert.match(ui,/Reauthorize MEGA for writes/);

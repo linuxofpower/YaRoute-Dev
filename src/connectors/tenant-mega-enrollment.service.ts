@@ -73,6 +73,26 @@ export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestro
       expiresInSeconds:600,message:'Enter MEGA credentials only in the NestNyx HTTPS page, never in a ChatGPT message.'};
   }
 
+  /** Nonsecret exact grant summary for one valid owner-bound enrollment state. */
+  async describe(state: string) {
+    if (!/^[A-Za-z0-9_-]{40,100}$/.test(state)) return null;
+    const digest=createHash('sha256').update(state).digest('hex');
+    const row=await this.db().query(
+      'SELECT owner_id,connection_id,root_path FROM nyx_rclone_mega_enroll_states_v2 ' +
+      'WHERE digest=$1 AND expires_at>now()', [digest]);
+    if(row.rowCount!==1)return null;
+    const {owner_id,connection_id,root_path}=row.rows[0];
+    const connection=await this.connections.getOwned(owner_id,connection_id);
+    if(connection.provider!=='mega' || connection.status==='revoked' ||
+       !(connection.resources||[]).some(r=>r.kind==='mega-root' &&
+         r.id===root_path && r.capabilities.includes('storage:list')))return null;
+    return {rootPath:String(root_path),
+      selectedCapabilities:connection.capabilities.filter(x=>
+        ['storage:list','storage:move','storage:delete'].includes(x)),
+      providerVerifiedCapabilities:connection.providerCapabilities.filter(x=>
+        ['storage:list','storage:move','storage:delete'].includes(x))};
+  }
+
   async canDisplay(state: string) {
     if (!/^[A-Za-z0-9_-]{40,100}$/.test(state)) return false;
     const digest = createHash('sha256').update(state).digest('hex');
@@ -152,7 +172,14 @@ export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestro
       ? await this.storage.probePending(ownerId,connectionId,root,twoFactorCode)
       : await this.storage.probePending(ownerId,connectionId,root);
     if (check !== 'verified') throw new Error('TENANT_MEGA_READ_PROBE_FAILED');
-    await this.connections.confirmStorageProvider(ownerId,connectionId,'mega',normalized);
-    return {status:'pending_activation',provider:'mega'};
+    const verified=await this.connections.confirmStorageProvider(ownerId,connectionId,'mega',normalized);
+    return {status:'pending_activation' as const,provider:'mega' as const,
+      rootPath:root,
+      selectedCapabilities:(item.capabilities||[]).filter(x=>
+        ['storage:list','storage:move','storage:delete'].includes(x)),
+      providerVerifiedCapabilities:(verified?.providerCapabilities||[]).filter(x=>
+        ['storage:list','storage:move','storage:delete'].includes(x)),
+      readProbeVerified:true,writeProbeVerified:false};
+
   }
 }
