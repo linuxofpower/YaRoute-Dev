@@ -145,6 +145,10 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
  <strong>No reconnection required for already connected accounts.</strong>
  <p>To open NestNyx under another Google login, ask ChatGPT: “Open NestNyx Connections using Personal” or “Open NestNyx Connections using Primary.” ChatGPT selects that separately authenticated plugin connection.</p>
  <p>See all connected logins in ChatGPT Settings → Plugins → DevNestNyx → Connected accounts. Switching here cannot replace ChatGPT's OAuth credentials. The storage dropdown below only changes your current login's MEGA/Drive connection.</p>
+ <label for="nyx-switch-account-label">Connected account label</label>
+ <input id="nyx-switch-account-label" type="text" maxlength="80" autocomplete="off" placeholder="Personal or Primary" aria-label="Connected ChatGPT account name">
+ <button class="session-switch" id="nyx-open-google-account" type="button">Open account in ChatGPT</button>
+ <p>The button requests a new ChatGPT view with your selected connected account. It does not change this panel's login and does not reconnect OAuth.</p>
  </div>
  <p class="account-detail" id="nyx-active-identity">No active cloud account selected.</p>
  </div>
@@ -872,6 +876,21 @@ document.getElementById('nyx-add-google-login').addEventListener('click',()=>{
 document.getElementById('nyx-switch-login').addEventListener('click',()=>{
  const help=document.getElementById('nyx-switch-help');help.hidden=!help.hidden;
  document.getElementById('nyx-switch-login').setAttribute('aria-expanded',String(!help.hidden));
+});
+document.getElementById('nyx-open-google-account').addEventListener('click',async()=>{
+ const label=document.getElementById('nyx-switch-account-label').value.trim();
+ // The user supplies only a human-readable account label; never a token or URL.
+ if(!/^[\\p{L}\\p{N} ._@+\\-]{1,80}$/u.test(label))
+   return show('Enter an already connected account label, such as Personal or Primary.',true);
+ const send=window.openai?.sendFollowUpMessage;
+ if(typeof send!=='function')
+   return show('Your ChatGPT host does not expose account-opening from this panel. Ask in chat: Open NestNyx Connections using '+label+'.',true);
+ try {
+   await send({prompt:'Open NestNyx Dev Connections using my already connected plugin account labelled "'+label+'". Use that account\'s own OAuth credentials; do not relink accounts or change grants.'});
+   show('Requested the '+label+' account in ChatGPT. A new panel will use the account chosen by the host.');
+ }catch{
+   show('ChatGPT could not open that account from this panel. Ask in chat: Open NestNyx Connections using '+label+'.',true);
+ }
 });
 document.getElementById('nyx-account-select').addEventListener('change',e=>{
  selectedTenantAccount=e.target.value;refreshTenantStorage();
