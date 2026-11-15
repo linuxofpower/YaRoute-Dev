@@ -886,7 +886,7 @@ document.getElementById('nyx-open-google-account').addEventListener('click',asyn
  if(typeof send!=='function')
    return show('Your ChatGPT host does not expose account-opening from this panel. Ask in chat: Open NestNyx Connections using '+label+'.',true);
  try {
-   await send({prompt:'Open NestNyx Dev Connections using my already connected plugin account labelled "'+label+'". Use that account\'s own OAuth credentials; do not relink accounts or change grants.'});
+   await send({prompt:'Open NestNyx Dev Connections using my already connected plugin account labelled "'+label+'". Use credentials for that exact connection; do not relink accounts or change grants.'});
    show('Requested the '+label+' account in ChatGPT. A new panel will use the account chosen by the host.');
  }catch{
    show('ChatGPT could not open that account from this panel. Ask in chat: Open NestNyx Connections using '+label+'.',true);
