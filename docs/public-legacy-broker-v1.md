@@ -48,3 +48,51 @@ Goal: NestNyx becomes publicly installable. All signed-in users add independent 
 - Confirm cost before provisioning. Existing strict $5 Heroku Eco budget remains; no app, add-on, dyno, config or database was created by this patch.
 
 Rollback: disable NYX_PRIVATE_BROKER_CLIENT_ENABLED publicly and NYX_PRIVATE_BROKER_SERVER_ENABLED privately. Private endpoint then returns 404, tenant encrypted connections and legacy credentials remain unchanged.
+
+## V1.1 code-only Personal-owned Pro remote discovery (2026-11-15)
+
+This section extends the existing **read-only** owner broker. It DOES NOT migrate
+Rclone credentials into public Heroku or make the eight existing private remotes
+available automatically. The original owner proof and private broker flags remain
+mandatory, and this code has no general CLI, copy, upload, move, rename, trash
+or permanent-delete capability.
+
+- On the **private Pro** deployment, set `NYX_PRIVATE_BROKER_ALLOWED_REMOTES`
+  to the exact comma-separated existing Rclone remote names approved for the
+  sole authenticated owner (at most 20). It is an allowlist, not a credential.
+  Any remote absent from the actual private Rclone inventory blocks discovery.
+  Leave unset to disable direct remote discovery; this setting alone never
+  enables the private bridge.
+- Both public and private services retain independent `NYX_PRIVATE_BROKER_*`
+  flags and a common **random** `NYX_PRIVATE_BROKER_SHARED_KEY_B64` set through
+  protected environment configuration. The value MUST NOT be printed, written
+  to GitHub, supplied in ChatGPT or re-used as an Rclone password.
+- Only the public OAuth principal bound through the singleton, separately
+  verified Google OIDC owner link can invoke broker `connections` or
+  `remote-list`. Primary and any other user see only their own registered
+  connections. No account label, frontend tab, email claim or request argument
+  can change the authenticated owner.
+- The existing public `nyx_storage_connections_list` tool returns additional
+  **virtual** connections from the private broker, with stable owner-bound
+  UUIDs and `source=private-pro-broker` only when the linked owner and broker
+  are both live. The existing `nyx_storage_connection_list_files` and
+  `nyx_storage_connection_test_active` tools route those UUIDs back through
+  the allowlisted private server; the public database never stores Pro secrets.
+- Virtual records deliberately report `providerCapabilities=[]`,
+  `verification=configured_not_live_verified` and `status=pending` until
+  tested. No broker inventory response alone proves actual provider access.
+- The combined Primary/Personal panel uses separately authenticated snapshots,
+  and shows the eight Pro remotes only after Personal's private link is live.
+  It does not share connections with Primary.
+
+**Live acceptance checklist:** verify exact Tester and private Pro release SHAs,
+set flags and approved immutable subjects through the operator's protected
+configuration, complete Personal's owner-link OIDC callback, verify all eight
+individual remote root reads, verify Primary receives zero virtual remotes and
+gets denied with all Personal UUIDs, verify missing broker and expired/replayed
+delegations fail closed, then separately review any write operations. Do not
+enable write/delete or reuse a global Rclone config in the public app.
+
+For physical Arch/Termux `rclone.conf`, use a separately paired local agent:
+this broker accesses only remotes configured inside the private Pro runtime,
+not arbitrary files on the user's laptop/phone.
