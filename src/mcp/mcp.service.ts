@@ -335,6 +335,31 @@ export class McpService {
       }
     });
 
+    const privateVirtualRemotesEnabled =
+      process.env.NYX_DEPLOYMENT_MODE==='public' &&
+      process.env.NYX_PUBLIC_CONNECTORS_ENABLED==='true' &&
+      process.env.NYX_MULTIUSER_RCLONE_ENABLED==='true' &&
+      process.env.NYX_PRIVATE_OWNER_LINK_ENABLED==='true' &&
+      process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED==='true';
+
+    // Never trust the display-selected Google account or a supplied connection
+    // ID as an authorization grant. Re-verify the exact authenticated owner,
+    // immutable OIDC owner link and private broker allowlist for EACH request.
+    const privateRemotesForOwner=async(ownerId:string):Promise<ApprovedPrivateRemote[]>=>{
+      if(!privateVirtualRemotesEnabled)return [];
+      const link=await this.ownerLink.status(ownerId);
+      if(!link.eligible||!link.linked)return [];
+      const result=await this.privateBroker.connections(ownerId);
+      if(!result || !('connections' in result) || !Array.isArray(result.connections))
+        throw Error('PRIVATE_BROKER_RESPONSE_INVALID');
+      return result.connections;
+    };
+    const privateRemoteById=async(ownerId:string,id:string)=>{
+      const available=await privateRemotesForOwner(ownerId);
+      return findPrivateRemote(ownerId,id,available,
+        process.env.NYX_PRIVATE_BROKER_SHARED_KEY_B64||'');
+    };
+
     // The model obtains one short-lived, signed nonsecret snapshot under EACH
     // OAuth link_id, then renders both in one panel. Profile tab selection is
     // display-only and has no authority to switch OAuth or mutate a connection.
@@ -351,7 +376,11 @@ export class McpService {
         const signed=this.signedDisplayContext.getStore();
         const hint=createHash('sha256').update(owner).digest('hex').slice(0,10);
         const label=signed?.email||signed?.name||'Google account '+hint;
-        const connections=await this.connections.listStorage(owner);
+        const publicConnections=await this.connections.listStorage(owner);
+        const linkedRemotes=await privateRemotesForOwner(owner);
+        const key=process.env.NYX_PRIVATE_BROKER_SHARED_KEY_B64||'';
+        const connections=[...publicConnections,
+          ...linkedRemotes.map(remote=>privateRemoteView(owner,remote,key))];
         const filtered=(caps:string[])=>caps.filter(c=>
           ['storage:list','storage:move','storage:delete'].includes(c));
         const token=signStorageView(owner,label,connections.map(c=>({
@@ -719,31 +748,6 @@ export class McpService {
     },async({id,repo,title,body})=>this.safeTool(()=>
       this.limitedConnectionApi(id,()=>this.githubWrites.createIssue(this.connectorOwner(),id,repo,title,body))));
 
-
-    const privateVirtualRemotesEnabled =
-      process.env.NYX_DEPLOYMENT_MODE==='public' &&
-      process.env.NYX_PUBLIC_CONNECTORS_ENABLED==='true' &&
-      process.env.NYX_MULTIUSER_RCLONE_ENABLED==='true' &&
-      process.env.NYX_PRIVATE_OWNER_LINK_ENABLED==='true' &&
-      process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED==='true';
-
-    // Never trust the display-selected Google account or a supplied connection
-    // ID as an authorization grant. Re-verify the exact authenticated owner,
-    // immutable OIDC owner link and private broker allowlist for EACH request.
-    const privateRemotesForOwner=async(ownerId:string):Promise<ApprovedPrivateRemote[]>=>{
-      if(!privateVirtualRemotesEnabled)return [];
-      const link=await this.ownerLink.status(ownerId);
-      if(!link.eligible||!link.linked)return [];
-      const result=await this.privateBroker.connections(ownerId);
-      if(!result || !('connections' in result) || !Array.isArray(result.connections))
-        throw Error('PRIVATE_BROKER_RESPONSE_INVALID');
-      return result.connections;
-    };
-    const privateRemoteById=async(ownerId:string,id:string)=>{
-      const available=await privateRemotesForOwner(ownerId);
-      return findPrivateRemote(ownerId,id,available,
-        process.env.NYX_PRIVATE_BROKER_SHARED_KEY_B64||'');
-    };
 
     // Per-owner storage connection metadata and read-probe onboarding. Registered
     // only for the isolated opt-in public runtime. Private legacy remotes remain
