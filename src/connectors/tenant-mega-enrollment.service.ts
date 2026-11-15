@@ -175,7 +175,7 @@ export class TenantMegaEnrollmentService implements OnModuleInit, OnModuleDestro
     const verified=await this.connections.confirmStorageProvider(ownerId,connectionId,'mega',normalized);
     return {status:'pending_activation' as const,provider:'mega' as const,
       rootPath:root,
-      selectedCapabilities:item.capabilities.filter(x=>
+      selectedCapabilities:(item.capabilities||[]).filter(x=>
         ['storage:list','storage:move','storage:delete'].includes(x)),
       providerVerifiedCapabilities:(verified?.providerCapabilities||[]).filter(x=>
         ['storage:list','storage:move','storage:delete'].includes(x)),
