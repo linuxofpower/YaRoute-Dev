@@ -135,7 +135,8 @@ Waiting for authenticated account summaries…</section>
    }
  }
  function render(value){
-   const payload=value?.structuredContent??value;
+   const envelope=value?.structuredContent??value;
+   const payload=envelope?.result??envelope;
    if(!payload || payload.schema!=='nyx.account-view.viewer.v1' || !Array.isArray(payload.accounts))return;
    if(payload.accounts.length<2||payload.accounts.length>4)return;
    const safe=payload.accounts.every(a=>a&&typeof a.label==='string'&&typeof a.display==='string'&&
