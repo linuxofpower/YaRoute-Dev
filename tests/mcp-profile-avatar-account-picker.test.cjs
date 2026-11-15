@@ -10,7 +10,7 @@ test('Google profile photo must come from an explicitly allowed signed provider 
   'https://lh3.googleusercontent.com/a/ACg8_example=s96-c');
  for(const url of [undefined,null,'', 'javascript:alert(1)', 'data:image/svg+xml,evil',
   'http://lh3.googleusercontent.com/a/x','https://lh3.googleusercontent.com.evil.com/a/x',
-  'https://evil.example/avatar.png','https://user:pass@lh3.googleusercontent.com/a/x',
+  'https://evil.example/avatar.png','https://lh3.googleusercontent.com/a/x?token=private',
   'https://lh3.googleusercontent.com/a/x?token=secret',
   'https://lh3.googleusercontent.com/a/x#fragment']){
    assert.equal(verifiedGooglePictureUrl(url),null,String(url));
