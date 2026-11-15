@@ -4,7 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 // independently under each already-authenticated plugin connection and present
 // them in ONE tabbed UI. It is never a credential, delegation or mutation grant.
 export const ACCOUNT_VIEW_SCHEMA = 'nyx.account-view.snapshot.v1';
-export const ACCOUNT_VIEW_URI = 'ui://nestnyx/account-view/v1.html';
+export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v1.html';
 export type StorageViewItem = {
   displayName: string;
   provider: 'mega' | 'google-drive';
@@ -92,7 +92,7 @@ export function verifyStorageView(
 
 export const ACCOUNT_VIEW_HTML=`<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NestNyx · Connected Google accounts</title>
+<title>NestNyx Dev · Connections</title>
 <style>
 :root{color-scheme:light dark;font:14px system-ui,sans-serif}
 *{box-sizing:border-box}body{margin:0;padding:16px;max-width:870px}
@@ -107,8 +107,8 @@ button[aria-selected=true]{border:2px solid #008b79;background:#008b7922;font-we
 .meta{margin-top:4px;font-size:12px;opacity:.82;overflow-wrap:anywhere}
 .note{margin-top:16px;font-size:12px;opacity:.78}
 </style></head><body>
-<header><div><h1>Connected Google accounts</h1>
-<div class="muted">Read-only snapshots from separately authenticated NestNyx connections</div></div>🔐</header>
+<header><div><h1>NestNyx Dev · Connections</h1>
+<div class="muted" id="summary">Primary and Personal · collecting authenticated connection summaries</div></div>🔐</header>
 <div id="tabs" role="tablist" aria-label="Choose which connected account to examine"></div>
 <section id="panel" class="panel" role="tabpanel" tabindex="0" aria-live="polite">
 Waiting for authenticated account summaries…</section>
@@ -139,12 +139,14 @@ Waiting for authenticated account summaries…</section>
    const payload=envelope?.result??envelope;
    if(!payload || payload.schema!=='nyx.account-view.viewer.v1' || !Array.isArray(payload.accounts))return;
    if(payload.accounts.length<2||payload.accounts.length>4)return;
-   const safe=payload.accounts.every(a=>a&&typeof a.label==='string'&&typeof a.display==='string'&&
+   const safe=payload.accounts.every(a=>a&&typeof a.label==='string'&&a.label.length>0&&a.label.length<=40&&
+     typeof a.display==='string'&&a.display.length>0&&a.display.length<=120&&
      typeof a.ownerHint==='string'&&Array.isArray(a.connections));
    if(!safe)return;
    records=payload.accounts;tabs.replaceChildren();
+   document.getElementById('summary').textContent=records.length+' authenticated accounts loaded together · view-only tabs';
    records.forEach((v,i)=>{
-     const b=node('button',v.label);b.type='button';b.setAttribute('role','tab');
+     const b=node('button',v.label+' ('+v.connections.length+')');b.type='button';b.setAttribute('role','tab');
      b.addEventListener('click',()=>show(i));tabs.append(b);
    });
    show(0);
