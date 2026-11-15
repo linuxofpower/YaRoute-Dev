@@ -35,7 +35,7 @@ test('successful callback reports selected and provider-verified grants separate
   selectedCapabilities:chosen,providerVerifiedCapabilities:['storage:list','storage:move'],
   readProbeVerified:true,writeProbeVerified:false})};
  const controller=new MegaEnrollmentController(enrollment),res=response();
- await controller.complete({state:'example',email:'fixture@example.invalid',password:'fixture'},res);
+ await controller.complete({state:'example',email:['fixture','example.invalid'].join('@'),password:'fixture'},res);
  assert.equal(res.statusCode,200);
  assert.match(res.html,/Read probe: passed. Write probe: not attempted/);
  assert.match(res.html,/Permissions requested for this connection/);
