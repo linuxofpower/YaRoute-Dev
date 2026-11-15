@@ -34,10 +34,10 @@ function view(mode,service,url){
 test('blue Dev pilot and purple private Pro get distinct branded MCP Apps resource IDs',()=>{
  const dev=view('public','NestNyx','https://dev-nest-nyx-0df80c227630.herokuapp.com');
  const pro=view('private','NestNyx','https://example.com');
- assert.match(dev.connectionsUri,/\/dev\/connections\/v13\.html$/);
- assert.match(pro.connectionsUri,/\/pro\/connections\/v13\.html$/);
- assert.match(dev.homeUri,/\/dev\/home\/v13\.html$/);
- assert.match(pro.homeUri,/\/pro\/home\/v13\.html$/);
+ assert.match(dev.connectionsUri,/\/dev\/connections\/v14\.html$/);
+ assert.match(pro.connectionsUri,/\/pro\/connections\/v14\.html$/);
+ assert.match(dev.homeUri,/\/dev\/home\/v14\.html$/);
+ assert.match(pro.homeUri,/\/pro\/home\/v14\.html$/);
  assert.notEqual(dev.connectionsUri,pro.connectionsUri);
  assert.notEqual(dev.connectionsUri,dev.homeUri);
  assert.notEqual(pro.connectionsUri,pro.homeUri);
