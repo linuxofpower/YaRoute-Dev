@@ -25,7 +25,7 @@ test('diagnostic requires no credentials, network, storage, or client JavaScript
 
 test('cached v10-v13 Connections and Home URLs remain available with v14 UI',()=>{
  assert.match(source,/legacyConnectionsResourceUri='ui:\/\/nestnyx\/connections\/v9\.html'/);
- assert.match(source,/for \(const version of \[10,11,12\]\)/);
+ assert.match(source,/for \(const version of \[10,11,12,13\]\)/);
  assert.match(source,/CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML/);
  assert.match(source,/CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML/);
  assert.match(source,/oldUri=item\.uri\.replace\(/);
