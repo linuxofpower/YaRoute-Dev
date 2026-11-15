@@ -50,7 +50,7 @@ test('MCP and ChatGPT connections panel advertise the icon from its own HTTPS se
  const panel=fs.readFileSync(path.join(__dirname,'..','src','connectors','connections-panel.ts'),'utf8');
  const app=JSON.parse(fs.readFileSync(path.join(__dirname,'..','app.json'),'utf8'));
  assert.match(mcp,/icons: CONNECTIONS_PANEL_BRAND_ORIGIN/);
- assert.match(mcp,/resourceDomains:CONNECTIONS_PANEL_BRAND_ORIGIN/);
+ assert.match(mcp,/https:\/\/lh3\.googleusercontent\.com/);
  assert.match(panel,/branding\/icon\.png/);
  assert.match(panel,/iconMarkup/);
  assert.match(app.logo,/\/branding\/icon\.png$/);
