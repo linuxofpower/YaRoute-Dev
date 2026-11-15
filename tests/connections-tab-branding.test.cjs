@@ -113,6 +113,11 @@ test('current Google login is prominent and switch help never claims to swap an 
  assert.match(html,/id="nyx-switch-login" type="button" aria-expanded="false" aria-controls="nyx-switch-help"/);
  assert.match(html,/id="nyx-switch-help" hidden/);
  assert.match(html,/No reconnection required for already connected accounts/);
+ assert.match(html,/id="nyx-switch-account-label"/);
+ assert.match(html,/id="nyx-open-google-account"/);
+ assert.match(html,/sendFollowUpMessage/);
+ assert.match(html,/Use credentials for that exact connection/);
+ assert.match(html,/does not reconnect OAuth/);
  assert.match(html,/Open NestNyx Connections using Personal/);
  assert.match(html,/Open NestNyx Connections using Primary/);
  assert.match(html,/Switching here cannot replace ChatGPT's OAuth credentials/);
