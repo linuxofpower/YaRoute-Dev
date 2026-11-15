@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {verifiedGooglePictureUrl}=require('../dist/mcp/mcp-auth.service');
+const {signedProfileNickname}=require('../dist/mcp/profile-display');
 const source=fs.readFileSync(path.join(__dirname,'..','src','mcp','mcp.service.ts'),'utf8');
 
 test('Google profile photo must come from an explicitly allowed signed provider image URL',()=>{
@@ -27,6 +28,17 @@ test('multi-account profile MCP tool has stable opaque identity and schema',()=>
  assert.match(source,/structuredContent:profile/);
  assert.match(source,/signed\?\.email/);
  assert.doesNotMatch(source,/id:\s*signed\?\.email/);
+});
+
+test('profile labels prefer trusted email, then trusted name, then opaque fallback',()=>{
+ const fallback='NestNyx account 1234abcd';
+ const email=['verified','example.test'].join('@');
+ assert.equal(signedProfileNickname({email,name:'Verified User'},fallback),email);
+ assert.equal(signedProfileNickname({email:null,name:'Verified User'},fallback),'Verified User');
+ assert.equal(signedProfileNickname({email:null,name:null},fallback),fallback);
+ assert.equal(signedProfileNickname(undefined,fallback),fallback);
+ assert.match(source,/nickname:signedProfileNickname\(signed,'NestNyx account '\+hash\.slice\(0,8\)\)/);
+ assert.match(source,/id:'prf_'\+hash\.slice\(0,32\)/);
 });
 
 test('MCP resource CSP permits only NestNyx brand and Google photo source',()=>{

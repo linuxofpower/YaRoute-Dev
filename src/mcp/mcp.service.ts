@@ -8,6 +8,7 @@ import { NyxKeyService } from '../nyx/key.service';
 import { NyxTenantKeyService } from '../nyx/tenant-key.service';
 import { extractKeySignals } from '../nyx/key-chat-extractor';
 import { RuntimeMaintenanceService } from './runtime-maintenance.service';
+import { signedProfileNickname } from './profile-display';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { toNodeHandler } from '@modelcontextprotocol/node';
@@ -325,7 +326,7 @@ export class McpService {
           id:'prf_'+hash.slice(0,32),
           ...(signed?.name?{name:signed.name}:{}),
           ...(signed?.email?{email:signed.email}:{}),
-          nickname:'NestNyx account '+hash.slice(0,8),
+          nickname:signedProfileNickname(signed,'NestNyx account '+hash.slice(0,8)),
         };
         return {structuredContent:profile,
           content:[{type:'text' as const,text:JSON.stringify(profile)}]};
