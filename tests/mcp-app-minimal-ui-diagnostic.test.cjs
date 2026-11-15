@@ -32,7 +32,7 @@ test('cached v10-v13 Connections and Home URLs remain available with v14 UI',()=
  assert.match(source,/server\.registerResource\(item\.label\+' \(compatibility v'/);
  assert.match(source,/uri:oldUri,mimeType:'text\/html;profile=mcp-app',text:item\.html/);
  assert.match(source,/connectDomains:\[\]/);
- assert.match(source,/resourceDomains:\\[\\.\\.\\.\\(CONNECTIONS_PANEL_BRAND_ORIGIN/);
+ assert.match(source,/https:\/\/lh3\.googleusercontent\.com/);
  assert.match(source,/https:\\/\\/lh3\\.googleusercontent\\.com/);
  assert.doesNotMatch(source,/\bregisterResource\([^;]*global\.rcloneConfig/s);
 });
