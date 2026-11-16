@@ -105,6 +105,10 @@ export type PreferredDuplicate={
   alternatives:Array<{
     label:string;ownerHint:string;displayName:string;effective:string[];
   }>;
+  /** Preferred individual source per operation; metadata only, never a token. */
+  preferredFor:Partial<Record<'storage:list'|'storage:move'|'storage:delete',{
+    label:string;ownerHint:string;displayName:string;effective:string[];
+  }>>;
 };
 /**
  * Compare verified capabilities of actual individual connections.
@@ -131,8 +135,14 @@ export function summarizeVerifiedDuplicates(accounts:AccountStorageSource[]):Pre
     sources.sort((a,b)=>strength(b)-strength(a) ||
       Number(b.label==='Primary')-Number(a.label==='Primary') ||
       a.label.localeCompare(b.label)||a.displayName.localeCompare(b.displayName));
+    const preferredFor:PreferredDuplicate['preferredFor']={};
+    for(const capability of ['storage:list','storage:move','storage:delete'] as const){
+      // One real connection must carry the entire requested capability;
+      // never borrow it from another account or union grants.
+      preferredFor[capability]=sources.find(c=>c.effective.includes(capability));
+    }
     summaries.push({duplicateKey,provider:'mega',
-      preferred:sources[0],alternatives:sources.slice(1)});
+      preferred:sources[0],alternatives:sources.slice(1),preferredFor});
   }
   return summaries;
 }
@@ -246,7 +256,17 @@ Waiting for authenticated account summaries…</section>
      for(const d of verified){
        if(!d||d.provider!=='mega'||!d.preferred)continue;
        const p=d.preferred;
-       overlaps.append(node('div','Preferred: '+p.label+' · '+p.displayName+' ('+p.effective.join(', ')+')','source'));
+       overlaps.append(node('div','Overall preferred: '+p.label+' · '+p.displayName+' ('+p.effective.join(', ')+')','source'));
+       const operations=[
+         ['storage:list','Read'],
+         ['storage:move','Move or rename'],
+         ['storage:delete','Reversible trash'],
+       ];
+       for(const [cap,title] of operations){
+         const source=d.preferredFor?.[cap];
+         if(source)overlaps.append(node('div',title+': '+source.label+' · '+source.displayName,'meta'));
+         else overlaps.append(node('div',title+': not authorized by any connected profile','meta'));
+       }
        for(const a of d.alternatives||[]){
          overlaps.append(node('div','Also connected: '+a.label+' · '+a.displayName+' ('+(a.effective||[]).join(', ')+')','meta'));
        }
