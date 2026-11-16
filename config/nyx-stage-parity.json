@@ -1,0 +1,46 @@
+{
+  "schema": "nyx.runtime-stage-parity.v001",
+  "record_status": "runtime_source_proposal_pending_canonical_head_body_footer",
+  "architectural_rule": "NestNyxDev and NestNyxPro are the same application at different development/release stages, not a parent-child service dependency",
+  "current_observed": {
+    "dev": {
+      "application": "dev-nest-nyx",
+      "hosting": "Heroku",
+      "database": "independent Neon Dev",
+      "storage": "tenant AES-256-GCM vault already exists; legacy 8-local-remote import not yet live"
+    },
+    "pro": {
+      "application": "nest-nyx-pro",
+      "hosting": "Heroku",
+      "database": "independent Neon Pro",
+      "storage": "legacy RCLONE_CONFIG_B64 until reviewed independent Neon vault migration"
+    },
+    "vercel": "No NestNyx project observed in connected Vercel account; do not assume Vercel deployment or credentials"
+  },
+  "target": {
+    "codebase": "same reviewed NestNyx source/engine promoted by stage",
+    "dev": "owner-bound encrypted per-remote Rclone profiles in Neon Dev; no dependency on Pro",
+    "pro": "same owner-bound encrypted per-remote Rclone implementation in Neon Pro after Dev acceptance; own credentials and encryption key",
+    "isolation": "distinct Neon databases, encryption keys, OAuth tenants/client settings and environment-specific URLs",
+    "runtime": "decrypt only for authenticated owner and authorized operation; isolated 0600 temporary Rclone config; refresh token persisted AES-256-GCM under owner+connection AAD",
+    "prohibition": "never store encryption key in Neon, Head, Body, Footer, Template or source; never copy private global Rclone config to public Dev environment",
+    "onboarding": [
+      "local-rclone-select-and-import",
+      "provider-oauth-manual"
+    ],
+    "permissions": "same connection panel and owner-bound effective grants regardless of onboarding origin; never union across profiles",
+    "max_simultaneous_inspection_profiles": 3,
+    "provider_duplicates": "same verified physical Drive namespace unique per owner; verified duplicate across distinct OAuth owners may be displayed without sharing authority",
+    "source_of_truth": "Head stable rules, Body domain knowledge, Footer continuity; this JSON is draft until KEY FIN UPD GEN canonical lifecycle"
+  },
+  "release_gates": [
+    "independent authenticated Personal owner confirmed",
+    "review and merge importer",
+    "deploy exact tested SHA",
+    "local 8 remote secrets securely staged in owner's Dev Neon vault",
+    "provider-identity attestation and 8 read probes",
+    "deduplicated live connection activation",
+    "permissions and cross-owner negative tests",
+    "Pro parity port and rollback verification"
+  ]
+}
