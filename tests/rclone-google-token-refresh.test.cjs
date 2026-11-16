@@ -34,7 +34,7 @@ test('invalid, duplicated, missing, or INI-injected token fails closed',()=>{
    '[tenant]\ntype = drive\n[another]\ntoken = '+JSON.stringify(oldToken),
    '[tenant]\ntoken = '+JSON.stringify(oldToken)+'\ntoken = '+JSON.stringify(oldToken),
    '[tenant]\ntoken = {not-json}',
-   '[tenant]\ntoken = '+JSON.stringify({access_token:'no_refresh_token_x'}),
+
    '[tenant]\ntoken = '+JSON.stringify({access_token:'abc\n[evil]'}),
    'x'.repeat(150000)
  ];
@@ -42,6 +42,9 @@ test('invalid, duplicated, missing, or INI-injected token fails closed',()=>{
   assert.throws(()=>refreshedGoogleFromIsolatedConfig(profile,config),
     /TENANT_GOOGLE_REFRESH_/);
  }
+ const noDurableGrant={...profile,token:JSON.stringify({access_token:'old_access_token_123'})};
+ assert.throws(()=>refreshedGoogleFromIsolatedConfig(noDurableGrant,
+  isolated({access_token:'new_access_token_123'})),/MISSING_REFRESH_TOKEN/);
 });
 test('token section cannot be fooled by another remote token',()=>{
  const current=isolated(oldToken);
