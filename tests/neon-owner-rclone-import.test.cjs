@@ -44,6 +44,8 @@ test('exact eight: six Drive, two MEGA, scoped roots and no unknown config field
   const plan=buildPendingImport(config,manifest);
   assert.equal(plan.rows.length,8);
   assert.equal(plan.rows[0].profile.rootFolderId,'root');
+  assert.equal(plan.rows[0].profile.accountRoot,true);
+  assert.equal(plan.rows[3].profile.accountRoot,undefined);
   assert.equal(plan.rows[3].profile.rootFolderId,'folder_3');
   assert.equal(plan.rows[1].profile.teamDriveId,'0A_shared_fixture_01');
   assert.equal(plan.rows[0].profile.teamDriveId,undefined);
