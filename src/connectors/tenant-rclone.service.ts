@@ -145,7 +145,6 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       created_at timestamptz NOT NULL DEFAULT now(),
       completed_at timestamptz
     )`);
-  }
 
     // A separate, single-use, explicit human approval for disposable-file hard delete.
     // Not a blanket storage:delete grant or permission to empty MEGA rubbish bins.
@@ -159,6 +158,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       'root_id text NOT NULL, source_path text NOT NULL,' +
       "state text NOT NULL CHECK (state IN ('running','verified','uncertain'))," +
       'created_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz)');
+  }
 
   async onModuleDestroy() { await this.pool?.end(); }
 
