@@ -51,7 +51,7 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(source,/ACCOUNT_VIEW_URI/);
  assert.equal(ACCOUNT_VIEW_URI,'ui://nestnyx/dev/connections/multi-v3.html');
  assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
- assert.match(ACCOUNT_VIEW_HTML,/authenticated accounts loaded together/);
+ assert.match(ACCOUNT_VIEW_HTML,/signed account snapshots/);
  assert.ok(ACCOUNT_VIEW_HTML.includes('envelope?.result??envelope'));
  assert.ok(ACCOUNT_VIEW_HTML.includes("v.label+' ('+v.connections.length+')'"));
  assert.match(ACCOUNT_VIEW_HTML,/payload\.accounts\.length>3/);
