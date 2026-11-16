@@ -327,7 +327,7 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
   /** Trusted server-side provider verification only; never an MCP input. */
   async confirmStorageProvider(ownerId: string, id: string,
                                provider: 'google-drive' | 'mega', verifiedAccountId: string,
-                               verifiedDriveId?: string | null) {
+                               verifiedDriveId?: string | null, verifiedGooglePermissionId?:string) {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
@@ -341,7 +341,16 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     }
     if (provider === 'google-drive' && verifiedDriveId === undefined)
       throw new Error('TENANT_DRIVE_NAMESPACE_ATTESTATION_REQUIRED');
-    const namespace=verifiedStorageNamespace(provider,verifiedAccountId,verifiedDriveId);
+    // Imported Rclone usually carries Drive scope but not OpenID identity.
+    // Drive about.user.permissionId is available to both OAuth and imported
+    // credentials, so the SAME Google Drive dedupe namespace is used.
+    if(provider==='google-drive' &&
+      (!verifiedGooglePermissionId ||
+       !/^[A-Za-z0-9_-]{1,256}$/.test(verifiedGooglePermissionId)))
+      throw new Error('TENANT_GOOGLE_PERMISSION_ID_REQUIRED');
+    const namespace=verifiedStorageNamespace(provider,
+      provider==='google-drive' ? verifiedGooglePermissionId! : verifiedAccountId,
+      verifiedDriveId);
     const verified: ConnectorConnection = {
       ...connection, externalAccountId: verifiedAccountId,
       // Provider consent grants only metadata for read-only operations.
