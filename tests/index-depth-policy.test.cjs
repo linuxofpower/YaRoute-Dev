@@ -121,3 +121,18 @@ test('cap of 100 source entries propagates and cannot claim completed index', ()
   assert.throws(()=>step(s,listing(Array.from({length:101},(_,i)=>one('f'+i)))),
     /INDEX_SOURCE_UNTRUSTED_OR_UNBOUNDED/);
 });
+
+test('deep mode cannot certify completion when descendants exceed safety depth', () => {
+  let s=startIndexTraversal(scope,'deep');
+  for(let depth=0;depth<63;depth++){
+    const r=step(s,listing([one('d'+depth,true)]));
+    assert.equal(r.status,'PROGRESSED');
+    s=r.traversal;
+  }
+  const last=step(s,listing([one('overflow',true)]));
+  assert.equal(last.status,'INCOMPLETE_DEPTH_LIMIT');
+  assert.equal(last.reason,'INDEX_DEPTH_LIMIT_REACHED');
+  assert.equal(last.traversal.pending.length,0);
+  assert.equal(last.traversal.depthLimitReached,true);
+  assert.equal(step(last.traversal,listing()).status,'INCOMPLETE_DEPTH_LIMIT');
+});
