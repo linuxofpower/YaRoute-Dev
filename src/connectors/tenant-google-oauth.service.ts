@@ -188,6 +188,18 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
       throw new Error('TENANT_GOOGLE_DRIVE_NAMESPACE_UNVERIFIED');
     }
     const verifiedDriveId=folder.driveId||null;
+    // Shared namespace identity between OAuth and local-Rclone imports.
+    // Both possess the Drive scope necessary to obtain permissionId.
+    const permissionResponse=await fetch(
+      'https://www.googleapis.com/drive/v3/about?fields=user(permissionId)',{
+      headers:{authorization:'Bearer '+token.access_token},
+      redirect:'error',signal:AbortSignal.timeout(15000),
+    });
+    const about=await this.readSmallJson<{user?:{permissionId?:string}}>(permissionResponse);
+    const permissionId=about.user?.permissionId;
+    if(!permissionId || !/^[A-Za-z0-9_-]{1,256}$/.test(permissionId))
+      throw new Error('TENANT_GOOGLE_PERMISSION_ID_UNVERIFIED');
+
     if (item.status === 'active' && item.externalAccountId !== account.sub) {
       throw new Error('TENANT_RCLONE_ACCOUNT_CHANGE_FORBIDDEN');
     }
@@ -202,7 +214,7 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     };
     // Only callback-attested provider credentials reach the isolated pending V2 vault.
     await this.storage.stageCredential(ownerId,connectionId,profile);
-    await this.connectors.confirmStorageProvider(ownerId,connectionId,'google-drive',account.sub,verifiedDriveId);
+    await this.connectors.confirmStorageProvider(ownerId,connectionId,'google-drive',account.sub,verifiedDriveId,permissionId);
     return {status:'pending_read_probe',provider:'google-drive'};
   }
 }
