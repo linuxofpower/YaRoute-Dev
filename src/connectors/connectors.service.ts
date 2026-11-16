@@ -213,6 +213,17 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     return this.view(connection);
   }
 
+  /** Rename either onboarding origin, never touch credentials, grants, or provider account. */
+  async renameStorage(ownerId: string, id: string, name: string) {
+    this.assertTenantStorageMode();
+    const connection=await this.owned(this.owner(ownerId),id);
+    assertPublicTenantStorageProvider(connection.provider);
+    if (!['google-drive','mega'].includes(connection.provider))
+      throw new Error('CONNECTOR_PROVIDER_DISABLED');
+    const updated=await this.policy().rename(ownerId,id,name);
+    return this.view(updated);
+  }
+
   async storagePermissions(ownerId: string, id: string, capabilities: ConnectorCapability[]) {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
