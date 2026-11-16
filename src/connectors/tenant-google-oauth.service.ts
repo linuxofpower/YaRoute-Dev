@@ -169,6 +169,25 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     if (!account.sub || !/^[0-9A-Za-z_-]{1,256}$/.test(account.sub)) {
       throw new Error('TENANT_GOOGLE_ACCOUNT_UNVERIFIED');
     }
+    // Derive a physical Drive namespace from Google's live file metadata.
+    // Selecting another folder within the same Drive must not bypass dedupe.
+    const metadataResponse=await fetch(
+      'https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(folderId)+
+      '?fields=id%2CdriveId%2CmimeType%2Ctrashed&supportsAllDrives=true', {
+      headers:{authorization:'Bearer '+token.access_token},
+      signal:AbortSignal.timeout(15000),
+    });
+    const folder=await this.readSmallJson<{
+      id?:string; driveId?:string; mimeType?:string; trashed?:boolean;
+    }>(metadataResponse);
+    if(!folder.id || typeof folder.id!=='string' || folder.trashed===true ||
+       folder.mimeType!=='application/vnd.google-apps.folder' ||
+       (folderId!=='root' && folder.id!==folderId) ||
+       (folder.driveId!==undefined &&
+         !/^[A-Za-z0-9_-]{1,256}$/.test(folder.driveId))) {
+      throw new Error('TENANT_GOOGLE_DRIVE_NAMESPACE_UNVERIFIED');
+    }
+    const verifiedDriveId=folder.driveId||null;
     if (item.status === 'active' && item.externalAccountId !== account.sub) {
       throw new Error('TENANT_RCLONE_ACCOUNT_CHANGE_FORBIDDEN');
     }
@@ -183,7 +202,7 @@ export class TenantGoogleOAuthService implements OnModuleInit, OnModuleDestroy {
     };
     // Only callback-attested provider credentials reach the isolated pending V2 vault.
     await this.storage.stageCredential(ownerId,connectionId,profile);
-    await this.connectors.confirmStorageProvider(ownerId,connectionId,'google-drive',account.sub);
+    await this.connectors.confirmStorageProvider(ownerId,connectionId,'google-drive',account.sub,verifiedDriveId);
     return {status:'pending_read_probe',provider:'google-drive'};
   }
 }
