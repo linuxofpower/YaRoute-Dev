@@ -239,6 +239,27 @@ export async function finalizeReadVerified(db,plan,key,now=new Date()) {
       "FROM nyx_rclone_tenant_credentials_v2 WHERE owner_id=$1 FOR UPDATE",
       [plan.ownerId]);
     if(vault.rowCount!==8)fail('FINALIZE_VAULT_EXPECTED_EIGHT');
+    // A read probe alone does not prove that two differently named remotes
+    // represent distinct Google Drives. Require independently verified, unique
+    // provider namespace attestations before any of the eight becomes active.
+    const identities=await client.query(
+      'SELECT connection_id,owner_id,provider,namespace,external_id '+
+      'FROM nyx_storage_verified_identity_v1 WHERE owner_id=$1 FOR UPDATE',
+      [plan.ownerId]);
+    if(identities.rowCount!==8)fail('FINALIZE_IDENTITY_ATTESTATION_REQUIRED');
+    const identityById=new Map(identities.rows.map(r=>[r.connection_id,r]));
+    if(identityById.size!==8)fail('FINALIZE_IDENTITY_DUPLICATE');
+    const namespaces=new Set();
+    for(const attestation of identities.rows) {
+      if(attestation.owner_id!==plan.ownerId ||
+         typeof attestation.namespace!=='string' ||
+         !/^(?:my-drive:|shared-drive:|mega-account:)/.test(attestation.namespace) ||
+         typeof attestation.external_id!=='string' || !attestation.external_id)
+        fail('FINALIZE_IDENTITY_UNVERIFIED');
+      const key=attestation.provider+'|'+attestation.namespace;
+      if(namespaces.has(key))fail('FINALIZE_DUPLICATE_PHYSICAL_DRIVE');
+      namespaces.add(key);
+    }
     const byName=new Map(plan.rows.map(r=>[r.displayName,r]));
     const byConnection=new Map(vault.rows.map(r=>[r.connection_id,r]));
     if(byConnection.size!==8)fail('FINALIZE_DUPLICATE');
@@ -247,6 +268,15 @@ export async function finalizeReadVerified(db,plan,key,now=new Date()) {
     for(const c of all.rows){
       const expected=byName.get(c.display_name);
       const candidate=byConnection.get(c.id);
+      const proof=identityById.get(c.id);
+      if(!proof || !expected || proof.provider!==expected.provider)
+        fail('FINALIZE_IDENTITY_UNVERIFIED');
+      if(expected.provider==='google-drive' && expected.profile.teamDriveId &&
+         proof.namespace!=='shared-drive:'+expected.profile.teamDriveId)
+        fail('FINALIZE_SHARED_DRIVE_ID_CHANGED');
+      if(expected.provider==='mega' &&
+         proof.namespace!=='mega-account:'+expected.profile.user.toLowerCase())
+        fail('FINALIZE_MEGA_ACCOUNT_CHANGED');
       if(!expected||!candidate||candidate.provider!==expected.provider||
         candidate.state!=='pending'||c.status!=='pending'||
         c.external_account_id!=='pending'||c.provider!==expected.provider ||
