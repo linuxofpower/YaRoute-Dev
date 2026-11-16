@@ -21,8 +21,9 @@ test('separate OAuth principals yield distinct signed, read-only 3-minute views'
  assert.equal(va.connections[0].provider,'mega');
  assert.deepEqual(va.connections[0].providerVerified,['storage:list']);
  assert.deepEqual(vb.connections,[]);
+ assert.equal(va.pictureUrl,null);
  assert.equal(va.expiresAt-va.issuedAt,180);
- assert.deepEqual(Object.keys(va).sort(),['connections','display','expiresAt','issuedAt','ownerHint','schema'].sort());
+ assert.deepEqual(Object.keys(va).sort(),['connections','display','pictureUrl','expiresAt','issuedAt','ownerHint','schema'].sort());
  assert.doesNotMatch(JSON.stringify(va),/oauth:google-oauth2\|primary|obscuredPassword|rclone\.conf/);
 });
 
@@ -53,7 +54,8 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
  assert.match(ACCOUNT_VIEW_HTML,/signed account snapshots/);
  assert.ok(ACCOUNT_VIEW_HTML.includes('envelope?.result??envelope'));
- assert.ok(ACCOUNT_VIEW_HTML.includes("v.label+' ('+v.connections.length+')'"));
+ assert.match(ACCOUNT_VIEW_HTML,/b\.append\(avatar\(v\)/);
+ assert.match(ACCOUNT_VIEW_HTML,/account-head/);
  assert.match(ACCOUNT_VIEW_HTML,/payload\.accounts\.length>3/);
  assert.match(source,/\.min\(2\)\.max\(3\)/);
  assert.match(ACCOUNT_VIEW_HTML,/role="tabpanel"/);
@@ -184,4 +186,21 @@ test('no permission means no preferred source for that operation',()=>{
  assert.equal(summary.preferredFor['storage:move'],undefined);
  assert.equal(summary.preferredFor['storage:delete'],undefined);
  assert.equal(summary.preferredFor['storage:list'].label,'Primary');
+});
+
+test('Google avatar must be trusted and signed inside the exact owner snapshot',()=>{
+ const trusted='https://lh3.googleusercontent.com/a/sample=s96-c';
+ const token=signStorageView('oauth:google-oauth2|owner','Owner',connections,key,10000,trusted);
+ assert.equal(verifyStorageView(token,key,10001).pictureUrl,trusted);
+ for(const bad of ['https://evil.example/a.png','http://lh3.googleusercontent.com/a/x',
+   'https://lh3.googleusercontent.com.evil.example/a/x',
+   'https://lh3.googleusercontent.com/a/x?private=1',
+   'data:image/png;base64,x']) {
+   const candidate=signStorageView('oauth:google-oauth2|owner','Owner',[],key,10000,bad);
+   assert.equal(verifyStorageView(candidate,key,10001).pictureUrl,null);
+ }
+ assert.match(ACCOUNT_VIEW_HTML,/referrerPolicy='no-referrer'/);
+ assert.match(ACCOUNT_VIEW_HTML,/Google profile photo for/);
+ assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
+ assert.match(ACCOUNT_VIEW_HTML,/payload\.accounts\.length<2\|\|payload\.accounts\.length>3/);
 });
