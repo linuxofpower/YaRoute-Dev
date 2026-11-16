@@ -132,3 +132,76 @@ test('failed row insertion rolls back, no activation is attempted',async()=>{
   await assert.rejects(stageWithDb(ctx.db,plan,Buffer.alloc(32,9)),/STAGING_FAILED/);
   assert.deepEqual(ctx.state(),{saved:0,vault:0,rollback:true});
 });
+
+
+test('all eight pending credentials activate atomically only after fresh Dev probes',async()=>{
+  const {buildPendingImport,sealForTenant,finalizeReadVerified}=await importer();
+  const {config,manifest}=fixture(),plan=buildPendingImport(config,manifest);
+  const key=Buffer.alloc(32,10),now=new Date('2026-11-16T14:00:00Z');
+  const metadata=plan.rows.map((entry,i)=>({
+    id:'aaaaaaaa-bbbb-4ccc-8ddd-'+String(i+1).padStart(12,'0'),
+    display_name:entry.displayName,provider:entry.provider,status:'pending',
+    external_account_id:'pending',capabilities:['storage:list'],
+    provider_capabilities:[],resources:[{kind:entry.kind,id:entry.root,capabilities:['storage:list']}]
+  }));
+  const records=metadata.map((c,i)=>{
+    const p={...plan.rows[i].profile};
+    if(p.provider==='mega')p.verifiedRoot='MEGA_ROOT';
+    return {connection_id:c.id,provider:c.provider,state:'pending',
+      encrypted_profile:sealForTenant(owner,c.id,p,key),
+      read_verified_at:new Date(now.getTime()-60000)};
+  });
+  const count={metadata:0,vault:0,rollback:0,commit:0};
+  const client={
+    async query(sql,args=[]){
+      if(sql.startsWith('SELECT id,display_name'))return {rowCount:8,rows:metadata};
+      if(sql.startsWith('SELECT connection_id,provider,encrypted_profile'))return {
+        rowCount:8,rows:records};
+      if(sql.startsWith('UPDATE nyx_connector_connections'))count.metadata++;
+      if(sql.startsWith('UPDATE nyx_rclone_tenant_credentials_v2'))count.vault++;
+      if(sql==='ROLLBACK')count.rollback++;
+      if(sql==='COMMIT')count.commit++;
+      return {rowCount:1,rows:[]};
+    },release(){}
+  };
+  const db={connect:async()=>client};
+  const result=await finalizeReadVerified(db,plan,key,now);
+  assert.equal(result.status,'ACTIVE_READ_VERIFIED_EIGHT');
+  assert.equal(result.writeGrants,false);
+  assert.deepEqual(count,{metadata:8,vault:8,rollback:0,commit:1});
+  records[0].read_verified_at=new Date(now.getTime()-16*60*1000);
+  count.metadata=0;count.vault=0;count.commit=0;
+  await assert.rejects(finalizeReadVerified(db,plan,key,now),/FINALIZE_FAILED/);
+  assert.deepEqual(count,{metadata:0,vault:0,rollback:1,commit:0});
+});
+test('finalization rejects mismatched owner-bound ciphertext and unauthorized MEGA root',async()=>{
+  const {buildPendingImport,sealForTenant,finalizeReadVerified}=await importer();
+  const {config,manifest}=fixture(),plan=buildPendingImport(config,manifest);
+  const key=Buffer.alloc(32,5),now=new Date('2026-11-16T14:00:00Z');
+  const rows=plan.rows.map((entry,i)=>({
+    id:'bbbbbbbb-cccc-4ddd-8eee-'+String(i+1).padStart(12,'0'),
+    display_name:entry.displayName,provider:entry.provider,status:'pending',
+    external_account_id:'pending',capabilities:['storage:list'],
+    provider_capabilities:[],resources:[{kind:entry.kind,id:entry.root,capabilities:['storage:list']}]
+  }));
+  const credentials=rows.map((c,i)=>({
+    connection_id:c.id,provider:c.provider,state:'pending',
+    encrypted_profile:sealForTenant('oauth:google-oauth2|999999999999',
+      c.id,plan.rows[i].profile,key),
+    read_verified_at:now
+  }));
+  let updates=0,rollbacks=0;
+  const db={connect:async()=>({
+    query:async(sql)=>{
+      if(sql.startsWith('SELECT id,display_name'))return {rowCount:8,rows};
+      if(sql.startsWith('SELECT connection_id,provider,encrypted_profile'))
+        return {rowCount:8,rows:credentials};
+      if(sql.startsWith('UPDATE'))updates++;
+      if(sql==='ROLLBACK')rollbacks++;
+      return {rowCount:1,rows:[]};
+    },release(){}
+  })};
+  await assert.rejects(finalizeReadVerified(db,plan,key,now),/FINALIZE_FAILED/);
+  assert.equal(updates,0);
+  assert.equal(rollbacks,1);
+});
