@@ -5,7 +5,7 @@
  * This does NOT confer provider grants, activate a connection, or deploy code.
  */
 import {spawnSync} from 'node:child_process';
-import {randomUUID,randomBytes,createCipheriv} from 'node:crypto';
+import {randomUUID,randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
@@ -188,13 +188,107 @@ export async function stageWithDb(db,plan,key,ids=()=>randomUUID()) {
     fail('STAGING_FAILED_ROLLED_BACK_OR_UNCERTAIN');
   }finally{client.release();}
 }
+
+export function openForTenant(owner,id,provider,encrypted,key) {
+  if(!Buffer.isBuffer(key)||key.length!==32||
+     typeof encrypted!=='string'||encrypted.length>1024*1024)
+    fail('CIPHER_INVALID');
+  const raw=Buffer.from(encrypted,'base64');
+  if(raw.length<29)fail('CIPHER_INVALID');
+  const cipher=createDecipheriv('aes-256-gcm',key,raw.subarray(0,12));
+  cipher.setAAD(Buffer.from(JSON.stringify([owner,id,provider,'v2'])));
+  cipher.setAuthTag(raw.subarray(12,28));
+  try {
+    const profile=JSON.parse(Buffer.concat([
+      cipher.update(raw.subarray(28)),cipher.final()]).toString('utf8'));
+    if(profile?.provider!==provider)fail('CIPHER_PROVIDER_MISMATCH');
+    return profile;
+  }catch{fail('CIPHER_AUTHENTICATION_FAILED');}
+}
+/**
+ * Operator-only promotion. Dev's independent live probe must attest all eight
+ * pending credentials first. No direct provider grants from manifest/input.
+ * All metadata + vault rows switch in one transaction, never partially.
+ */
+export async function finalizeReadVerified(db,plan,key,now=new Date()) {
+  const client=await db.connect();
+  let inTransaction=false;
+  try{
+    await client.query('BEGIN');inTransaction=true;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',
+      ['nyx_owner_rclone_import_v1',plan.ownerId]);
+    const all=await client.query(
+      "SELECT id,display_name,provider,status,external_account_id,capabilities,"+
+      "provider_capabilities,resources FROM nyx_connector_connections WHERE owner_id=$1"+
+      " AND provider IN ('google-drive','mega') FOR UPDATE",[plan.ownerId]);
+    if(all.rowCount!==8)fail('FINALIZE_EXPECTED_EIGHT');
+    const vault=await client.query(
+      "SELECT connection_id,provider,encrypted_profile,read_verified_at,state "+
+      "FROM nyx_rclone_tenant_credentials_v2 WHERE owner_id=$1 FOR UPDATE",
+      [plan.ownerId]);
+    if(vault.rowCount!==8)fail('FINALIZE_VAULT_EXPECTED_EIGHT');
+    const byName=new Map(plan.rows.map(r=>[r.displayName,r]));
+    const byConnection=new Map(vault.rows.map(r=>[r.connection_id,r]));
+    if(byConnection.size!==8)fail('FINALIZE_DUPLICATE');
+    const epoch=now.getTime();
+    if(!Number.isFinite(epoch))fail('FINALIZE_CLOCK_INVALID');
+    for(const c of all.rows){
+      const expected=byName.get(c.display_name);
+      const candidate=byConnection.get(c.id);
+      if(!expected||!candidate||candidate.provider!==expected.provider||
+        candidate.state!=='pending'||c.status!=='pending'||
+        c.external_account_id!=='pending'||c.provider!==expected.provider ||
+        JSON.stringify(c.capabilities)!==JSON.stringify(['storage:list'])||
+        JSON.stringify(c.provider_capabilities)!=='[]')fail('FINALIZE_METADATA_MISMATCH');
+      const rules=typeof c.resources==='string'?JSON.parse(c.resources):c.resources;
+      if(!Array.isArray(rules)||rules.length!==1||
+        rules[0]?.kind!==expected.kind||rules[0]?.id!==expected.root||
+        JSON.stringify(rules[0]?.capabilities)!==JSON.stringify(['storage:list']))
+        fail('FINALIZE_ROOT_MISMATCH');
+      const probeAt=new Date(candidate.read_verified_at).getTime();
+      if(!Number.isFinite(probeAt)||probeAt>epoch+30000||
+        epoch-probeAt>15*60*1000)fail('FINALIZE_STALE_PROBE');
+      const profile=openForTenant(plan.ownerId,c.id,expected.provider,
+        candidate.encrypted_profile,key);
+      if(expected.provider==='google-drive'){
+        if(profile.rootFolderId!==expected.root||!profile.token)
+          fail('FINALIZE_CREDENTIAL_ROOT_MISMATCH');
+      }else if(profile.verifiedRoot!==expected.root)
+        fail('FINALIZE_MEGA_ROOT_NOT_VERIFIED');
+    }
+    // Metadata has no provider email claim: this is an operator-import ID.
+    // Only storage:list is granted, based on fresh provider read proof.
+    for(const c of all.rows){
+      const update=await client.query(
+        "UPDATE nyx_connector_connections SET status='active',"+
+        " provider_capabilities='[\"storage:list\"]'::jsonb,"+
+        " external_account_id=$3,updated_at=now() "+
+        "WHERE owner_id=$1 AND id=$2 AND status='pending' "+
+        "AND external_account_id='pending'",
+        [plan.ownerId,c.id,'rclone-import:'+c.id]);
+      if(update.rowCount!==1)fail('FINALIZE_METADATA_RACE');
+      const cred=await client.query(
+        "UPDATE nyx_rclone_tenant_credentials_v2 SET state='active',updated_at=now() "+
+        "WHERE owner_id=$1 AND connection_id=$2 AND state='pending' "+
+        "AND read_verified_at>now()-interval '15 minutes'",
+        [plan.ownerId,c.id]);
+      if(cred.rowCount!==1)fail('FINALIZE_CREDENTIAL_RACE');
+    }
+    await client.query('COMMIT');inTransaction=false;
+    return {status:'ACTIVE_READ_VERIFIED_EIGHT',count:8,writeGrants:false};
+  }catch{
+    if(inTransaction)await client.query('ROLLBACK').catch(()=>{});
+    fail('FINALIZE_FAILED_ROLLED_BACK_OR_UNCERTAIN');
+  }finally{client.release();}
+}
+
 function argsOf(argv) {
   if(argv.length===0||argv.length===1&&argv[0]==='--inventory')
     return {mode:'inventory'};
   if(argv.length===3&&argv[0]==='--plan'&&argv[1]==='--manifest')
     return {mode:'plan',manifest:argv[2]};
-  if(argv.length===4&&argv[0]==='--stage'&&argv[1]==='--manifest')
-    return {mode:'stage',manifest:argv[2],confirmation:argv[3]};
+  if(argv.length===4&&['--stage','--finalize'].includes(argv[0])&&argv[1]==='--manifest')
+    return {mode:argv[0].slice(2),manifest:argv[2],confirmation:argv[3]};
   fail('USAGE');
 }
 async function main(argv) {
@@ -213,7 +307,8 @@ async function main(argv) {
     sixDriveTwoMega:true,rootKinds:plan.rows.map(r=>({remote:r.name,kind:r.kind,
       rootMode:r.root==='root'?'account-root':'explicit-or-mega'}))},null,2));
   if(options.mode==='plan')return;
-  if(options.confirmation!=='STAGE_EIGHT_PENDING')fail('EXPLICIT_CONFIRMATION_REQUIRED');
+  if(options.confirmation!==(options.mode==='stage'?'STAGE_EIGHT_PENDING':'ACTIVATE_EIGHT_VERIFIED'))
+    fail('EXPLICIT_CONFIRMATION_REQUIRED');
   if(process.env.NYX_IMPORT_APPROVED_OWNER!==plan.ownerId)
     fail('OWNER_ATTESTATION_REQUIRED');
   const app=appEnvironment();
@@ -221,7 +316,8 @@ async function main(argv) {
   const db=new Pool({connectionString:app.url,max:1,connectionTimeoutMillis:5000,
     statement_timeout:15000});
   try{
-    const result=await stageWithDb(db,plan,app.key);
+    const result=options.mode==='stage'?await stageWithDb(db,plan,app.key):
+      await finalizeReadVerified(db,plan,app.key);
     console.log(JSON.stringify(result));
   }finally{app.key.fill(0);await db.end();}
 }
