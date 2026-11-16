@@ -329,7 +329,9 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       if(item.externalAccountId==='pending'){
         try{
           if(candidate.profile.provider==='google-drive'){
-            const proof=await verifyImportedGoogleIdentity(candidate.profile);
+            const profileForIdentity=refreshedProfile?.provider==='google-drive'
+              ? refreshedProfile : candidate.profile;
+            const proof=await verifyImportedGoogleIdentity(profileForIdentity);
             await this.connectors.attestImportedPendingStorageIdentity(
               ownerId,connectionId,'google-drive',proof.accountId,proof.driveId);
           }else if(candidate.profile.provider==='mega'){
@@ -495,10 +497,10 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     const sealed=this.seal(ownerId,connectionId,next);
     const changed=await this.db().query(
       'UPDATE nyx_rclone_tenant_credentials_v2 SET '+
-      'encrypted_profile=$5, updated_at=now() '+
+      'encrypted_profile=$4, updated_at=now() '+
       "WHERE owner_id=$1 AND connection_id=$2 AND provider='google-drive' "+
       "AND state='active' AND encrypted_profile=$3 RETURNING connection_id",
-      [ownerId,connectionId,packed,null,sealed]);
+      [ownerId,connectionId,packed,sealed]);
     if(changed.rowCount!==1)
       throw new Error('TENANT_GOOGLE_REFRESH_CONCURRENT_CHANGE');
     return true;
