@@ -8,6 +8,7 @@ import { TenantRcloneService } from './tenant-rclone.service';
 import { TenantGoogleOAuthService } from './tenant-google-oauth.service';
 import { TenantMegaEnrollmentService } from './tenant-mega-enrollment.service';
 import { MegaEnrollmentController } from './mega-enrollment.controller';
+import { MegaPermanentDeleteController } from './mega-permanent-delete.controller';
 import { GoogleOAuthController } from './google-oauth.controller';
 import { PrivateLegacyOwnerLinkService } from './private-legacy-owner-link.service';
 import { PrivateLegacyOwnerLinkController } from './private-legacy-owner-link.controller';
@@ -19,7 +20,7 @@ import { GithubOAuthController } from './github-oauth.controller';
 
 @Module({
   imports:[StorageModule],
-  controllers:[GithubOAuthController,GoogleOAuthController,MegaEnrollmentController,PrivateLegacyOwnerLinkController,PrivateLegacyBrokerController],
+  controllers:[GithubOAuthController,GoogleOAuthController,MegaEnrollmentController,MegaPermanentDeleteController,PrivateLegacyOwnerLinkController,PrivateLegacyBrokerController],
   providers:[
     ConnectorsService, GithubAppService, HerokuBrokerClient, PrivateLegacyBrokerService, PrivateLegacyBrokerClient, TenantRcloneService, TenantGoogleOAuthService, TenantMegaEnrollmentService, PrivateLegacyOwnerLinkService,
     {provide: GithubReadonlyConnector,
