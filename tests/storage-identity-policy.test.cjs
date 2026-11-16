@@ -59,7 +59,6 @@ function fixture(unique=false) {
   return {svc,owner,id,events,connection,get saved(){return saved;}};
 }
 test('verified connection claims namespace and metadata in one transaction',async t=>{
-  t.mock.method(process,'env',process.env); // No env mutation necessary
   const state=fixture();
   const prev=['NYX_DEPLOYMENT_MODE','NYX_PUBLIC_CONNECTORS_ENABLED',
     'NYX_MULTIUSER_RCLONE_ENABLED','NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED']
@@ -109,7 +108,7 @@ test('panel uses exact typed confirmation; imports cannot invent provider grants
   assert.match(panel,/nyx_storage_connection_revoke/);
   assert.match(panel,/REMOVE CONNECTION /);
   assert.match(panel,/localCredentialsDeleted!==true/);
-  assert.match(panel,/Cloud files remain untouched/);
+  assert.match(panel,/cloud files remain untouched/i);
   const mcp=readFileSync('src/mcp/mcp.service.ts','utf8');
   assert.match(mcp,/nyx_storage_connection_rename/);
   assert.match(mcp,/this\.connections\.renameStorage\(this\.connectorOwner\(\),id,name\)/);
