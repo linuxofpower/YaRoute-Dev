@@ -300,8 +300,8 @@ export async function finalizeReadVerified(db,plan,key,now=new Date()) {
       }else if(profile.verifiedRoot!==expected.root)
         fail('FINALIZE_MEGA_ROOT_NOT_VERIFIED');
     }
-    // Metadata has no provider email claim: this is an operator-import ID.
-    // Only storage:list is granted, based on fresh provider read proof.
+    // Store the independently attested account identity, not an alias or
+    // synthetic placeholder. Only storage:list is initially granted.
     for(const c of all.rows){
       const update=await client.query(
         "UPDATE nyx_connector_connections SET status='active',"+
@@ -309,7 +309,7 @@ export async function finalizeReadVerified(db,plan,key,now=new Date()) {
         " external_account_id=$3,updated_at=now() "+
         "WHERE owner_id=$1 AND id=$2 AND status='pending' "+
         "AND external_account_id='pending'",
-        [plan.ownerId,c.id,'rclone-import:'+c.id]);
+        [plan.ownerId,c.id,identityById.get(c.id).external_id]);
       if(update.rowCount!==1)fail('FINALIZE_METADATA_RACE');
       const cred=await client.query(
         "UPDATE nyx_rclone_tenant_credentials_v2 SET state='active',updated_at=now() "+
