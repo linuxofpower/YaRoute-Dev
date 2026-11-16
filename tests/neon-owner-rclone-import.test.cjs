@@ -10,10 +10,12 @@ function fixture() {
   const manifest={ownerId:owner,remotes:[]};
   for(let i=0;i<6;i++){
     const remote='drive_'+i;
-    const root=i===0?'root':'folder_'+i;
+    const root=i===3?'folder_'+i:'root';
     config[remote]={type:'drive',token:JSON.stringify({
       access_token:'fixture-token-'+i,refresh_token:'fixture-refresh-'+i})};
-    if(i>0)config[remote].root_folder_id=root;
+    if(i===3)config[remote].root_folder_id=root;
+    // Mirrors the observed legacy inventory: team_drive key is present on all Drives.
+    config[remote].team_drive=i===1?'0A_shared_fixture_01':'';
     manifest.remotes.push({remote,rootId:root,displayName:'Drive '+i});
   }
   for(let i=0;i<2;i++) {
@@ -31,8 +33,10 @@ test('read-only inventory returns option names but no stored credential values',
   assert.equal(summary.length,8);
   assert.ok(summary.every(x=>x.hasCredential&&x.supported));
   assert.equal(summary.filter(x=>x.provider==='google-drive').length,6);
+  assert.equal(summary[1].teamDriveMode,'selected');
+  assert.equal(summary[0].teamDriveMode,'not-selected');
   const serialized=JSON.stringify(summary);
-  assert.doesNotMatch(serialized,/fixture-token|fixture-obscured|fixture-refresh/);
+  assert.doesNotMatch(serialized,/fixture-token|fixture-obscured|fixture-refresh|0A_shared_fixture_01/);
 });
 test('exact eight: six Drive, two MEGA, scoped roots and no unknown config fields',async()=>{
   const {buildPendingImport}=await importer();
@@ -40,6 +44,9 @@ test('exact eight: six Drive, two MEGA, scoped roots and no unknown config field
   const plan=buildPendingImport(config,manifest);
   assert.equal(plan.rows.length,8);
   assert.equal(plan.rows[0].profile.rootFolderId,'root');
+  assert.equal(plan.rows[3].profile.rootFolderId,'folder_3');
+  assert.equal(plan.rows[1].profile.teamDriveId,'0A_shared_fixture_01');
+  assert.equal(plan.rows[0].profile.teamDriveId,undefined);
   assert.equal(plan.rows[6].kind,'mega-root');
   assert.equal(plan.rows[0].profile.token,config.drive_0.token);
   assert.throws(()=>{
@@ -204,4 +211,22 @@ test('finalization rejects mismatched owner-bound ciphertext and unauthorized ME
   await assert.rejects(finalizeReadVerified(db,plan,key,now),/FINALIZE_FAILED/);
   assert.equal(updates,0);
   assert.equal(rollbacks,1);
+});
+
+
+test('existing selected Shared Drive IDs stay encrypted while invalid IDs fail closed',async()=>{
+  const {buildPendingImport,sealForTenant,openForTenant}=await importer();
+  const {config,manifest}=fixture();
+  const plan=buildPendingImport(config,manifest);
+  assert.equal(plan.rows[1].profile.teamDriveId,'0A_shared_fixture_01');
+  const key=Buffer.alloc(32,17),id='912548b7-78e1-4c23-8d2b-c6412ec5bbc1';
+  const encrypted=sealForTenant(owner,id,plan.rows[1].profile,key);
+  assert.ok(!encrypted.includes('0A_shared_fixture_01'));
+  assert.equal(openForTenant(owner,id,'google-drive',encrypted,key).teamDriveId,
+    '0A_shared_fixture_01');
+  config.drive_1.team_drive='invalid/path';
+  assert.throws(()=>buildPendingImport(config,manifest),/TEAM_DRIVE_INVALID/);
+  config.drive_1.team_drive='0A_shared_fixture_01';
+  config.drive_2.team_drive=42;
+  assert.throws(()=>buildPendingImport(config,manifest),/TEAM_DRIVE_INVALID/);
 });
