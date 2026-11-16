@@ -32,7 +32,8 @@ import { herokuReadAuthorization } from '../connectors/heroku-read-policy';
 import { githubInstallationUrl } from '../connectors/github-app.service';
 import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_HOME_URI, CONNECTIONS_HOME_HTML, CONNECTIONS_PANEL_LABEL, CONNECTIONS_HOME_LABEL, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
-import { ACCOUNT_VIEW_URI, ACCOUNT_VIEW_HTML, signStorageView, verifyStorageView } from '../connectors/multi-account-view';
+import { ACCOUNT_VIEW_URI, ACCOUNT_VIEW_HTML, signStorageView, verifyStorageView,
+  storageSnapshotItem, summarizeVerifiedDuplicates } from '../connectors/multi-account-view';
 import { PRIVATE_REMOTE_ROOT, findPrivateRemote, privateRemoteView,
   type ApprovedPrivateRemote } from '../connectors/private-pro-virtual-connections';
 
@@ -381,27 +382,23 @@ export class McpService {
         const key=process.env.NYX_PRIVATE_BROKER_SHARED_KEY_B64||'';
         const connections=[...publicConnections,
           ...linkedRemotes.map(remote=>privateRemoteView(owner,remote,key))];
-        const filtered=(caps:string[])=>caps.filter(c=>
-          ['storage:list','storage:move','storage:delete'].includes(c));
-        const token=signStorageView(owner,label,connections.map(c=>({
-          displayName:c.displayName,provider:c.provider as 'mega'|'google-drive',
-          status:c.status as 'pending'|'active'|'revoked',
-          selected:filtered(c.capabilities),
-          providerVerified:filtered(c.providerCapabilities),
-          resourceCount:c.resources?.length??0,
-        })),process.env.NYX_STORAGE_ENCRYPTION_KEY||'');
+        const accountViewKey=process.env.NYX_STORAGE_ENCRYPTION_KEY||'';
+        const token=signStorageView(owner,label,connections.map(c=>
+          storageSnapshotItem(c,accountViewKey,
+            process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true')),
+          accountViewKey);
         return {schema:'nyx.account-view.export.v1',
           snapshot:token,expiresInSeconds:180,ownerHint:hint,
           connectionCount:connections.length,
           warning:'Read-only, signed, temporary display metadata. Not a bearer grant to any storage provider.'};
       }));
       server.registerTool('nyx_accounts_view',{
-        title:'View two separately authenticated NestNyx accounts in one tabbed panel',
-        description:'Show a read-only tabbed comparison from separately signed and unexpired Google OAuth account snapshots. Never switches an OAuth identity, grants sharing or accepts credentials. First invoke nyx_account_view_snapshot once per connected ChatGPT account.',
+        title:'Inspect two or three separately authenticated NestNyx accounts in one panel',
+        description:'Inspect up to three separately signed OAuth account snapshots, compare duplicate verified MEGA resources, and prefer the strongest single connection (Primary on tie). Profiles remain independently authenticated; this tool never grants access or switches session identity.',
         inputSchema:z.object({accounts:z.array(z.object({
           label:z.string().min(1).max(40),
           snapshot:z.string().min(100).max(10100),
-        }).strict()).min(2).max(4)}).strict(),
+        }).strict()).min(2).max(3)}).strict(),
         _meta:{ui:{resourceUri:ACCOUNT_VIEW_URI,visibility:['model','app']},
           'openai/outputTemplate':ACCOUNT_VIEW_URI},
         annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
@@ -413,9 +410,11 @@ export class McpService {
           throw new Error('NYX_ACCOUNT_VIEW_DUPLICATE_OWNER');
         const current=createHash('sha256').update(this.connectorOwner()).digest('hex').slice(0,16);
         if(!distinct.has(current))throw new Error('NYX_ACCOUNT_VIEW_CALLER_NOT_INCLUDED');
+        const verifiedDuplicates=summarizeVerifiedDuplicates(snapshots);
         return {schema:'nyx.account-view.viewer.v1',
-          accounts:snapshots,readOnly:true,noCrossTenantAuthorization:true,
-          note:'Each record is an authenticated, signed read-only display snapshot. Operations must select the original owner OAuth connection.'};
+          accounts:snapshots,verifiedDuplicates,
+          maxAccounts:3,readOnly:true,noCrossTenantAuthorization:true,
+          note:'All signed snapshots remain available while viewing another tab. Duplicate preference is metadata-only; permissions NEVER cross OAuth owners. Use the corresponding original account authorization for every operation.'};
       }));
     }
 
