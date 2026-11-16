@@ -12,6 +12,8 @@ export type TenantRcloneProvider = 'google-drive' | 'mega';
 export type TenantRcloneProfile =
   | { provider: 'google-drive'; token: string; clientId?: string;
       clientSecret?: string; rootFolderId?: string; teamDriveId?: string;
+      /** Legacy account root: omit root_folder_id option without relaxing the logical root grant. */
+      accountRoot?: boolean;
       scope?: 'drive.readonly' | 'drive.file' | 'drive' }
   | { provider: 'mega'; user: string; obscuredPassword: string;
       sessionId?: string; masterKey?: string;
@@ -41,7 +43,12 @@ export function tenantRcloneConfig(profile: TenantRcloneProfile): string {
     const lines = ['[tenant]', 'type = drive', 'token = ' + token];
     if (profile.clientId) lines.push('client_id = ' + safeLine(profile.clientId, 2048));
     if (profile.clientSecret) lines.push('client_secret = ' + safeLine(profile.clientSecret, 2048));
-    if (profile.rootFolderId) lines.push('root_folder_id = ' + safeLine(profile.rootFolderId, 2048));
+    if (profile.accountRoot !== undefined &&
+        (profile.accountRoot !== true || profile.rootFolderId !== 'root')) {
+      throw new Error('TENANT_RCLONE_ACCOUNT_ROOT_INVALID');
+    }
+    if (!profile.accountRoot && profile.rootFolderId)
+      lines.push('root_folder_id = ' + safeLine(profile.rootFolderId, 2048));
     if (profile.teamDriveId !== undefined) {
       if (typeof profile.teamDriveId !== 'string' ||
           !/^[A-Za-z0-9_-]{1,256}$/.test(profile.teamDriveId)) {
