@@ -1,0 +1,134 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {createDecipheriv}=require('node:crypto');
+const {pathToFileURL}=require('node:url');
+const path=require('node:path');
+const importer=()=>import(pathToFileURL(path.resolve('scripts/nyx-neon-owner-rclone-import.mjs')).href);
+const owner='oauth:google-oauth2|123456789012345678';
+function fixture() {
+  const config={};
+  const manifest={ownerId:owner,remotes:[]};
+  for(let i=0;i<6;i++){
+    const remote='drive_'+i;
+    const root=i===0?'root':'folder_'+i;
+    config[remote]={type:'drive',token:JSON.stringify({
+      access_token:'fixture-token-'+i,refresh_token:'fixture-refresh-'+i})};
+    if(i>0)config[remote].root_folder_id=root;
+    manifest.remotes.push({remote,rootId:root,displayName:'Drive '+i});
+  }
+  for(let i=0;i<2;i++) {
+    const remote='mega_'+i;
+    config[remote]={type:'mega',user:['example'+i,'example.com'].join('@'),
+      pass:'fixture-obscured-'+i};
+    manifest.remotes.push({remote,rootId:'MEGA_ROOT',displayName:'MEGA '+i});
+  }
+  return {config,manifest};
+}
+test('read-only inventory returns option names but no stored credential values',async()=>{
+  const {safeInventory}=await importer();
+  const {config}=fixture();
+  const summary=safeInventory(config);
+  assert.equal(summary.length,8);
+  assert.ok(summary.every(x=>x.hasCredential&&x.supported));
+  assert.equal(summary.filter(x=>x.provider==='google-drive').length,6);
+  const serialized=JSON.stringify(summary);
+  assert.doesNotMatch(serialized,/fixture-token|fixture-obscured|fixture-refresh/);
+});
+test('exact eight: six Drive, two MEGA, scoped roots and no unknown config fields',async()=>{
+  const {buildPendingImport}=await importer();
+  const {config,manifest}=fixture();
+  const plan=buildPendingImport(config,manifest);
+  assert.equal(plan.rows.length,8);
+  assert.equal(plan.rows[0].profile.rootFolderId,'root');
+  assert.equal(plan.rows[6].kind,'mega-root');
+  assert.equal(plan.rows[0].profile.token,config.drive_0.token);
+  assert.throws(()=>{
+    manifest.remotes[0].rootId='other';
+    buildPendingImport(config,manifest);
+  },/DRIVE_ROOT_MISMATCH/);
+});
+test('refuse owner swaps, unsupported options, partial remote lists and wrong root',async()=>{
+  const {buildPendingImport}=await importer();
+  const {config,manifest}=fixture();
+  manifest.ownerId='oauth:password|123456789012345678';
+  assert.throws(()=>buildPendingImport(config,manifest),/MANIFEST_INVALID/);
+  manifest.ownerId=owner;
+  config.drive_0.service_account_file='/home/a/private';
+  assert.throws(()=>buildPendingImport(config,manifest),/UNSUPPORTED_RCLONE_OPTION/);
+  delete config.drive_0.service_account_file;
+  manifest.remotes.pop();
+  assert.throws(()=>buildPendingImport(config,manifest),/MANIFEST_INVALID/);
+  manifest.remotes.push({remote:'mega_1',rootId:'WRONG',displayName:'MEGA 1'});
+  assert.throws(()=>buildPendingImport(config,manifest),/MEGA_ROOT_UNSUPPORTED/);
+});
+test('AES-GCM payload matches Dev v2 format and rejects wrong owner AAD',async()=>{
+  const {buildPendingImport,sealForTenant}=await importer();
+  const plan=buildPendingImport(...Object.values(fixture()));
+  const key=Buffer.alloc(32,7),iv=Buffer.alloc(12,4);
+  const id='9b67557e-cc56-4bac-8e3d-cdd2a5ed8ac2';
+  const encrypted=Buffer.from(sealForTenant(owner,id,plan.rows[0].profile,key,iv),'base64');
+  const open=(subject)=>{
+    const decipher=createDecipheriv('aes-256-gcm',key,encrypted.subarray(0,12));
+    decipher.setAAD(Buffer.from(JSON.stringify([subject,id,'google-drive','v2'])));
+    decipher.setAuthTag(encrypted.subarray(12,28));
+    return JSON.parse(Buffer.concat([decipher.update(encrypted.subarray(28)),decipher.final()])
+      .toString('utf8'));
+  };
+  assert.equal(open(owner).token,plan.rows[0].profile.token);
+  assert.throws(()=>open('oauth:google-oauth2|999999999'),/Unsupported state|authenticate/i);
+});
+function mockDb(existing=0, failInsert=false){
+  const statements=[];let vault=0;let saved=0;let rollback=false;
+  const client={
+    async query(sql,args=[]){
+      statements.push({sql,args});
+      if(sql.startsWith('SELECT count(*)')&&sql.includes('nyx_connector_connections'))
+        return {rows:[{n:existing}]};
+      if(sql.startsWith('SELECT count(*)')&&sql.includes('nyx_rclone_tenant_credentials_v2'))
+        return {rows:[{n:sql.includes("state='pending'")?vault:0}]};
+      if(sql.startsWith('INSERT INTO nyx_connector_connections')){
+        if(failInsert)throw Error('synthetic error with password redacted');
+        saved++;
+      }
+      if(sql.startsWith('INSERT INTO nyx_rclone_tenant_credentials_v2'))vault++;
+      if(sql==='ROLLBACK')rollback=true;
+      return {rows:[],rowCount:1};
+    },
+    release(){}
+  };
+  return {db:{connect:async()=>client},statements,state:()=>({saved,vault,rollback})};
+}
+test('one transaction stages only pending, credential ciphertext and NO provider grants',async()=>{
+  const {buildPendingImport,stageWithDb}=await importer();
+  const {config,manifest}=fixture(),plan=buildPendingImport(config,manifest);
+  const ctx=mockDb();
+  const result=await stageWithDb(ctx.db,plan,Buffer.alloc(32,8));
+  assert.equal(result.status,'PENDING_ONLY_NO_PROVIDER_GRANTS');
+  assert.equal(result.count,8);
+  assert.deepEqual(ctx.state(),{saved:8,vault:8,rollback:false});
+  assert.equal(ctx.statements.at(-1).sql,'COMMIT');
+  const metadata=ctx.statements.filter(x=>x.sql.startsWith('INSERT INTO nyx_connector_connections'));
+  const vault=ctx.statements.filter(x=>x.sql.startsWith('INSERT INTO nyx_rclone_tenant_credentials_v2'));
+  assert.equal(metadata.length,8);
+  for(let i=0;i<8;i++){
+    assert.match(metadata[i].sql,/'pending'/);
+    assert.match(metadata[i].sql,/'\[\]'::jsonb/);
+    assert.equal(vault[i].args[0],owner);
+    assert.ok(!JSON.stringify(vault[i].args).includes('fixture-token'));
+    assert.ok(!JSON.stringify(metadata[i].args).includes('fixture-token'));
+  }
+});
+test('existing owner connection blocks import and no partial staging survives',async()=>{
+  const {buildPendingImport,stageWithDb}=await importer();
+  const {config,manifest}=fixture(),plan=buildPendingImport(config,manifest);
+  const ctx=mockDb(1);
+  await assert.rejects(stageWithDb(ctx.db,plan,Buffer.alloc(32,9)),/STAGING_FAILED/);
+  assert.deepEqual(ctx.state(),{saved:0,vault:0,rollback:true});
+});
+test('failed row insertion rolls back, no activation is attempted',async()=>{
+  const {buildPendingImport,stageWithDb}=await importer();
+  const {config,manifest}=fixture(),plan=buildPendingImport(config,manifest);
+  const ctx=mockDb(0,true);
+  await assert.rejects(stageWithDb(ctx.db,plan,Buffer.alloc(32,9)),/STAGING_FAILED/);
+  assert.deepEqual(ctx.state(),{saved:0,vault:0,rollback:true});
+});
