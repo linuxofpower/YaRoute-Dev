@@ -151,7 +151,10 @@ export class McpService {
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
               'nyx_storage_connection_revoke',
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
-                ['nyx_storage_mega_file_mutate'] : [])] : []),
+                ['nyx_storage_mega_file_mutate'] : []),
+              ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' &&
+                   process.env.NYX_PUBLIC_MEGA_PERMANENT_DELETE_ENABLED === 'true' ?
+                ['nyx_storage_mega_permanent_delete_begin'] : [])] : []),
            ...(process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true' ? ['nyx_private_owner_link_status','nyx_private_owner_link_begin'] : []),
             ...(process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED === 'true' ? ['nyx_private_legacy_roots','nyx_private_legacy_list'] : []),
            ...(process.env.NYX_HEROKU_READ_ENABLED === 'true' ? ['nyx_heroku_app_info','nyx_heroku_releases'] : [])] : ['nyx_mega_accounts', 'nyx_mega_list', 'nyx_mega_stat', 'nyx_mega_capacity', 'nyx_global_index', 'nyx_copy_file', 'nyx_risk_preview','nyx_connections_home','nyx_connections_panel','nyx_rclone_connections_list','nyx_head_status','nyx_areas','nyx_list','nyx_stat','nyx_capacity','nyx_job_status','nyx_maintenance_runtime_inspect','nyx_maintenance_runtime_prepare',
@@ -872,6 +875,25 @@ export class McpService {
         },async({id,rootId,operation,sourcePath,destinationPath})=>this.safeTool(()=>
           this.tenantRclone.mutateMegaFile(this.connectorOwner(),id,rootId,
             operation,sourcePath,destinationPath)));
+      }
+
+      // High-risk, independently gated pilot. This ONLY opens a short-lived
+      // first-party typed confirmation for a disposable file; no MCP operation
+      // directly executes irreversible deletion and no general trash cleanup.
+      if (process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' &&
+          process.env.NYX_PUBLIC_MEGA_PERMANENT_DELETE_ENABLED === 'true') {
+        server.registerTool('nyx_storage_mega_permanent_delete_begin', {
+          title:'Prepare irreversible deletion of one disposable MEGA test file',
+          description:'Owner-bound, default-off pilot ONLY for NYX_DEV_PERMANENT_TEST_*.txt at MEGA_ROOT. Returns a first-party five-minute typed approval URL. No file is modified until a separate browser confirmation; no rubbish-bin purge or other file paths.',
+          inputSchema:z.object({
+            id:z.string().uuid(),rootId:z.literal('MEGA_ROOT'),
+            sourcePath:z.string().min(1).max(90),
+          }).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:true,
+            idempotentHint:false,openWorldHint:true},
+        },async({id,rootId,sourcePath})=>this.safeTool(() =>
+          this.tenantRclone.beginMegaHardDeletePilot(
+            this.connectorOwner(),id,rootId,sourcePath)));
       }
 
       server.registerTool('nyx_storage_connection_revoke', {
