@@ -281,6 +281,49 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     return this.view(updated);
   }
 
+  /**
+   * Called ONLY by the isolated Rclone worker AFTER it successfully lists an
+   * imported pending connection and checks provider identity. Does NOT activate,
+   * grant permissions, overwrite a different namespace, or accept MCP claims.
+   */
+  async attestImportedPendingStorageIdentity(
+    ownerId:string,id:string,provider:'google-drive'|'mega',
+    verifiedAccountId:string,verifiedDriveId?:string|null,
+  ) {
+    this.assertTenantStorageMode();
+    const owner=this.owner(ownerId);
+    const connection=await this.owned(owner,id);
+    if(connection.status!=='pending'||connection.externalAccountId!=='pending'||
+       connection.provider!==provider)throw new Error('TENANT_IMPORT_NOT_PENDING');
+    if(provider==='google-drive' && verifiedDriveId===undefined)
+      throw new Error('TENANT_DRIVE_NAMESPACE_ATTESTATION_REQUIRED');
+    const namespace=verifiedStorageNamespace(provider,verifiedAccountId,verifiedDriveId);
+    const client=await this.db().connect();
+    try{
+      await client.query('BEGIN');
+      const claim=await client.query(
+        'INSERT INTO nyx_storage_verified_identity_v1 '+
+        '(connection_id,owner_id,provider,namespace,external_id) '+
+        'VALUES($1,$2,$3,$4,$5) '+
+        'ON CONFLICT(connection_id) DO UPDATE SET verified_at=now() '+
+        'WHERE nyx_storage_verified_identity_v1.owner_id=EXCLUDED.owner_id '+
+        'AND nyx_storage_verified_identity_v1.provider=EXCLUDED.provider '+
+        'AND nyx_storage_verified_identity_v1.namespace=EXCLUDED.namespace '+
+        'AND nyx_storage_verified_identity_v1.external_id=EXCLUDED.external_id '+
+        'RETURNING connection_id',
+        [id,owner,provider,namespace,verifiedAccountId]);
+      if(claim.rowCount!==1)throw new Error('TENANT_IMPORT_IDENTITY_CHANGED');
+      await client.query('COMMIT');
+      return {status:'provider_identity_attested' as const, connectionId:id,
+        provider,readGrantsAdded:false};
+    }catch(error){
+      await client.query('ROLLBACK').catch(()=>{});
+      if((error as {code?:string})?.code==='23505')
+        throw new Error('STORAGE_DUPLICATE_DRIVE_ALREADY_CONNECTED');
+      throw error;
+    }finally{client.release();}
+  }
+
   /** Trusted server-side provider verification only; never an MCP input. */
   async confirmStorageProvider(ownerId: string, id: string,
                                provider: 'google-drive' | 'mega', verifiedAccountId: string,
