@@ -392,6 +392,19 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       await client.query(
         'DELETE FROM nyx_rclone_google_oauth_states_v2 WHERE owner_id=$1 AND connection_id=$2',
         [ownerId, connectionId]);
+      // If the separately reviewed optional index schema exists, revoke
+      // cached metadata/consent in this SAME transaction. Provider files stay.
+      const indexSchema=await client.query(
+        "SELECT to_regclass('public.nyx_tenant_index_jobs_v1') IS NOT NULL AS jobs, " +
+        "to_regclass('public.nyx_tenant_index_items_v1') IS NOT NULL AS items");
+      if (indexSchema.rows[0]?.jobs && indexSchema.rows[0]?.items) {
+        await client.query(
+          'DELETE FROM nyx_tenant_index_items_v1 ' +
+          'WHERE owner_id=$1 AND connection_id=$2',[ownerId,connectionId]);
+        await client.query(
+          'DELETE FROM nyx_tenant_index_jobs_v1 ' +
+          'WHERE owner_id=$1 AND connection_id=$2',[ownerId,connectionId]);
+      }
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
