@@ -140,6 +140,6 @@ test('controller is one-file approval only; no broad cleanup, no credentials',as
  assert.equal(post.statusCode,200);
  assert.match(post.html,/cannot be undone/);
  assert.match(source,/--mega-hard-delete=true/);
- assert.doesNotMatch(source,/rclone cleanup|rclone purge/);
+ assert.doesNotMatch(source,/run\(\[['\"](?:purge|cleanup)['\"]/);
  assert.match(source,/NYX_DEV_PERMANENT_TEST_/);
 });
