@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { spawn } from 'node:child_process';
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -145,6 +145,19 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       created_at timestamptz NOT NULL DEFAULT now(),
       completed_at timestamptz
     )`);
+
+    // A separate, single-use, explicit human approval for disposable-file hard delete.
+    // Not a blanket storage:delete grant or permission to empty MEGA rubbish bins.
+    await this.pool.query('CREATE TABLE IF NOT EXISTS nyx_mega_hard_delete_challenges_v1 (' +
+      'digest text PRIMARY KEY, owner_id text NOT NULL, connection_id text NOT NULL,' +
+      'root_id text NOT NULL, source_path text NOT NULL, expected_file_id text NOT NULL,' +
+      'expected_size bigint NOT NULL, expected_mtime text NOT NULL,' +
+      'expires_at timestamptz NOT NULL)');
+    await this.pool.query('CREATE TABLE IF NOT EXISTS nyx_mega_hard_delete_receipts_v1 (' +
+      'id uuid PRIMARY KEY, owner_id text NOT NULL, connection_id text NOT NULL,' +
+      'root_id text NOT NULL, source_path text NOT NULL,' +
+      "state text NOT NULL CHECK (state IN ('running','verified','uncertain'))," +
+      'created_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz)');
   }
 
   async onModuleDestroy() { await this.pool?.end(); }
@@ -578,6 +591,177 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
         await fs.rm(dir,{recursive:true,force:true});
       }
     } finally {
+      if(locked)await client.query('SELECT pg_advisory_unlock(hashtext($1),hashtext($2))',
+        [ownerId,connectionId]).catch(()=>{});
+      client.release();
+    }
+  }
+
+
+  // Pilot deliberately accepts only single-purpose disposable files; general
+  // irreversible delete and provider-trash item purge remain unsupported.
+  private requireMegaHardDeletePilot() {
+    if (process.env.NYX_PUBLIC_MEGA_PERMANENT_DELETE_ENABLED!=='true' ||
+        process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED!=='true' ||
+        process.env.NYX_DEPLOYMENT_MODE!=='public')
+      throw new Error('TENANT_MEGA_HARD_DELETE_DISABLED');
+  }
+
+  private hardDeletePilotFile(sourcePath:string) {
+    const value=tenantRclonePath(sourcePath);
+    if(value!==sourcePath ||
+       !/^NYX_DEV_PERMANENT_TEST_[A-Za-z0-9_-]{8,60}\.txt$/.test(value) ||
+       value.includes('/')) throw new Error('TENANT_MEGA_HARD_DELETE_PILOT_ONLY');
+    return value;
+  }
+
+  private async hardDeleteProbe(profile:TenantRcloneProfile, sourcePath:string,
+                                operation:'inspect'|'hard-delete') {
+    if(profile.provider!=='mega') throw new Error('TENANT_MEGA_PROVIDER_INVALID');
+    const work=await fs.mkdtemp(path.join(os.tmpdir(),'nyx-tenant-mega-hard-delete-'));
+    const cfg=path.join(work,'rclone.conf');
+    try {
+      await fs.chmod(work,0o700);
+      await fs.writeFile(cfg,tenantRcloneConfig(profile),{mode:0o600,flag:'wx'});
+      const args=operation==='inspect'
+        ? ['lsjson','tenant:','--max-depth','1']
+        : ['--mega-hard-delete=true','--retries=1','deletefile','tenant:'+sourcePath];
+      const raw=await new Promise<string>((resolve,reject)=>{
+        const child=spawn(this.binary,['--config',cfg,...args],{
+          env:{PATH:process.env.PATH||'',HOME:work,TMPDIR:work,XDG_CONFIG_HOME:work},
+          stdio:['ignore','pipe','pipe']});
+        let done=false,output='',bytes=0;
+        const finish=(error?:Error)=>{
+          if(done)return;done=true;clearTimeout(timer);
+          if(error)reject(error);else resolve(output);
+        };
+        const timer=setTimeout(()=>{
+          child.kill('SIGKILL');finish(new Error('TENANT_MEGA_HARD_DELETE_TIMEOUT'));
+        },45000);
+        child.stdout.on('data',(b:Buffer)=>{
+          bytes+=b.length;
+          if(bytes>128*1024){child.kill('SIGKILL');
+            finish(new Error('TENANT_MEGA_HARD_DELETE_RESPONSE_OVERSIZE'));}
+          else output+=b.toString('utf8');
+        });
+        child.stderr.on('data',()=>{}); // Never print secrets or provider messages.
+        child.once('error',()=>finish(new Error('TENANT_MEGA_HARD_DELETE_BACKEND')));
+        child.once('close',c=>finish(c===0?undefined:
+          new Error('TENANT_MEGA_HARD_DELETE_BACKEND')));
+      });
+      if(operation==='hard-delete')return null;
+      let values:unknown;
+      try{values=JSON.parse(raw);}catch{throw new Error('TENANT_MEGA_HARD_DELETE_LIST_INVALID');}
+      if(!Array.isArray(values)||values.length>3000)
+        throw new Error('TENANT_MEGA_HARD_DELETE_LIST_INVALID');
+      const matches=values.filter(item=>item && typeof item==='object' &&
+        (item as Record<string,unknown>).Path===sourcePath);
+      if(matches.length>1)throw new Error('TENANT_MEGA_HARD_DELETE_DUPLICATE');
+      if(matches.length===0)return null;
+      const file=matches[0] as Record<string,unknown>;
+      if(file.IsDir!==false || typeof file.ID!=='string' ||
+         file.ID.length<1 || file.ID.length>256 || /[\x00-\x1f]/.test(file.ID) ||
+         typeof file.Size!=='number' || !Number.isSafeInteger(file.Size) ||
+         file.Size<0 || typeof file.ModTime!=='string' ||
+         file.ModTime.length<1 || file.ModTime.length>80)
+        throw new Error('TENANT_MEGA_HARD_DELETE_FILE_ID_REQUIRED');
+      return {id:file.ID,size:file.Size,modTime:file.ModTime};
+    }finally{await fs.rm(work,{recursive:true,force:true});}
+  }
+
+  /** Open a five-minute one-use browser confirmation. No file is changed. */
+  async beginMegaHardDeletePilot(ownerId:string, connectionId:string, rootId:string,
+                                 sourcePath:string) {
+    this.requireMegaHardDeletePilot();
+    const source=this.hardDeletePilotFile(sourcePath);
+    if(rootId!=='MEGA_ROOT') throw new Error('TENANT_MEGA_HARD_DELETE_ROOT_DENIED');
+    await this.connectors.registryPolicy().requireResource(ownerId,connectionId,'storage:delete',
+      {kind:'mega-root',id:rootId,path:source});
+    const target=await this.authorizedTarget(ownerId,connectionId,'mega',rootId,source);
+    const file=await this.hardDeleteProbe(target.profile,target.path,'inspect');
+    if(!file)throw new Error('TENANT_MEGA_HARD_DELETE_SOURCE_MISSING');
+    const origin=(process.env.NYX_PUBLIC_URL||'').replace(/\/$/,'');
+    if(!/^https:\/\/[a-z0-9.-]+$/i.test(origin))
+      throw new Error('TENANT_MEGA_HARD_DELETE_ORIGIN_INVALID');
+    const token=randomBytes(32).toString('base64url');
+    const digest=createHash('sha256').update(token).digest('hex');
+    await this.db().query('DELETE FROM nyx_mega_hard_delete_challenges_v1 '+
+      'WHERE owner_id=$1 AND connection_id=$2 AND source_path=$3',
+      [ownerId,connectionId,source]);
+    await this.db().query('INSERT INTO nyx_mega_hard_delete_challenges_v1 '+
+      '(digest,owner_id,connection_id,root_id,source_path,expected_file_id,'+
+      'expected_size,expected_mtime,expires_at) '+
+      "VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '5 minutes')",
+      [digest,ownerId,connectionId,rootId,source,file.id,file.size,file.modTime]);
+    return {url:origin+'/connect/mega/permanent-delete?state='+encodeURIComponent(token),
+      expiresInSeconds:300,filePath:source,fileSize:file.size,
+      status:'approval_required',permanent:true,
+      note:'Pilot disposable-file permanent deletion ONLY. No file deleted yet.'};
+  }
+
+  /** Public GET renders redacted, exact, one-time pending challenge details. */
+  async megaHardDeletePilotPreview(token:string) {
+    this.requireMegaHardDeletePilot();
+    if(typeof token!=='string' || !/^[A-Za-z0-9_-]{40,100}$/.test(token))return null;
+    const digest=createHash('sha256').update(token).digest('hex');
+    const result=await this.db().query('SELECT source_path,expected_size FROM '+
+      'nyx_mega_hard_delete_challenges_v1 WHERE digest=$1 AND expires_at>now()', [digest]);
+    if(result.rowCount!==1)return null;
+    return {filePath:String(result.rows[0].source_path),
+      fileSize:Number(result.rows[0].expected_size)};
+  }
+
+  /** Executed only from a first-party browser POST with exact typed approval. */
+  async confirmMegaHardDeletePilot(token:string, typedConfirmation:string) {
+    this.requireMegaHardDeletePilot();
+    if(typeof token!=='string'||!/^[A-Za-z0-9_-]{40,100}$/.test(token) ||
+       typeof typedConfirmation!=='string')
+      throw new Error('TENANT_MEGA_HARD_DELETE_APPROVAL_INVALID');
+    const digest=createHash('sha256').update(token).digest('hex');
+    const preview=await this.megaHardDeletePilotPreview(token);
+    if(!preview || typedConfirmation!=='PERMANENT DELETE '+preview.filePath)
+      throw new Error('TENANT_MEGA_HARD_DELETE_APPROVAL_INVALID');
+    // One-time, durable consumption: even backend errors cannot replay an approval.
+    const row=await this.db().query('DELETE FROM nyx_mega_hard_delete_challenges_v1 '+
+      'WHERE digest=$1 AND expires_at>now() RETURNING owner_id,connection_id,'+
+      'root_id,source_path,expected_file_id,expected_size,expected_mtime',[digest]);
+    if(row.rowCount!==1)throw new Error('TENANT_MEGA_HARD_DELETE_APPROVAL_EXPIRED');
+    const grant=row.rows[0];
+    const ownerId=String(grant.owner_id),connectionId=String(grant.connection_id);
+    const rootId=String(grant.root_id),source=this.hardDeletePilotFile(String(grant.source_path));
+    if(rootId!=='MEGA_ROOT')throw new Error('TENANT_MEGA_HARD_DELETE_ROOT_DENIED');
+    const client=await this.db().connect();
+    let locked=false;
+    try {
+      await client.query('SELECT pg_advisory_lock(hashtext($1),hashtext($2))',
+        [ownerId,connectionId]);locked=true;
+      await this.connectors.registryPolicy().requireResource(
+        ownerId,connectionId,'storage:delete',{kind:'mega-root',id:rootId,path:source});
+      const target=await this.authorizedTarget(ownerId,connectionId,'mega',rootId,source);
+      const current=await this.hardDeleteProbe(target.profile,target.path,'inspect');
+      if(!current || current.id!==grant.expected_file_id ||
+         current.size!==Number(grant.expected_size) ||
+         current.modTime!==grant.expected_mtime)
+        throw new Error('TENANT_MEGA_HARD_DELETE_SOURCE_CHANGED');
+      const receiptId=randomUUID();
+      await client.query('INSERT INTO nyx_mega_hard_delete_receipts_v1 '+
+        '(id,owner_id,connection_id,root_id,source_path,state) '+
+        "VALUES($1,$2,$3,$4,$5,'running')",
+        [receiptId,ownerId,connectionId,rootId,source]);
+      try {
+        await this.hardDeleteProbe(target.profile,target.path,'hard-delete');
+        const after=await this.hardDeleteProbe(target.profile,target.path,'inspect');
+        if(after)throw new Error('TENANT_MEGA_HARD_DELETE_UNCERTAIN');
+        await client.query('UPDATE nyx_mega_hard_delete_receipts_v1 '+
+          "SET state='verified',completed_at=now() WHERE id=$1", [receiptId]);
+        return {receiptId,status:'verified' as const,operation:'permanent-single-file-delete',
+          sourcePath:source,confirmationRequired:true,restorable:false};
+      }catch{
+        await client.query('UPDATE nyx_mega_hard_delete_receipts_v1 '+
+          "SET state='uncertain',completed_at=now() WHERE id=$1", [receiptId]);
+        throw new Error('TENANT_MEGA_HARD_DELETE_UNCERTAIN_CHECK_AUDIT');
+      }
+    }finally{
       if(locked)await client.query('SELECT pg_advisory_unlock(hashtext($1),hashtext($2))',
         [ownerId,connectionId]).catch(()=>{});
       client.release();
