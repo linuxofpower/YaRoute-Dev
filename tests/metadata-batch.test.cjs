@@ -87,3 +87,16 @@ test('one scoped batch never reads providers, networks, secrets or mutates stora
     'path','sizeBytes','type',
   ]);
 });
+
+
+test('an authorized root can use an empty relative path without bypassing validation', () => {
+  const atRoot={...scope,relativePath:''};
+  const root=prepareAuthorizedMetadataBatch(atRoot,
+    listing([item('root-file.txt')]));
+  assert.equal(root.scope.relativePath,'');
+  assert.deepEqual(root.entries,[{
+    path:'root-file.txt',type:'file',sizeBytes:20,
+  }]);
+  assert.throws(()=>prepareAuthorizedMetadataBatch(
+    {...scope,relativePath:'/absolute'},listing([])),/INDEX_PATH_INVALID/);
+});
