@@ -148,3 +148,40 @@ test('three accounts remain separate, and the fourth is rejected by viewer schem
  assert.match(source,/NYX_ACCOUNT_VIEW_DUPLICATE_OWNER/);
  assert.match(source,/NYX_ACCOUNT_VIEW_CALLER_NOT_INCLUDED/);
 });
+
+
+test('per-operation preferences can choose different profiles without union or delegation',()=>{
+ const email=['same','example.invalid'].join('@');
+ const primary=mega('Primary deep delete',email,
+   ['storage:list','storage:delete']);
+ const personal=mega('Personal move',email,
+   ['storage:list','storage:move']);
+ const third=mega('Third account read',email,['storage:list']);
+ const summary=summarizeVerifiedDuplicates([
+   {label:'Primary',ownerHint:'aaaaaaaaaaaaaaaa',connections:[primary]},
+   {label:'Personal',ownerHint:'bbbbbbbbbbbbbbbb',connections:[personal]},
+   {label:'Third',ownerHint:'cccccccccccccccc',connections:[third]},
+ ])[0];
+ assert.equal(summary.preferred.label,'Primary'); // tie favors Primary only
+ assert.equal(summary.preferredFor['storage:list'].label,'Primary');
+ assert.equal(summary.preferredFor['storage:move'].label,'Personal');
+ assert.equal(summary.preferredFor['storage:delete'].label,'Primary');
+ assert.deepEqual(summary.preferredFor['storage:move'].effective,['storage:list','storage:move']);
+ assert.deepEqual(summary.preferredFor['storage:delete'].effective,['storage:list','storage:delete']);
+ assert.ok(!summary.preferredFor['storage:move'].effective.includes('storage:delete'));
+ assert.ok(!summary.preferredFor['storage:delete'].effective.includes('storage:move'));
+ assert.equal(summary.alternatives.length,2);
+ assert.match(ACCOUNT_VIEW_HTML,/Reversible trash/);
+ assert.doesNotMatch(ACCOUNT_VIEW_HTML,/window\.openai\.callTool|tools\/call|fetch\(/);
+});
+test('no permission means no preferred source for that operation',()=>{
+ const email=['same','example.invalid'].join('@');
+ const justRead=mega('One',email,['storage:list']);
+ const summary=summarizeVerifiedDuplicates([
+   {label:'Primary',ownerHint:'aaaaaaaaaaaaaaaa',connections:[justRead]},
+   {label:'Personal',ownerHint:'bbbbbbbbbbbbbbbb',connections:[justRead]},
+ ])[0];
+ assert.equal(summary.preferredFor['storage:move'],undefined);
+ assert.equal(summary.preferredFor['storage:delete'],undefined);
+ assert.equal(summary.preferredFor['storage:list'].label,'Primary');
+});
