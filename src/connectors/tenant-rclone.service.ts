@@ -11,7 +11,8 @@ import { ConnectorsService } from './connectors.service';
 export type TenantRcloneProvider = 'google-drive' | 'mega';
 export type TenantRcloneProfile =
   | { provider: 'google-drive'; token: string; clientId?: string;
-      clientSecret?: string; rootFolderId?: string; scope?: 'drive.readonly' | 'drive.file' | 'drive' }
+      clientSecret?: string; rootFolderId?: string; teamDriveId?: string;
+      scope?: 'drive.readonly' | 'drive.file' | 'drive' }
   | { provider: 'mega'; user: string; obscuredPassword: string;
       sessionId?: string; masterKey?: string;
       /** Assigned only after successfully probing this exact root. */
@@ -41,6 +42,13 @@ export function tenantRcloneConfig(profile: TenantRcloneProfile): string {
     if (profile.clientId) lines.push('client_id = ' + safeLine(profile.clientId, 2048));
     if (profile.clientSecret) lines.push('client_secret = ' + safeLine(profile.clientSecret, 2048));
     if (profile.rootFolderId) lines.push('root_folder_id = ' + safeLine(profile.rootFolderId, 2048));
+    if (profile.teamDriveId !== undefined) {
+      if (typeof profile.teamDriveId !== 'string' ||
+          !/^[A-Za-z0-9_-]{1,256}$/.test(profile.teamDriveId)) {
+        throw new Error('TENANT_RCLONE_TEAM_DRIVE_INVALID');
+      }
+      lines.push('team_drive = ' + profile.teamDriveId);
+    }
     if (profile.scope) {
       if (!['drive', 'drive.file', 'drive.readonly'].includes(profile.scope)) {
         throw new Error('TENANT_RCLONE_PROFILE_INVALID');
