@@ -49,10 +49,11 @@ export type IndexTraversal = Readonly<{
   visited: string[];
   processedDirectories: number;
   processedEntries: number;
+  depthLimitReached: boolean;
 }>;
 
 export type AdvanceIndexResult = Readonly<{
-  status: 'PROGRESSED' | 'COMPLETE' | 'PAUSED_BUDGET' | 'BLOCKED_TRUNCATED';
+  status: 'PROGRESSED' | 'COMPLETE' | 'INCOMPLETE_DEPTH_LIMIT' | 'PAUSED_BUDGET' | 'BLOCKED_TRUNCATED';
   traversal: IndexTraversal;
   batch: MetadataBatch | null;
   reason: string | null;
@@ -84,6 +85,7 @@ export function startIndexTraversal(scope: MetadataScope, mode: IndexDepth): Ind
     schema: 'nyx.tenant-index-traversal.v1', scopeKey, mode,
     pending: [{ path: '', depth: 0 }], visited: [],
     processedDirectories: 0, processedEntries: 0,
+    depthLimitReached: false,
   };
 }
 
@@ -98,7 +100,8 @@ function assertTraversal(value: IndexTraversal): void {
       value.pending.length > budget.maxPendingDirectories ||
       value.visited.length > 250_000 ||
       !Number.isSafeInteger(value.processedDirectories) || value.processedDirectories < 0 ||
-      !Number.isSafeInteger(value.processedEntries) || value.processedEntries < 0) {
+      !Number.isSafeInteger(value.processedEntries) || value.processedEntries < 0 ||
+      typeof value.depthLimitReached !== 'boolean') {
     throw new Error('INDEX_CHECKPOINT_INVALID');
   }
   const seen = new Set<string>();
@@ -149,7 +152,13 @@ export function advanceIndexTraversal(
     }
   }
   if (traversal.pending.length === 0) {
-    return { status: 'COMPLETE', traversal, batch: null, reason: null };
+    return {
+      status: traversal.mode === 'deep' && traversal.depthLimitReached
+        ? 'INCOMPLETE_DEPTH_LIMIT' : 'COMPLETE',
+      traversal, batch: null,
+      reason: traversal.mode === 'deep' && traversal.depthLimitReached
+        ? 'INDEX_DEPTH_LIMIT_REACHED' : null,
+    };
   }
   if (runDirectories >= limits.maxDirectoriesPerRun ||
       runEntries >= limits.maxEntriesPerRun ||
@@ -172,11 +181,16 @@ export function advanceIndexTraversal(
   const next = traversal.pending.slice(1);
   const visitedSet = new Set(traversal.visited);
   const pendingSet = new Set(next.map(x => x.path));
+  let depthLimitReached = traversal.depthLimitReached;
   for (const entry of batch.entries) {
     const local = current.path ? entry.path.slice(current.path.length + 1) : entry.path;
     if (!local || local.includes('/') ||
         (current.path && !entry.path.startsWith(current.path + '/'))) {
       throw new Error('INDEX_ENTRY_NOT_IMMEDIATE_CHILD');
+    }
+    if (entry.type === 'directory' && traversal.mode === 'deep' &&
+        current.depth + 1 >= limits.maxDepth) {
+      depthLimitReached = true;
     }
     if (entry.type === 'directory' && current.depth + 1 < limits.maxDepth &&
         !visitedSet.has(entry.path) && !pendingSet.has(entry.path)) {
@@ -195,9 +209,13 @@ export function advanceIndexTraversal(
     visited: [...traversal.visited, current.path],
     processedDirectories: traversal.processedDirectories + 1,
     processedEntries: traversal.processedEntries + batch.entries.length,
+    depthLimitReached,
   };
   return {
-    status: next.length ? 'PROGRESSED' : 'COMPLETE',
-    traversal: updated, batch, reason: null,
+    status: next.length ? 'PROGRESSED' :
+      (traversal.mode === 'deep' && depthLimitReached ? 'INCOMPLETE_DEPTH_LIMIT' : 'COMPLETE'),
+    traversal: updated, batch,
+    reason: traversal.mode === 'deep' && depthLimitReached
+      ? 'INDEX_DEPTH_LIMIT_REACHED' : null,
   };
 }
