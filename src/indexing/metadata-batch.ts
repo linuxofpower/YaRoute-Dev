@@ -49,7 +49,7 @@ function relativePath(value: unknown, allowEmpty: boolean): string {
       (!allowEmpty && value.length === 0) ||
       value.startsWith('/') || value.endsWith('/') ||
       value.includes('\\') || /[\u0000-\u001f\u007f]/.test(value) ||
-      value.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+      (value !== '' && value.split('/').some(segment => !segment || segment === '.' || segment === '..'))) {
     throw new Error('INDEX_PATH_INVALID');
   }
   return value;
