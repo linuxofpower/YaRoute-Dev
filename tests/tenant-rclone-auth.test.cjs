@@ -143,3 +143,15 @@ test('Google team_drive is reproduced in isolated Rclone config only when select
       /TENANT_RCLONE_TEAM_DRIVE_INVALID/);
   }
 });
+
+
+test('imported account-root Google config omits explicit root folder selector',()=>{
+  const accountRoot=tenantRcloneConfig({
+    ...drive,rootFolderId:'root',accountRoot:true,teamDriveId:'0A_shared_fixture_01'});
+  assert.doesNotMatch(accountRoot,/^root_folder_id = /m);
+  assert.match(accountRoot,/^team_drive = 0A_shared_fixture_01$/m);
+  assert.throws(()=>tenantRcloneConfig({...drive,accountRoot:true}),
+    /ACCOUNT_ROOT_INVALID/);
+  assert.throws(()=>tenantRcloneConfig({...drive,rootFolderId:'root',accountRoot:false}),
+    /ACCOUNT_ROOT_INVALID/);
+});
