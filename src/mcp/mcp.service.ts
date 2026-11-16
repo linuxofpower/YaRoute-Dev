@@ -1,3 +1,4 @@
+import { ShallowIndexService } from '../indexing/shallow-index.service';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { NyxCommandExecutor } from '../nyx/command-executor.service';
@@ -65,6 +66,7 @@ export class McpService {
     private readonly maintenance: RuntimeMaintenanceService,
     private readonly ownerLink: PrivateLegacyOwnerLinkService,
     private readonly privateBroker: PrivateLegacyBrokerClient,
+    private readonly shallowIndex: ShallowIndexService,
   ) {
     const handler = createMcpHandler(() => this.buildServer());
     this.nodeHandler = toNodeHandler(handler, {
@@ -150,6 +152,8 @@ export class McpService {
              'nyx_storage_connection_test_pending','nyx_storage_connection_activate',
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
               'nyx_storage_connection_revoke',
+              ...(process.env.NYX_TENANT_SHALLOW_INDEX_ENABLED === 'true' ?
+                ['nyx_index_shallow_enable','nyx_index_status','nyx_index_disable'] : []),
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
                 ['nyx_storage_mega_file_mutate'] : [])] : []),
            ...(process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true' ? ['nyx_private_owner_link_status','nyx_private_owner_link_begin'] : []),
@@ -768,6 +772,37 @@ export class McpService {
         const key=process.env.NYX_PRIVATE_BROKER_SHARED_KEY_B64||'';
         return [...ordinary,...remotes.map(remote=>privateRemoteView(ownerId,remote,key))];
       }));
+
+      // Explicit owner-scoped consent for OFF-BY-DEFAULT background indexing.
+      // Provider authorization comes from the existing isolated per-tenant vault.
+      if (process.env.NYX_TENANT_SHALLOW_INDEX_ENABLED === 'true') {
+        server.registerTool('nyx_index_shallow_enable', {
+          title:'Enable background shallow indexing for one connected storage root',
+          description:'Opt in to a read-only, independent NestNyx metadata scan for one ACTIVE authorized Drive/MEGA root. Stores encrypted file paths in the per-owner Neon index; runs later via bounded one-off worker. No content reads, file changes or automatic deep scan.',
+          inputSchema:z.object({
+            id:z.string().uuid(),provider:z.enum(['google-drive','mega']),
+            rootId:z.string().min(1).max(256),
+          }),
+          annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+        },async({id,provider,rootId})=>this.safeTool(()=>
+          this.shallowIndex.optIn(this.connectorOwner(),id,provider,rootId)));
+
+        server.registerTool('nyx_index_status', {
+          title:'Check my background index jobs and freshness',
+          description:'Read-only owner-scoped job status and metadata counts. Never returns other accounts, credentials, or filenames.',
+          inputSchema:z.object({}),
+          annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+        },async()=>this.safeTool(()=>
+          this.shallowIndex.status(this.connectorOwner())));
+
+        server.registerTool('nyx_index_disable', {
+          title:'Stop a background index and erase its cached metadata',
+          description:'Disable one of my indexed roots and delete only its encrypted cached metadata; provider files and grants are unchanged.',
+          inputSchema:z.object({jobId:z.string().uuid()}),
+          annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:false},
+        },async({jobId})=>this.safeTool(()=>
+          this.shallowIndex.optOut(this.connectorOwner(),jobId)));
+      }
 
       server.registerTool('nyx_storage_connection_create', {
         title: 'Add a separate storage connection',

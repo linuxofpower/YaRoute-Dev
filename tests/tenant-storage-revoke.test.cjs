@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
 const {TenantRcloneService}=require('../dist/connectors/tenant-rclone.service');
 const owner='oauth:alice',id='12345678-1234-4234-8234-123456789abc';
-function setup({failAt=0,provider='mega'}={}){
+function setup({failAt=0,provider='mega',indexSchema=false}={}){
  const sql=[],record={ownerId:owner,id,status:'active',provider,
   resources:[{kind:'mega-root',id:'MyDocuments',capabilities:['storage:list']}]};
  const svc=new TenantRcloneService({getOwned:async(actor,connectionId)=>{
@@ -15,6 +15,7 @@ function setup({failAt=0,provider='mega'}={}){
   query:async(query,params)=>{
    sql.push({query,params});
    if(failAt===sql.length)throw Error('DATABASE_WRITE_FAILED');
+   if(query.includes('SELECT to_regclass'))return {rowCount:1,rows:[{jobs:indexSchema,items:indexSchema}]};
    return {rowCount:1,rows:[{id}]};
   },release:()=>sql.push({query:'RELEASE'})
  };
@@ -33,8 +34,9 @@ test('revoking a MEGA owner connection atomically disables the grant and clears 
  assert.match(statements[2],/DELETE FROM nyx_rclone_tenant_credentials_v2/);
  assert.match(statements[3],/DELETE FROM nyx_rclone_mega_enroll_states_v2/);
  assert.match(statements[4],/DELETE FROM nyx_rclone_google_oauth_states_v2/);
- assert.equal(statements[5],'COMMIT');
- assert.equal(statements[6],'RELEASE');
+ assert.match(statements[5],/SELECT to_regclass/);
+ assert.equal(statements[6],'COMMIT');
+ assert.equal(statements[7],'RELEASE');
  for(const query of sql.slice(1,5))assert.deepEqual(query.params,[owner,id]);
  assert.equal(statements.some(s=>/DELETE FROM nyx_connector_connections/.test(s)),false);
 });
@@ -63,4 +65,19 @@ test('public MCP tool requires authenticated owner and exposes only connection I
  const gate=s.lastIndexOf("if (process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true'",start);
  assert.ok(gate>0&&gate<start);
  assert.match(s,/['"]nyx_storage_connection_revoke['"]/);
+});
+
+test('storage revoke also erases encrypted per-owner index rows if index schema exists',async()=>{
+ const {svc,sql}=setup({indexSchema:true});
+ const result=await svc.revokeStorage(owner,id);
+ assert.equal(result.status,'revoked');
+ const statements=sql.map(x=>x.query);
+ const indexItems=statements.findIndex(q=>/DELETE FROM nyx_tenant_index_items_v1/.test(q));
+ const indexJobs=statements.findIndex(q=>/DELETE FROM nyx_tenant_index_jobs_v1/.test(q));
+ const committed=statements.indexOf('COMMIT');
+ assert.ok(indexItems>5&&indexJobs>indexItems&&committed>indexJobs);
+ for(const entry of [sql[indexItems],sql[indexJobs]]){
+  assert.deepEqual(entry.params,[owner,id]);
+ }
+ assert.equal(statements.filter(s=>s==='BEGIN').length,1);
 });
