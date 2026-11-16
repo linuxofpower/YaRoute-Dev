@@ -15,7 +15,7 @@ const safeName=/^[A-Za-z][A-Za-z0-9_.-]{0,119}$/;
 const ownerPattern=/^oauth:google-oauth2\|[0-9]{6,128}$/;
 const rootPattern=/^[A-Za-z0-9_-]{1,256}$/;
 const allowedKeys=Object.freeze({
-  drive:new Set(['type','token','client_id','client_secret','root_folder_id','scope']),
+  drive:new Set(['type','token','client_id','client_secret','root_folder_id','team_drive','scope']),
   mega:new Set(['type','user','pass','session_id','master_key']),
 });
 const columns=['provider','state','owner_id','connection_id','encrypted_profile'];
@@ -41,6 +41,7 @@ export function safeInventory(configuration) {
       hasCredential:provider==='drive'?!!text(value?.token):
         provider==='mega'?!!text(value?.user)&&!!text(value?.pass):false,
       rootMode:provider==='drive'?(text(value?.root_folder_id)?'explicit':'account-root'):'mega-root',
+      teamDriveMode:provider==='drive'?(text(value?.team_drive)?'selected':'not-selected'):undefined,
       supported:!!allowedKeys[provider] && unsupported.length===0,
       unsupportedOptions:unsupported,
     };
@@ -79,6 +80,14 @@ export function buildPendingImport(configuration,manifest) {
       if(cfg.scope!==undefined&&!['drive','drive.file','drive.readonly'].includes(cfg.scope))
         fail('DRIVE_SCOPE_UNSUPPORTED');
       profile={provider,token,rootFolderId:root};
+      // Rclone team_drive selects a different Google Drive namespace.
+      // Its exact opaque ID is encrypted inside the owner-scoped profile, never logged.
+      if(cfg.team_drive!==undefined){
+        if(typeof cfg.team_drive!=='string' || cfg.team_drive.length>256 ||
+           (cfg.team_drive!=='' && !rootPattern.test(cfg.team_drive)))
+          fail('TEAM_DRIVE_INVALID');
+        if(cfg.team_drive)profile.teamDriveId=cfg.team_drive;
+      }
       if(cfg.client_id)profile.clientId=requireField(cfg.client_id,2048);
       if(cfg.client_secret)profile.clientSecret=requireField(cfg.client_secret,2048);
       if(cfg.scope)profile.scope=cfg.scope;
@@ -251,7 +260,8 @@ export async function finalizeReadVerified(db,plan,key,now=new Date()) {
       const profile=openForTenant(plan.ownerId,c.id,expected.provider,
         candidate.encrypted_profile,key);
       if(expected.provider==='google-drive'){
-        if(profile.rootFolderId!==expected.root||!profile.token)
+        if(profile.rootFolderId!==expected.root||!profile.token||
+           (profile.teamDriveId||'')!==(expected.profile.teamDriveId||''))
           fail('FINALIZE_CREDENTIAL_ROOT_MISMATCH');
       }else if(profile.verifiedRoot!==expected.root)
         fail('FINALIZE_MEGA_ROOT_NOT_VERIFIED');
