@@ -160,12 +160,23 @@ test('all eight pending credentials activate atomically only after fresh Dev pro
       encrypted_profile:sealForTenant(owner,c.id,p,key),
       read_verified_at:new Date(now.getTime()-60000)};
   });
+  const identities=metadata.map((row,i)=>({
+    connection_id:row.id,owner_id:owner,provider:row.provider,
+    external_id:row.provider==='mega'?plan.rows[i].profile.user:'verified-account-'+i,
+    namespace:row.provider==='mega'
+      ? 'mega-account:'+plan.rows[i].profile.user.toLowerCase()
+      : plan.rows[i].profile.teamDriveId
+        ? 'shared-drive:'+plan.rows[i].profile.teamDriveId
+        : 'my-drive:verified-account-'+i,
+  }));
   const count={metadata:0,vault:0,rollback:0,commit:0};
   const client={
     async query(sql,args=[]){
       if(sql.startsWith('SELECT id,display_name'))return {rowCount:8,rows:metadata};
       if(sql.startsWith('SELECT connection_id,provider,encrypted_profile'))return {
         rowCount:8,rows:records};
+      if(sql.startsWith('SELECT connection_id,owner_id,provider,namespace,external_id'))
+        return {rowCount:8,rows:identities};
       if(sql.startsWith('UPDATE nyx_connector_connections'))count.metadata++;
       if(sql.startsWith('UPDATE nyx_rclone_tenant_credentials_v2'))count.vault++;
       if(sql==='ROLLBACK')count.rollback++;
@@ -193,6 +204,15 @@ test('finalization rejects mismatched owner-bound ciphertext and unauthorized ME
     external_account_id:'pending',capabilities:['storage:list'],
     provider_capabilities:[],resources:[{kind:entry.kind,id:entry.root,capabilities:['storage:list']}]
   }));
+  const identities=rows.map((row,i)=>({
+    connection_id:row.id,owner_id:owner,provider:row.provider,
+    external_id:row.provider==='mega'?plan.rows[i].profile.user:'user-'+i,
+    namespace:row.provider==='mega'
+      ? 'mega-account:'+plan.rows[i].profile.user.toLowerCase()
+      : plan.rows[i].profile.teamDriveId
+        ? 'shared-drive:'+plan.rows[i].profile.teamDriveId
+        : 'my-drive:user-'+i,
+  }));
   const credentials=rows.map((c,i)=>({
     connection_id:c.id,provider:c.provider,state:'pending',
     encrypted_profile:sealForTenant('oauth:google-oauth2|999999999999',
@@ -205,6 +225,8 @@ test('finalization rejects mismatched owner-bound ciphertext and unauthorized ME
       if(sql.startsWith('SELECT id,display_name'))return {rowCount:8,rows};
       if(sql.startsWith('SELECT connection_id,provider,encrypted_profile'))
         return {rowCount:8,rows:credentials};
+      if(sql.startsWith('SELECT connection_id,owner_id,provider,namespace,external_id'))
+        return {rowCount:8,rows:identities};
       if(sql.startsWith('UPDATE'))updates++;
       if(sql==='ROLLBACK')rollbacks++;
       return {rowCount:1,rows:[]};
@@ -231,4 +253,37 @@ test('existing selected Shared Drive IDs stay encrypted while invalid IDs fail c
   config.drive_1.team_drive='0A_shared_fixture_01';
   config.drive_2.team_drive=42;
   assert.throws(()=>buildPendingImport(config,manifest),/TEAM_DRIVE_INVALID/);
+});
+
+test('finalization rejects eight read probes without independently attested identities',async()=>{
+  const {buildPendingImport,sealForTenant,finalizeReadVerified}=await importer();
+  const {config,manifest}=fixture(),plan=buildPendingImport(config,manifest);
+  const key=Buffer.alloc(32,19),now=new Date('2026-11-16T14:00:00Z');
+  const rows=plan.rows.map((entry,i)=>({
+    id:'cccccccc-dddd-4eee-8fff-'+String(i+1).padStart(12,'0'),
+    display_name:entry.displayName,provider:entry.provider,status:'pending',
+    external_account_id:'pending',capabilities:['storage:list'],
+    provider_capabilities:[],resources:[{kind:entry.kind,id:entry.root,capabilities:['storage:list']}]
+  }));
+  const credentials=rows.map((c,i)=>({
+    connection_id:c.id,provider:c.provider,state:'pending',
+    encrypted_profile:sealForTenant(owner,c.id,{...plan.rows[i].profile,
+      ...(c.provider==='mega'?{verifiedRoot:'MEGA_ROOT'}:{})},key),
+    read_verified_at:now
+  }));
+  let updates=0,rollbacks=0;
+  const db={connect:async()=>({
+    query:async(sql)=>{
+      if(sql.startsWith('SELECT id,display_name'))return {rowCount:8,rows};
+      if(sql.startsWith('SELECT connection_id,provider,encrypted_profile'))
+        return {rowCount:8,rows:credentials};
+      if(sql.startsWith('SELECT connection_id,owner_id,provider,namespace,external_id'))
+        return {rowCount:0,rows:[]};
+      if(sql.startsWith('UPDATE'))updates++;
+      if(sql==='ROLLBACK')rollbacks++;
+      return {rowCount:1,rows:[]};
+    },release(){}
+  })};
+  await assert.rejects(finalizeReadVerified(db,plan,key,now),/FINALIZE_FAILED/);
+  assert.equal(updates,0);assert.equal(rollbacks,1);
 });
