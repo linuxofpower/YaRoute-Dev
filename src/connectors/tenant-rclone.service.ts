@@ -7,6 +7,7 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider } from './public-tenant-provider.policy';
 import { ConnectorsService } from './connectors.service';
+import { verifyImportedGoogleIdentity } from './imported-google-identity';
 
 export type TenantRcloneProvider = 'google-drive' | 'mega';
 export type TenantRcloneProfile =
@@ -310,6 +311,28 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     if (status === 'verified' && oneTimeMegaCode && !refreshedProfile)
       return 'failed';
     if (status === 'verified') {
+      // Import uses exactly the same server-attested, owner-scoped namespace
+      // dedupe as OAuth sign-in. Never infer an identity from the import
+      // manifest or merely from the local remote display name.
+      // For MEGA, a successful authenticated login to an exact root verifies
+      // the account email the MEGA client used. For Google, ask the provider
+      // directly for its stable user/Drive identity.
+      if(item.externalAccountId==='pending'){
+        try{
+          if(candidate.profile.provider==='google-drive'){
+            const proof=await verifyImportedGoogleIdentity(candidate.profile);
+            await this.connectors.attestImportedPendingStorageIdentity(
+              ownerId,connectionId,'google-drive',proof.accountId,proof.driveId);
+          }else if(candidate.profile.provider==='mega'){
+            await this.connectors.attestImportedPendingStorageIdentity(
+              ownerId,connectionId,'mega',candidate.profile.user);
+          }
+        }catch{
+          // No verification receipt or read_verified_at for an unproven
+          // namespace. Preserve the pending encrypted credentials for retry.
+          return 'failed';
+        }
+      }
       // Replace a one-time 2FA code with reusable, encrypted session keys.
       // Never retain the OTP in a pending or active credential row.
       const durableProfile = refreshedProfile || candidate.profile;
