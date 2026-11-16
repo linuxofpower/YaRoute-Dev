@@ -22,7 +22,7 @@ function fixture(source={readOnly:true,truncated:false,
   const service=new ShallowIndexService(
     {registryPolicy(){return {requireResource:async()=>{
       if(deny)throw Error('DENIED');return {};
-    }}},
+    }}}},
     {listAuthorizedRoot:async()=>source,
       probeAuthorizedRoot:async()=>deny?'failed':'verified'},
   );
