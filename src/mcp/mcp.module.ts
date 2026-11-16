@@ -1,3 +1,4 @@
+import { IndexModule } from '../indexing/index.module';
 import { ConnectorsModule } from '../connectors/connectors.module';
 import { NyxModule } from '../nyx/nyx.module';
 import { Module } from '@nestjs/common';
@@ -9,7 +10,7 @@ import { McpService } from './mcp.service';
 import { RuntimeMaintenanceService } from './runtime-maintenance.service';
 
 @Module({
-  imports: [StorageModule, InitModule, NyxModule, ConnectorsModule],
+  imports: [StorageModule, InitModule, NyxModule, ConnectorsModule, IndexModule],
   controllers: [McpController],
   providers: [McpAuthService, McpService, RuntimeMaintenanceService],
 })
