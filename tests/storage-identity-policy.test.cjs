@@ -68,7 +68,7 @@ test('verified connection claims namespace and metadata in one transaction',asyn
     NYX_PUBLIC_CONNECTORS_ENABLED:'true',NYX_MULTIUSER_RCLONE_ENABLED:'true',
     NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED:'true'});
   const response=await state.svc.confirmStorageProvider(state.owner,state.id,
-    'google-drive','google-user','0A_SAME_DRIVE');
+    'google-drive','google-user','0A_SAME_DRIVE','permission_id_123');
   assert.equal(response.id,state.id);
   assert.equal(state.saved,1);
   assert.deepEqual(state.events.filter(s=>['BEGIN','identity','save','COMMIT'].includes(s)),
@@ -84,7 +84,7 @@ test('duplicate verified physical Drive fails before connection metadata save',a
     NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED:'true'});
   const state=fixture(true);
   await assert.rejects(state.svc.confirmStorageProvider(state.owner,state.id,
-    'google-drive','google-user','0A_SAME_DRIVE'),
+    'google-drive','google-user','0A_SAME_DRIVE','permission_id_123'),
   /STORAGE_DUPLICATE_DRIVE_ALREADY_CONNECTED/);
   assert.equal(state.saved,0);
   assert.ok(state.events.includes('ROLLBACK'));
