@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider } from './public-tenant-provider.policy';
 import { ConnectorRegistry } from './connector-registry';
 import { PostgresConnectorRepository } from './postgres-connector-repository';
+import { verifiedStorageNamespace } from './storage-identity.policy';
 
 /** Production connectors are intentionally read-only until risk-enforced writes exist. */
 export const ENABLED_PROVIDER_API_CAPABILITIES = {
@@ -38,6 +39,18 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       max: 5, connectionTimeoutMillis: 5000});
     this.repository = new PostgresConnectorRepository(this.pool);
     await this.repository.initialize();
+    // Verified provider namespace identity, not labels, secret hashes, or folder
+    // paths, is unique per OAuth owner. Identity is attached only by trusted
+    // Google/MEGA server-side callbacks (or a reviewed verified importer).
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_storage_verified_identity_v1 (
+      connection_id text PRIMARY KEY,
+      owner_id text NOT NULL,
+      provider text NOT NULL CHECK (provider IN ('google-drive','mega')),
+      namespace text NOT NULL,
+      external_id text NOT NULL,
+      verified_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (owner_id, provider, namespace)
+    )`);
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_connector_link_states (
       state_digest text PRIMARY KEY,
       owner_id text NOT NULL,
@@ -270,7 +283,8 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
 
   /** Trusted server-side provider verification only; never an MCP input. */
   async confirmStorageProvider(ownerId: string, id: string,
-                               provider: 'google-drive' | 'mega', verifiedAccountId: string) {
+                               provider: 'google-drive' | 'mega', verifiedAccountId: string,
+                               verifiedDriveId?: string | null) {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
@@ -282,6 +296,9 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
         connection.externalAccountId !== verifiedAccountId) {
       throw new Error('TENANT_RCLONE_ACCOUNT_CHANGE_FORBIDDEN');
     }
+    if (provider === 'google-drive' && verifiedDriveId === undefined)
+      throw new Error('TENANT_DRIVE_NAMESPACE_ATTESTATION_REQUIRED');
+    const namespace=verifiedStorageNamespace(provider,verifiedAccountId,verifiedDriveId);
     const verified: ConnectorConnection = {
       ...connection, externalAccountId: verifiedAccountId,
       // Provider consent grants only metadata for read-only operations.
@@ -291,7 +308,29 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
         ? ['storage:list','storage:move','storage:delete'] : ['storage:list'],
       status: 'active',
     };
-    await this.repository!.save(verified);
+    const client=await this.db().connect();
+    try {
+      await client.query('BEGIN');
+      const claim=await client.query(
+        'INSERT INTO nyx_storage_verified_identity_v1 ' +
+        '(connection_id,owner_id,provider,namespace,external_id) ' +
+        'VALUES($1,$2,$3,$4,$5) ' +
+        'ON CONFLICT(connection_id) DO UPDATE SET ' +
+        'external_id=EXCLUDED.external_id,verified_at=now() ' +
+        'WHERE nyx_storage_verified_identity_v1.owner_id=EXCLUDED.owner_id ' +
+        'AND nyx_storage_verified_identity_v1.provider=EXCLUDED.provider ' +
+        'AND nyx_storage_verified_identity_v1.namespace=EXCLUDED.namespace ' +
+        'RETURNING connection_id',
+        [id,ownerId,provider,namespace,verifiedAccountId]);
+      if(claim.rowCount!==1)throw new Error('STORAGE_NAMESPACE_CHANGE_REQUIRES_NEW_CONNECTION');
+      await this.repository!.save(verified,client);
+      await client.query('COMMIT');
+    }catch(error) {
+      await client.query('ROLLBACK').catch(()=>{});
+      if((error as {code?:string})?.code==='23505')
+        throw new Error('STORAGE_DUPLICATE_DRIVE_ALREADY_CONNECTED');
+      throw error;
+    }finally{client.release();}
     return this.view(verified);
   }
 
