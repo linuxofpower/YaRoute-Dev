@@ -407,6 +407,9 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       await client.query(
         'DELETE FROM nyx_rclone_google_oauth_states_v2 WHERE owner_id=$1 AND connection_id=$2',
         [ownerId, connectionId]);
+      await client.query(
+        'DELETE FROM nyx_storage_verified_identity_v1 WHERE owner_id=$1 AND connection_id=$2',
+        [ownerId, connectionId]);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
