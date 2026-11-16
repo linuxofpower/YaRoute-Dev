@@ -79,7 +79,10 @@ export function buildPendingImport(configuration,manifest) {
         (!existingRoot && root!=='root'))fail('DRIVE_ROOT_MISMATCH');
       if(cfg.scope!==undefined&&!['drive','drive.file','drive.readonly'].includes(cfg.scope))
         fail('DRIVE_SCOPE_UNSUPPORTED');
+      // Keep logical resource 'root' but do NOT emit root_folder_id for
+      // a legacy account-root remote that omitted that Rclone option.
       profile={provider,token,rootFolderId:root};
+      if(!existingRoot)profile.accountRoot=true;
       // Rclone team_drive selects a different Google Drive namespace.
       // Its exact opaque ID is encrypted inside the owner-scoped profile, never logged.
       if(cfg.team_drive!==undefined){
@@ -261,6 +264,7 @@ export async function finalizeReadVerified(db,plan,key,now=new Date()) {
         candidate.encrypted_profile,key);
       if(expected.provider==='google-drive'){
         if(profile.rootFolderId!==expected.root||!profile.token||
+           Boolean(profile.accountRoot)!==Boolean(expected.profile.accountRoot)||
            (profile.teamDriveId||'')!==(expected.profile.teamDriveId||''))
           fail('FINALIZE_CREDENTIAL_ROOT_MISMATCH');
       }else if(profile.verifiedRoot!==expected.root)
