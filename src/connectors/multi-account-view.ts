@@ -21,6 +21,7 @@ export type StorageViewSnapshot = {
   schema: typeof ACCOUNT_VIEW_SCHEMA;
   ownerHint: string;
   display: string;
+  pictureUrl: string | null;
   issuedAt: number;
   expiresAt: number;
   connections: StorageViewItem[];
@@ -35,11 +36,22 @@ function key(secret: string): Buffer {
   // Domain separation: never use the storage-encryption key directly as HMAC.
   return createHmac('sha256',bytes).update('nyx-account-view-snapshot-v1').digest();
 }
+function trustedPictureUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length>2048) return null;
+  try {
+    const url=new URL(value);
+    return url.origin==='https://lh3.googleusercontent.com' &&
+      url.pathname.startsWith('/') && url.pathname.length>1 &&
+      !url.username && !url.password && !url.search && !url.hash
+      ? url.href : null;
+  } catch { return null; }
+}
 function recordValid(s:StorageViewSnapshot):boolean {
   return !!s && typeof s==='object' &&
     s.schema===ACCOUNT_VIEW_SCHEMA &&
     typeof s.ownerHint==='string' && /^[a-f0-9]{16}$/.test(s.ownerHint) &&
     typeof s.display==='string' && s.display.length>=1 && s.display.length<=120 &&
+    (s.pictureUrl===null || trustedPictureUrl(s.pictureUrl)===s.pictureUrl) &&
     Number.isSafeInteger(s.issuedAt) && Number.isSafeInteger(s.expiresAt) &&
     s.expiresAt-s.issuedAt===180 &&
     Array.isArray(s.connections) && s.connections.length<=12 &&
@@ -149,14 +161,14 @@ export function summarizeVerifiedDuplicates(accounts:AccountStorageSource[]):Pre
 
 export function signStorageView(
   ownerId: string, display: string, connections: StorageViewItem[],
-  secret: string, now = Math.floor(Date.now()/1000),
+  secret: string, now = Math.floor(Date.now()/1000), pictureUrl: string | null = null,
 ): string {
   if(typeof ownerId!=='string'||!ownerId.startsWith('oauth:')||ownerId.length>700)
     throw new Error('NYX_ACCOUNT_VIEW_OWNER_REQUIRED');
   const snapshot: StorageViewSnapshot={
     schema:ACCOUNT_VIEW_SCHEMA,
     ownerHint:createHash('sha256').update(ownerId).digest('hex').slice(0,16),
-    display,issuedAt:now,expiresAt:now+180,connections,
+    display,pictureUrl:trustedPictureUrl(pictureUrl),issuedAt:now,expiresAt:now+180,connections,
   };
   if(!recordValid(snapshot))throw new Error('NYX_ACCOUNT_VIEW_INVALID');
   const body=Buffer.from(JSON.stringify(snapshot)).toString('base64url');
@@ -196,6 +208,10 @@ export const ACCOUNT_VIEW_HTML=`<!doctype html><html lang="en"><head>
 h1{font-size:18px;margin:0 0 4px}.muted{opacity:.75;font-size:12px}
 header{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:16px}
 #tabs{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}
+.avatar{width:34px;height:34px;min-width:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#087d74;color:white;overflow:hidden;font-weight:700}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.account-head{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+#tabs button{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 5px}
 button{font:inherit;min-height:42px;padding:9px 15px;border-radius:999px;border:1px solid #8888;background:transparent;color:inherit;cursor:pointer}
 button[aria-selected=true]{border:2px solid #008b79;background:#008b7922;font-weight:700}
 .panel{border:1px solid #8887;border-radius:14px;padding:15px;min-height:130px}
@@ -220,12 +236,30 @@ Waiting for authenticated account summaries…</section>
  const tabs=document.getElementById('tabs'),panel=document.getElementById('panel'),overlaps=document.getElementById('overlaps');
  let records=[],current=0;
  const node=(tag,text,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=String(text);return e;};
+ function avatar(v) {
+   const outer=node('span',(v.label||'G').trim().slice(0,1).toUpperCase(),'avatar');
+   outer.setAttribute('aria-label','Google profile photo for '+v.label);
+   if(typeof v.pictureUrl==='string' && v.pictureUrl.length<=2048) {
+     try {
+       const u=new URL(v.pictureUrl);
+       if(u.origin==='https://lh3.googleusercontent.com' && u.pathname.length>1 &&
+          !u.search && !u.hash && !u.username && !u.password) {
+         const img=node('img');img.alt='';img.referrerPolicy='no-referrer';img.src=u.href;
+         img.addEventListener('error',()=>outer.replaceChildren(node('span',(v.label||'G').trim().slice(0,1).toUpperCase())));
+         outer.replaceChildren(img);
+       }
+     }catch{}
+   }
+   return outer;
+ }
  function show(n){
    current=n;const v=records[n];if(!v)return;
    for(const [i,button] of Array.from(tabs.children).entries()){
      button.setAttribute('aria-selected',String(i===n));button.tabIndex=i===n?0:-1;
    }
-   panel.replaceChildren(node('strong',v.label+' · '+v.display));
+   const head=node('div',undefined,'account-head');
+   head.append(avatar(v),node('strong',v.label+' · '+v.display));
+   panel.replaceChildren(head);
    panel.append(node('div','Verified OAuth owner reference: '+v.ownerHint,'meta'));
    if(!v.connections.length){panel.append(node('p','No storage connections enrolled for this Google identity.'));return;}
    for(const c of v.connections){
@@ -244,7 +278,8 @@ Waiting for authenticated account summaries…</section>
    if(payload.accounts.length<2||payload.accounts.length>3)return;
    const safe=payload.accounts.every(a=>a&&typeof a.label==='string'&&a.label.length>0&&a.label.length<=40&&
      typeof a.display==='string'&&a.display.length>0&&a.display.length<=120&&
-     typeof a.ownerHint==='string'&&Array.isArray(a.connections));
+     typeof a.ownerHint==='string'&&Array.isArray(a.connections)&&
+     (a.pictureUrl===null||typeof a.pictureUrl==='string'));
    if(!safe)return;
    records=payload.accounts;tabs.replaceChildren();
    overlaps.replaceChildren();
@@ -274,7 +309,7 @@ Waiting for authenticated account summaries…</section>
    }else overlaps.hidden=true;
    document.getElementById('summary').textContent=records.length+' signed account snapshots · all profiles shown · view-only tabs';
    records.forEach((v,i)=>{
-     const b=node('button',v.label+' ('+v.connections.length+')');b.type='button';b.setAttribute('role','tab');
+     const b=node('button');b.append(avatar(v),node('span',v.label+' ('+v.connections.length+')'));b.type='button';b.setAttribute('role','tab');
      b.addEventListener('click',()=>show(i));tabs.append(b);
    });
    show(0);
