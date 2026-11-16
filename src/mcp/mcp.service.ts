@@ -386,7 +386,7 @@ export class McpService {
         const token=signStorageView(owner,label,connections.map(c=>
           storageSnapshotItem(c,accountViewKey,
             process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true')),
-          accountViewKey);
+          accountViewKey,undefined,signed?.picture||null);
         return {schema:'nyx.account-view.export.v1',
           snapshot:token,expiresInSeconds:180,ownerHint:hint,
           connectionCount:connections.length,
