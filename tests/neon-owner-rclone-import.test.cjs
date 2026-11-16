@@ -170,6 +170,7 @@ test('all eight pending credentials activate atomically only after fresh Dev pro
         : 'my-drive:verified-account-'+i,
   }));
   const count={metadata:0,vault:0,rollback:0,commit:0};
+  const promotedIdentities=[];
   const client={
     async query(sql,args=[]){
       if(sql.startsWith('SELECT id,display_name'))return {rowCount:8,rows:metadata};
@@ -177,7 +178,10 @@ test('all eight pending credentials activate atomically only after fresh Dev pro
         rowCount:8,rows:records};
       if(sql.startsWith('SELECT connection_id,owner_id,provider,namespace,external_id'))
         return {rowCount:8,rows:identities};
-      if(sql.startsWith('UPDATE nyx_connector_connections'))count.metadata++;
+      if(sql.startsWith('UPDATE nyx_connector_connections')){
+        count.metadata++;
+        promotedIdentities.push(args[2]);
+      }
       if(sql.startsWith('UPDATE nyx_rclone_tenant_credentials_v2'))count.vault++;
       if(sql==='ROLLBACK')count.rollback++;
       if(sql==='COMMIT')count.commit++;
@@ -189,6 +193,7 @@ test('all eight pending credentials activate atomically only after fresh Dev pro
   assert.equal(result.status,'ACTIVE_READ_VERIFIED_EIGHT');
   assert.equal(result.writeGrants,false);
   assert.deepEqual(count,{metadata:8,vault:8,rollback:0,commit:1});
+  assert.deepEqual(promotedIdentities,identities.map(i=>i.external_id));
   records[0].read_verified_at=new Date(now.getTime()-16*60*1000);
   count.metadata=0;count.vault=0;count.commit=0;
   await assert.rejects(finalizeReadVerified(db,plan,key,now),/FINALIZE_FAILED/);
