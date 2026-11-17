@@ -4,7 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 // independently under each already-authenticated plugin connection and present
 // them in ONE tabbed UI. It is never a credential, delegation or mutation grant.
 export const ACCOUNT_VIEW_SCHEMA = 'nyx.account-view.snapshot.v1';
-export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v1.html';
+export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v2.html';
 export type StorageViewItem = {
   displayName: string;
   provider: 'mega' | 'google-drive';
