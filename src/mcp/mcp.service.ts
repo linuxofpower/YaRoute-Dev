@@ -157,7 +157,7 @@ export class McpService {
              'nyx_storage_connection_begin_google','nyx_storage_connection_begin_mega',
              'nyx_storage_connection_test_pending','nyx_storage_connection_activate',
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
-              ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import','nyx_storage_connection_begin_import_all'] : []),
+              ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import','nyx_storage_connection_begin_import_all','nyx_storage_connection_finish_import'] : []),
               'nyx_storage_connection_revoke',
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
                 ['nyx_storage_mega_file_mutate'] : [])] : []),
@@ -222,7 +222,7 @@ export class McpService {
     // after deployment. Keep v10-v12 URIs fetchable so ChatGPT doesn't display
     // "App unavailable" when it has cached an old Connections/Home template.
     // Each alias serves the current UI, with the requested URI in the response.
-    for (const version of [10,11,12,13]) {
+    for (const version of [10,11,12,13,14]) {
       for (const item of [
         {label:CONNECTIONS_PANEL_LABEL,uri:CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML},
         {label:CONNECTIONS_HOME_LABEL,uri:CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML},
@@ -851,6 +851,16 @@ export class McpService {
           annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
         },async()=>this.safeTool(()=>
           this.tenantRcloneUpload.beginAll(this.connectorOwner())));
+      }
+
+      if (process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true') {
+        server.registerTool('nyx_storage_connection_finish_import', {
+          title:'Activate an already read-verified imported Rclone connection (read-only)',
+          description:'Only for a pending connection owned by the current OAuth identity after a successful, fresh and independently attested provider read. Atomically activates storage:list only.',
+          inputSchema:z.object({id:z.string().uuid()}).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+        },async({id})=>this.safeTool(()=>
+          this.tenantRclone.activateImportedReadOnly(this.connectorOwner(),id)));
       }
 
       server.registerTool('nyx_storage_connection_test_pending', {
