@@ -19,6 +19,7 @@ const publicTenantStorage = process.env.NYX_DEPLOYMENT_MODE === 'public' &&
   process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true' &&
   process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true';
 const publicMegaOnly = publicTenantStorage && process.env.NYX_PUBLIC_TENANT_MEGA_ONLY === 'true';
+const rcloneFileImportEnabled = publicTenantStorage && process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true';
 const megaMutationEnabled = publicTenantStorage && process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true';
 const ownerLinkEnabled = publicTenantStorage && process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true';
 const privateBrokerEnabled = ownerLinkEnabled && process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED === 'true';
@@ -197,6 +198,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 'use strict';
 const publicTenantStorage=${JSON.stringify(publicTenantStorage)};
 const publicMegaOnly=${JSON.stringify(publicMegaOnly)};
+const rcloneFileImportEnabled=${JSON.stringify(rcloneFileImportEnabled)};
 const megaMutationEnabled=${JSON.stringify(megaMutationEnabled)};
 const ownerLinkEnabled=${JSON.stringify(ownerLinkEnabled)};
 const privateBrokerEnabled=${JSON.stringify(privateBrokerEnabled)};
@@ -572,6 +574,20 @@ function renderTenant(connections){
     await request('ui/open-link',{url:result.url});
     show(provider==='mega' ? 'Complete secure MEGA login, then return to verify read connectivity and activate. Write operations require a later disposable-file test.' : 'Complete Google Drive authorization and return for a read-only test.');
    }));
+   if(rcloneFileImportEnabled){
+     box.append(button('Import from local Rclone file',async()=>{
+       await configure();
+       const result=await call('nyx_storage_connection_begin_import',{id:item.id});
+       if(typeof result?.url!=='string')throw Error('Import link unavailable');
+       const link=new URL(result.url);
+       const base=${JSON.stringify(iconOrigin)};
+       if(!base||link.protocol!=='https:'||link.origin!==base||
+         link.pathname!=='/connect/rclone/import')
+         throw Error('Untrusted Rclone import link');
+       await request('ui/open-link',{url:result.url});
+       show('Select your local rclone.conf on the secure NestNyx HTTPS page. Import one remote only, then return to activate.');
+     }));
+   }
    box.append(button('Test new connection',async()=>{
     const result=await call('nyx_storage_connection_test_pending',{id:item.id});
     show('Read-only test: '+String(result));
