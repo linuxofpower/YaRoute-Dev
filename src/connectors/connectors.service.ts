@@ -39,18 +39,19 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       max: 5, connectionTimeoutMillis: 5000});
     this.repository = new PostgresConnectorRepository(this.pool);
     await this.repository.initialize();
-    // Verified provider namespace identity, not labels, secret hashes, or folder
-    // paths, is unique per OAuth owner. Identity is attached only by trusted
-    // Google/MEGA server-side callbacks (or a reviewed verified importer).
+    // Independently verified provider identity is bound to each connection ID.
+    // Multiple connections for the same namespace are permitted by new schemas;
+    // existing Dev databases require the separately reviewed migration.
+    // Never infer identity from a display name or remote supplied by a caller.
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_storage_verified_identity_v1 (
       connection_id text PRIMARY KEY,
       owner_id text NOT NULL,
       provider text NOT NULL CHECK (provider IN ('google-drive','mega')),
       namespace text NOT NULL,
       external_id text NOT NULL,
-      verified_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE (owner_id, provider, namespace)
+      verified_at timestamptz NOT NULL DEFAULT now()
     )`);
+    await this.pool.query('CREATE INDEX IF NOT EXISTS nyx_storage_verified_identity_owner_namespace_idx ON nyx_storage_verified_identity_v1 (owner_id, provider, namespace)');
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_connector_link_states (
       state_digest text PRIMARY KEY,
       owner_id text NOT NULL,
