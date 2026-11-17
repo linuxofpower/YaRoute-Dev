@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { ConnectorsService } from './connectors.service';
 import { TenantRcloneService, type TenantRcloneProvider } from './tenant-rclone.service';
 import { assertPublicTenantGoogleOwnerId } from './public-tenant-provider.policy';
-import { parseSelectedLocalRclone } from './tenant-rclone-file-import';
+import { parseSelectedLocalRclone, parseLocalRcloneBatch } from './tenant-rclone-file-import';
 
 function publicOrigin() {
   const origin = process.env.NYX_PUBLIC_URL || '';
@@ -37,6 +37,9 @@ export class TenantRcloneUploadService implements OnModuleInit, OnModuleDestroy 
       'digest text PRIMARY KEY,owner_id text NOT NULL,connection_id text NOT NULL,'+
       "provider text NOT NULL CHECK (provider IN ('google-drive','mega')),"+
       'root_id text NOT NULL,expires_at timestamptz NOT NULL)');
+    await this.pool.query('CREATE TABLE IF NOT EXISTS nyx_rclone_import_batch_states_v1 ('+
+      'digest text PRIMARY KEY, owner_id text NOT NULL,'+
+      'connection_ids jsonb NOT NULL,expires_at timestamptz NOT NULL)');
   }
   async onModuleDestroy() { await this.pool?.end(); }
   private db() {
@@ -76,6 +79,101 @@ export class TenantRcloneUploadService implements OnModuleInit, OnModuleDestroy 
     return {url:origin+'/connect/rclone/import?state='+encodeURIComponent(state),
       expiresInSeconds:600,
       message:'Open the first-party HTTPS page and select your local Rclone file. No credentials in ChatGPT.'};
+  }
+
+  /** One button per authenticated user, not one link per remote. */
+  async beginAll(ownerId:string) {
+    assertPublicTenantGoogleOwnerId(ownerId);
+    const origin=publicOrigin();
+    const state=randomBytes(32).toString('base64url');
+    await this.db().query(
+      'INSERT INTO nyx_rclone_import_batch_states_v1 '+
+      "(digest,owner_id,connection_ids,expires_at) VALUES($1,$2,'[]'::jsonb,"+
+      "now()+interval '10 minutes')",
+      [digest(state),ownerId]);
+    return {url:origin+'/connect/rclone/import/batch?state='+encodeURIComponent(state),
+      expiresInSeconds:600,
+      message:'Upload a local Rclone file once; supported remotes are processed individually under this authenticated owner.'};
+  }
+
+  async canDisplayAll(state:string) {
+    const row=await this.db().query(
+      'SELECT digest FROM nyx_rclone_import_batch_states_v1 '+
+      'WHERE digest=$1 AND connection_ids=$2::jsonb AND expires_at>now()',
+      [digest(state),'[]']);
+    return row.rowCount===1;
+  }
+
+  /** Stages all supported remotes. The browser performs individual read probes afterwards
+   * so Heroku's per-request timeout cannot interrupt an eight-remote batch.
+   */
+  async stageAll(state:string,config:string) {
+    const row=await this.db().query(
+      'DELETE FROM nyx_rclone_import_batch_states_v1 '+
+      'WHERE digest=$1 AND connection_ids=$2::jsonb AND expires_at>now() '+
+      'RETURNING owner_id',[digest(state),'[]']);
+    if(row.rowCount!==1)throw new Error('RCLONE_BATCH_LINK_EXPIRED');
+    const ownerId=row.rows[0].owner_id as string;
+    assertPublicTenantGoogleOwnerId(ownerId);
+    const parsed=parseLocalRcloneBatch(config);
+    const preexisting=await this.connections.listStorage(ownerId);
+    const existing=new Set(preexisting.filter(x=>x.status!=='revoked')
+      .map(x=>x.displayName.toLowerCase()));
+    const staged:{id:string;name:string;provider:TenantRcloneProvider}[]=[];
+    const skipped:string[]=[];
+    const failed:string[]=[];
+    for(const remote of parsed.items){
+      if(existing.has(remote.name.toLowerCase())) {
+        skipped.push(remote.name);continue;
+      }
+      try{
+        const item=await this.connections.createStorage(
+          ownerId,remote.provider,remote.name);
+        existing.add(remote.name.toLowerCase());
+        await this.connections.storagePermissions(ownerId,item.id,['storage:list']);
+        await this.connections.storageResources(ownerId,item.id,[{
+          kind:remote.provider==='mega'?'mega-root':'drive',
+          id:remote.rootId,capabilities:['storage:list'],
+        }]);
+        await this.storage.stageCredential(ownerId,item.id,remote.profile);
+        staged.push({id:item.id,name:remote.name,provider:remote.provider});
+      }catch{
+        // Do not include tokens, passwords, provider stderr or SQL errors in output.
+        failed.push(remote.name);
+      }
+    }
+    const continuation=randomBytes(32).toString('base64url');
+    await this.db().query(
+      'INSERT INTO nyx_rclone_import_batch_states_v1 '+
+      '(digest,owner_id,connection_ids,expires_at) '+
+      "VALUES($1,$2,$3::jsonb,now()+interval '30 minutes')",
+      [digest(continuation),ownerId,JSON.stringify(staged.map(x=>x.id))]);
+    return {status:'pending_read_probes' as const, continuation,
+      staged,alreadyPresent:skipped,unsupported:parsed.unsupported,
+      rejected:parsed.rejected,failed};
+  }
+
+  /** Each request operates on ONE id authorized by the one-use batch upload. */
+  async probeAndActivateAllStep(continuation:string,id:string) {
+    if(typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))
+      throw new Error('RCLONE_BATCH_ID_INVALID');
+    const result=await this.db().query(
+      'SELECT owner_id,connection_ids FROM nyx_rclone_import_batch_states_v1 '+
+      'WHERE digest=$1 AND expires_at>now()',
+      [digest(continuation)]);
+    if(result.rowCount!==1)throw new Error('RCLONE_BATCH_SESSION_EXPIRED');
+    const ownerId=result.rows[0].owner_id as string;
+    assertPublicTenantGoogleOwnerId(ownerId);
+    const ids=result.rows[0].connection_ids as unknown;
+    if(!Array.isArray(ids)||!ids.includes(id))
+      throw new Error('RCLONE_BATCH_CONNECTION_NOT_AUTHORIZED');
+    const own=await this.connections.getOwned(ownerId,id);
+    if(own.status==='active')return {id,status:'active' as const};
+    if(own.status!=='pending')return {id,status:'failed' as const};
+    const probe=await this.storage.probePending(ownerId,id);
+    if(probe!=='verified')return {id,status:'read_failed' as const};
+    const active=await this.storage.activateImportedReadOnly(ownerId,id);
+    return {id,status:active.status,provider:active.provider};
   }
 
   async canDisplay(state:string) {
