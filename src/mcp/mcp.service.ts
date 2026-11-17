@@ -148,7 +148,7 @@ export class McpService {
           }
           : { available: true, status: 'registered-requires-verified-bootstrap' },
         sourceRecovery: {
-          inaccessibleDriveId: 'Re-discover the resource by name and verified parent in the same authorized Drive account; retry an exact read. Do not infer deletion or swap identities from a 404.',
+          inaccessibleDriveId: 'Resolve the source owner and use that authorized Drive account for the exact read. A 404 under a different connected account is an access mismatch, not proof of deletion. Re-discover in the verified source owner account; never silently switch owners or change access.',
           authorityOrder: 'current-valid-Footer -> referenced-Head-and-Body -> owning-Area-sources',
           completionGate: 'No canonical-initialization COMPLETE or FIF verification without those live receipts.',
           privateBoundary: 'Never route public MCP tenants into the private MAIN bootstrap.',
