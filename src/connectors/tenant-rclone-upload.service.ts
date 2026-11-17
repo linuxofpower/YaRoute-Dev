@@ -117,28 +117,41 @@ export class TenantRcloneUploadService implements OnModuleInit, OnModuleDestroy 
     assertPublicTenantGoogleOwnerId(ownerId);
     const parsed=parseLocalRcloneBatch(config);
     const preexisting=await this.connections.listStorage(ownerId);
-    const existing=new Set(preexisting.filter(x=>x.status!=='revoked')
-      .map(x=>x.displayName.toLowerCase()));
+    const existing=new Map(preexisting.filter(x=>x.status!=='revoked')
+      .map(x=>[x.displayName.toLowerCase(),x]));
     const staged:{id:string;name:string;provider:TenantRcloneProvider}[]=[];
     const skipped:string[]=[];
     const failed:string[]=[];
     for(const remote of parsed.items){
-      if(existing.has(remote.name.toLowerCase())) {
-        skipped.push(remote.name);continue;
-      }
       try{
-        const item=await this.connections.createStorage(
-          ownerId,remote.provider,remote.name);
-        existing.add(remote.name.toLowerCase());
-        await this.connections.storagePermissions(ownerId,item.id,['storage:list']);
-        await this.connections.storageResources(ownerId,item.id,[{
-          kind:remote.provider==='mega'?'mega-root':'drive',
-          id:remote.rootId,capabilities:['storage:list'],
-        }]);
-        await this.storage.stageCredential(ownerId,item.id,remote.profile);
-        staged.push({id:item.id,name:remote.name,provider:remote.provider});
+        let item=existing.get(remote.name.toLowerCase());
+        if(item) {
+          // Resume only an identical unverified pending placeholder; never
+          // overwrite an active or already credentialed connection.
+          const res=item.resources||[];
+          const expectedKind=remote.provider==='mega'?'mega-root':'drive';
+          const matching=item.status==='pending'&&
+            item.externalAccountId==='pending'&&item.provider===remote.provider&&
+            item.capabilities.length===1&&item.capabilities[0]==='storage:list'&&
+            item.providerCapabilities.length===0&&res.length===1&&
+            res[0].kind===expectedKind&&res[0].id===remote.rootId&&
+            res[0].capabilities.length===1&&res[0].capabilities[0]==='storage:list';
+          if(!matching){skipped.push(remote.name);continue;}
+        }else{
+          item=await this.connections.createStorage(ownerId,remote.provider,remote.name);
+          existing.set(remote.name.toLowerCase(),item);
+          await this.connections.storagePermissions(ownerId,item.id,['storage:list']);
+          await this.connections.storageResources(ownerId,item.id,[{
+            kind:remote.provider==='mega'?'mega-root':'drive',
+            id:remote.rootId,capabilities:['storage:list'],
+          }]);
+        }
+        const result=await this.storage.stageImportedCredentialIfAbsent(
+          ownerId,item.id,remote.profile);
+        if(result.staged)staged.push({id:item.id,name:remote.name,provider:remote.provider});
+        else skipped.push(remote.name);
       }catch{
-        // Do not include tokens, passwords, provider stderr or SQL errors in output.
+        // Do not include tokens, passwords, provider stderr or SQL details.
         failed.push(remote.name);
       }
     }
