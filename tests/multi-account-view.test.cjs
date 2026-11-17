@@ -57,6 +57,8 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(ACCOUNT_VIEW_HTML,/openai:set_globals/);
  assert.match(ACCOUNT_VIEW_HTML,/setWidgetState/);
  assert.match(ACCOUNT_VIEW_HTML,/selectedAccountView/);
+ assert.match(ACCOUNT_VIEW_HTML,/Never block local tab selection/);
+ assert.match(source,/accountViewV2Uri=ACCOUNT_VIEW_URI.replace/);
  assert.match(ACCOUNT_VIEW_HTML,/findIndex\(v=>v.label===selectedLabel\)/);
  assert.match(ACCOUNT_VIEW_HTML,/does not switch OAuth credentials/);
  assert.doesNotMatch(ACCOUNT_VIEW_HTML,/localStorage|sessionStorage|document\.cookie|fetch\(/);
