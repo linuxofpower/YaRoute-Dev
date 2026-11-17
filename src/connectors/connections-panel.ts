@@ -471,6 +471,17 @@ function renderTenant(connections){
      item.provider==='google-drive'&&item.status==='active'?
      'Verified Google account (private subject identifier)':'Authorization required');
    detail.className='nyx-connection-detail';box.append(detail);
+   if(item.status==='pending' && rcloneFileImportEnabled){
+     box.append(button('Verify & activate imported connection (read-only)',async()=>{
+       const proof=await call('nyx_storage_connection_test_pending',{id:item.id});
+       if(proof!=='verified')throw Error('Read-only provider verification failed. Keep this connection pending and retry when authorization works.');
+       const result=await call('nyx_storage_connection_finish_import',{id:item.id});
+       if(result?.status!=='active'||result?.connectionId!==item.id)
+         throw Error('No activation receipt. Leave connection pending.');
+       show('Verified and activated '+item.displayName+' with storage:list only.');
+       await refreshTenantStorage();
+     }));
+   }
    if(item.status==='active')box.append(button(
      item.id===selectedTenantAccount?'✓ Selected account':'Use this account',async()=>{
        selectedTenantAccount=item.id;renderTenant(connections);
