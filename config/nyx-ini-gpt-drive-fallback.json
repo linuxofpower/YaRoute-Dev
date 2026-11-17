@@ -1,0 +1,39 @@
+{
+  "schema": "nyx.ini.fallback-proposal.v001",
+  "status": "staged_pending_head_review",
+  "date": "2026-11-17",
+  "command": "ini",
+  "scope": "chat-session",
+  "authority": {
+    "primary": "canonical Head LEAD/Core_Skills/YaRoCLI/nyxcli.json",
+    "routing": [
+      "Head nyx_entry",
+      "CLI semantics",
+      "Basic paths.md",
+      "command-required Areas, Skills and Template",
+      "RESOLVE",
+      "ACT",
+      "VERIFY",
+      "report"
+    ],
+    "current_observed": "H31/B27/F97 CLI v007",
+    "head_sha256": "e857f66037cdae2ee998f714770ce94ee77caebeddcb0bf1ea13fc944a191007"
+  },
+  "fallback": {
+    "when": "MCP plugin unavailable, execution profile invalid, or access denied",
+    "action": "Continue only safe read-only GPT+Drive source resolution and conversation-local initialization allowed by verified Head semantics. Record exact unavailable actions. Do not claim MCP execution, FIF/FIB issuance, authenticated actions, persistence or readiness without receipts.",
+    "constraints": [
+      "Never infer a command's semantics from memory",
+      "Do not relabel execution failure as unsupported command",
+      "Do not bypass access control or authorization",
+      "Never fabricate canonical artifacts or verified hashes",
+      "Staged proposal requires KEY -> FIN -> UPD -> GEN and applicable CAN before canonicalization",
+      "Use least-privilege source reads and do not load secrets"
+    ]
+  },
+  "example": {
+    "input": "Nyx ini Technical EasyWay YaRoute GNo",
+    "treatment": "Resolve global scope token via canonical CLI; initialize requested Technical, EasyWay and YaRoute sources; distinguish chat-local GPT initialization from backend FIF"
+  },
+  "origin": "User-directed addition to configs after blocked NestNyxPro INI EXECUTION_PROFILE_INVALID_OR_UNAVAILABLE; current Drive paths.md and n_paths.json independently consulted."
+}
