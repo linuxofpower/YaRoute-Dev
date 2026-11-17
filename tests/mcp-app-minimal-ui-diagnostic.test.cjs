@@ -23,7 +23,7 @@ test('diagnostic requires no credentials, network, storage, or client JavaScript
  assert.match(region,/readOnlyHint:true,destructiveHint:false/);
 });
 
-test('cached v10-v13 Connections and Home URLs remain available with v14 UI',()=>{
+test('cached v10-v14 Connections and Home URLs remain available with v15 UI',()=>{
  assert.match(source,/legacyConnectionsResourceUri='ui:\/\/nestnyx\/connections\/v9\.html'/);
  assert.match(source,/for \(const version of \[10,11,12,13\]\)/);
  assert.match(source,/CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML/);
