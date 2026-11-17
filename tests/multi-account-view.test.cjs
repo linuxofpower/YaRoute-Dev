@@ -48,7 +48,7 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
  assert.match(source,/NYX_ACCOUNT_VIEW_CALLER_NOT_INCLUDED/);
  assert.match(source,/readOnly:true,noCrossTenantAuthorization:true/);
  assert.match(source,/ACCOUNT_VIEW_URI/);
- assert.equal(ACCOUNT_VIEW_URI,'ui://nestnyx/dev/connections/multi-v1.html');
+ assert.equal(ACCOUNT_VIEW_URI,'ui://nestnyx/dev/connections/multi-v2.html');
  assert.match(ACCOUNT_VIEW_HTML,/role="tablist"/);
  assert.match(ACCOUNT_VIEW_HTML,/authenticated accounts loaded together/);
  assert.ok(ACCOUNT_VIEW_HTML.includes('envelope?.result??envelope'));
