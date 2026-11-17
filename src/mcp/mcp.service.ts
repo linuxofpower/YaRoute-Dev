@@ -290,6 +290,19 @@ export class McpService {
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}));
 
+    // Keep the old read-only viewer resource retrievable from cached ChatGPT
+    // messages while v3 adds delayed-tool-output and selection-state handling.
+    const accountViewV2Uri=ACCOUNT_VIEW_URI.replace(/\/multi-v3\.html$/, '/multi-v2.html');
+    if(accountViewV2Uri===ACCOUNT_VIEW_URI)throw new Error('NYX_ACCOUNT_VIEW_COMPAT_URI_INVALID');
+    server.registerResource('NestNyx Multi-account Viewer (compatibility v2)',accountViewV2Uri,
+      {mimeType:'text/html;profile=mcp-app'},
+      async()=>({contents:[{
+        uri:accountViewV2Uri,mimeType:'text/html;profile=mcp-app',
+        text:ACCOUNT_VIEW_HTML,
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
+          'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
+      }]}));
+
     // Separate global and thread entrypoints make each launcher independently
     // discoverable. Both reuse the SAME authenticated, read-only view payload.
     // No storage, Head authority, provider grants or credential paths are changed.
