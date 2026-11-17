@@ -11,7 +11,7 @@ const settings=()=>({
   NYX_PUBLIC_CONNECTORS_ENABLED:'true',
   NYX_MULTIUSER_RCLONE_ENABLED:'true',
   NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED:'true',
-  DATABASE_URL:'postgresql://operator@example.invalid/neondb',
+  DATABASE_URL:'postgresql://db.example.invalid/neondb',
   NYX_STORAGE_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),
 });
 
