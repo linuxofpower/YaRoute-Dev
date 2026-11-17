@@ -163,6 +163,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 <button type="button" data-open="nyx-google-group" ${publicMegaOnly ? 'hidden' : ''}>🌈 Google Drive<small>Connect your own Google Drive</small></button>
 <button type="button" data-open="nyx-mega-group">🗄️ MEGA<small>Connect your own MEGA account</small></button>
 <button type="button" data-open="nyx-rclone-group" ${publicTenantStorage ? 'hidden' : ''}>🧰 Existing Rclone<small>View private configuration metadata</small></button>
+<button type="button" id="nyx-import-all" ${rcloneFileImportEnabled ? '' : 'hidden'}>📂 Import Rclone file<small>Automatically connect all supported remotes</small></button>
 <button type="button" data-open="nyx-other-group" data-github="true">🐙 GitHub<small>Create a named GitHub connection</small></button>
 </div>
 <p class="muted">${publicTenantStorage ? (publicMegaOnly ? (megaMutationEnabled ? 'Sign in with Google to NestNyx first. Your MEGA starts with listing access; you can separately request move/rename and delete-to-trash permissions and reauthorize credentials. Live writes require a disposable-file test.' : 'Sign in with Google to NestNyx first, then connect your own read-only MEGA account.') + ' The operator\'s private Rclone is inaccessible to public tenants.' : (megaMutationEnabled ? 'Connect your own Google Drive (read-only pilot) or MEGA (read-only initially, with separately gated move/trash permissions).' : 'Connect your own read-only Google Drive or MEGA storage.') + ' Other users and private legacy remotes remain inaccessible.') : 'Multi-user storage onboarding requires a separate isolated public deployment.'} Never enter credentials in ChatGPT.</p>
@@ -949,6 +950,19 @@ document.getElementById('nyx-google-shortcut').addEventListener('click',()=>{
  show('Create a Google Drive connection, enter its folder ID, and press Google OAuth sign-in. Consent opens securely in your browser.');
 });
 document.getElementById('refresh').addEventListener('click',()=>refresh().catch(e=>show(e.message,true)));
+document.getElementById('nyx-import-all').addEventListener('click',async()=>{
+ try{
+  const result=await call('nyx_storage_connection_begin_import_all',{});
+  if(typeof result?.url!=='string')throw Error('Batch import link unavailable');
+  const link=new URL(result.url);
+  const base=${JSON.stringify(iconOrigin)};
+  if(!base||link.protocol!=='https:'||link.origin!==base||
+     link.pathname!=='/connect/rclone/import/batch')
+    throw Error('Untrusted Rclone batch import link');
+  await request('ui/open-link',{url:result.url});
+  show('Select your rclone.conf once. NestNyx will stage and test every supported Google Drive and MEGA remote, then show results.');
+ }catch(e){show(e.message||'Cannot begin batch import',true);}
+});
 document.getElementById('rclone-refresh').addEventListener('click',()=>refreshRclone());
 for(const [provider,label] of [['google-drive','google'],['mega','mega']]){
  document.getElementById('tenant-'+label+'-add').addEventListener('click',async()=>{

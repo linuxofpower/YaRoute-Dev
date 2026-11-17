@@ -361,6 +361,97 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     return status;
   }
 
+  /**
+   * Complete a newly imported, server-attested, freshly read-verified profile.
+   * This grants storage:list only; no operator-owned secrets or write grants.
+   * Metadata and ciphertext promotion commit together in one transaction.
+   */
+  async activateImportedReadOnly(ownerId:string, connectionId:string) {
+    const owned=await this.owned(ownerId,connectionId);
+    if(owned.provider!=='mega' && owned.provider!=='google-drive')
+      throw new Error('TENANT_IMPORT_PROVIDER_FORBIDDEN');
+    if(owned.status!=='pending')throw new Error('TENANT_IMPORT_NOT_PENDING');
+    const client=await this.db().connect();
+    let begun=false;
+    try {
+      await client.query('BEGIN');begun=true;
+      const m=await client.query(
+        'SELECT provider,status,external_account_id,capabilities,'+
+        'provider_capabilities,resources FROM nyx_connector_connections '+
+        'WHERE owner_id=$1 AND id=$2 FOR UPDATE',[ownerId,connectionId]);
+      if(m.rowCount!==1||m.rows[0].status!=='pending'||
+         m.rows[0].external_account_id!=='pending'||
+         m.rows[0].provider!==owned.provider)
+        throw new Error('TENANT_IMPORT_METADATA_CHANGED');
+      const meta=m.rows[0];
+      const caps=typeof meta.capabilities==='string'?
+        JSON.parse(meta.capabilities):meta.capabilities;
+      const providerCaps=typeof meta.provider_capabilities==='string'?
+        JSON.parse(meta.provider_capabilities):meta.provider_capabilities;
+      const roots=typeof meta.resources==='string'?JSON.parse(meta.resources):meta.resources;
+      if(!Array.isArray(caps)||caps.length!==1||caps[0]!=='storage:list'||
+         !Array.isArray(providerCaps)||providerCaps.length!==0||
+         !Array.isArray(roots)||roots.length!==1||
+         roots[0].kind!==(owned.provider==='mega'?'mega-root':'drive')||
+         !Array.isArray(roots[0].capabilities)||
+         roots[0].capabilities.length!==1||
+         roots[0].capabilities[0]!=='storage:list')
+        throw new Error('TENANT_IMPORT_READ_GRANTS_CHANGED');
+      const proof=await client.query(
+        'SELECT provider,namespace,external_id FROM nyx_storage_verified_identity_v1 '+
+        'WHERE owner_id=$1 AND connection_id=$2 FOR UPDATE',[ownerId,connectionId]);
+      if(proof.rowCount!==1||proof.rows[0].provider!==owned.provider||
+         typeof proof.rows[0].namespace!=='string'||
+         typeof proof.rows[0].external_id!=='string'||
+         !proof.rows[0].namespace||!proof.rows[0].external_id)
+        throw new Error('TENANT_IMPORT_PROVIDER_ATTESTATION_REQUIRED');
+      const pending=await client.query(
+        'SELECT provider,encrypted_profile FROM nyx_rclone_tenant_credentials_v2 '+
+        'WHERE owner_id=$1 AND connection_id=$2 AND state=$3 '+
+        "AND read_verified_at>now()-interval '15 minutes' FOR UPDATE",
+        [ownerId,connectionId,'pending']);
+      if(pending.rowCount!==1||pending.rows[0].provider!==owned.provider)
+        throw new Error('TENANT_IMPORT_FRESH_READ_REQUIRED');
+      const profile=this.open(ownerId,connectionId,owned.provider,
+        pending.rows[0].encrypted_profile as string);
+      if(profile.provider==='google-drive') {
+        if(roots[0].id!==profile.rootFolderId||
+           !(proof.rows[0].namespace.startsWith('my-drive:')||
+             proof.rows[0].namespace.startsWith('shared-drive:')))
+          throw new Error('TENANT_IMPORT_GOOGLE_ROOT_CHANGED');
+      } else if(profile.provider==='mega') {
+        if(roots[0].id!==profile.verifiedRoot||
+           (roots[0].id!=='MEGA_ROOT' &&
+            roots[0].id!==tenantRclonePath(roots[0].id)))
+          throw new Error('TENANT_IMPORT_MEGA_ROOT_CHANGED');
+      }
+      const active=await client.query(
+        "SELECT connection_id FROM nyx_rclone_tenant_credentials_v2 "+
+        "WHERE owner_id=$1 AND connection_id=$2 AND state='active' FOR UPDATE",
+        [ownerId,connectionId]);
+      if(active.rowCount!==0)throw new Error('TENANT_IMPORT_ACTIVE_ALREADY_PRESENT');
+      const metadata=await client.query(
+        "UPDATE nyx_connector_connections SET status='active',"+
+        "external_account_id=$3,provider_capabilities='[\"storage:list\"]'::jsonb,"+
+        "updated_at=now() WHERE owner_id=$1 AND id=$2 AND status='pending' "+
+        "AND external_account_id='pending' RETURNING id",
+        [ownerId,connectionId,proof.rows[0].external_id]);
+      if(metadata.rowCount!==1)throw new Error('TENANT_IMPORT_METADATA_RACE');
+      const promoted=await client.query(
+        "UPDATE nyx_rclone_tenant_credentials_v2 SET state='active',updated_at=now() "+
+        "WHERE owner_id=$1 AND connection_id=$2 AND state='pending' "+
+        "AND read_verified_at>now()-interval '15 minutes' RETURNING connection_id",
+        [ownerId,connectionId]);
+      if(promoted.rowCount!==1)throw new Error('TENANT_IMPORT_CREDENTIAL_RACE');
+      await client.query('COMMIT');begun=false;
+      return {status:'active' as const,connectionId,provider:owned.provider,
+        capabilities:['storage:list'] as const};
+    }catch(error) {
+      if(begun)await client.query('ROLLBACK').catch(()=>{});
+      throw error;
+    }finally{client.release();}
+  }
+
   /** Requires independent provider grant AND successful recent read probe. */
   async activate(ownerId: string, connectionId: string) {
     const owner = await this.owned(ownerId, connectionId);
