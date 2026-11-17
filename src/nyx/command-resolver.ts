@@ -30,7 +30,7 @@ export class NyxCommandResolver {
       // Scope/depth modifiers are interpreted only for contracts that explicitly opt into chat scope.
       // Historical commands without that contract keep their previous argument semantics.
       if (!contract.scope) {
-        if (token === '++' || token === '--' || localModifierPattern.test(token) || inheritedModifierPattern.test(token)) throw new Error('SCOPE_NOT_SUPPORTED');
+        if (token === '++' || token === '--') throw new Error('SCOPE_NOT_SUPPORTED');
         targetArgs.push(token);
         continue;
       }
