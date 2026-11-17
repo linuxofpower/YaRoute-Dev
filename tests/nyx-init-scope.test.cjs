@@ -85,6 +85,31 @@ test('scoped ini defaults to oLN and treats modifiers as configuration, not targ
   assert.throws(() => resolver.resolve(cli, { command: 'ini', args: ['oGN'] }), /MODIFIER_REQUIRES_TARGET/);
 });
 
+
+test('Head inherited GNo syntax is scope, not a fourth initialization target', () => {
+  const resolver = new NyxCommandResolver(); const cli = makeCli();
+  const out = resolver.resolve(cli, { command: 'ini',
+    args: ['Technical', 'YaRoute', 'EasyWay', 'GNo'] });
+  assert.deepEqual({
+    targets: out.targets, scope: out.scope, depth: out.depth, modifier: out.modifier,
+  }, {
+    targets: ['Technical', 'YaRoute', 'EasyWay'],
+    scope: 'global', depth: 'normal', modifier: 'oGN',
+  });
+  assert.equal(out.modifierSource, 'explicit');
+  assert.throws(() => resolver.resolve(cli, { command: 'ini',
+    args: ['Technical', 'oGN', 'GNo'] }), /MODIFIER_CONFLICT/);
+  assert.throws(() => resolver.resolve(cli, { command: 'ini',
+    args: ['GNo'] }), /MODIFIER_REQUIRES_TARGET/);
+});
+
+test('unscoped canonical commands cannot silently interpret modifier syntax as a target', () => {
+  const resolver = new NyxCommandResolver(); const cli = makeCli();
+  delete cli.commands.ini.execution.scope;
+  assert.throws(() => resolver.resolve(cli, {command:'ini', args:['Technical', 'GNo']}), /SCOPE_NOT_SUPPORTED/);
+  assert.throws(() => resolver.resolve(cli, {command:'ini', args:['Technical', 'oGN']}), /SCOPE_NOT_SUPPORTED/);
+});
+
 test('scope upgrade and downgrade require an existing conversation identity', () => {
   const resolver = new NyxCommandResolver(); const cli = makeCli();
   assert.throws(() => resolver.resolve(cli, { command: 'ini', args: ['++'] }), /CONVERSATION_ID_REQUIRED/);
