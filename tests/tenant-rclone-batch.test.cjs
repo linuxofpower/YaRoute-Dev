@@ -58,8 +58,8 @@ test('batch stages all supported without overwriting active/pending connections 
   },
  };
  const storage={
-  stageCredential:async(actor,id,profile)=>{
-   assert.equal(actor,owner);staged.push({id,profile});
+  stageImportedCredentialIfAbsent:async(actor,id,profile)=>{
+   assert.equal(actor,owner);staged.push({id,profile});return {staged:true};
   },
   probePending:async(actor,id)=>{
    assert.equal(actor,owner);assert.ok(profiles.has(id));return 'verified';
