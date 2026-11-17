@@ -123,9 +123,9 @@ Waiting for authenticated account summaries…</section>
  function show(n){
    const v=records[n];if(!v)return;
    current=n;selectedLabel=v.label;
-   if(typeof window.openai?.setWidgetState==='function'){
-     window.openai.setWidgetState({privateContent:{selectedAccountView:selectedLabel}});
-   }
+   try{
+     window.openai?.setWidgetState?.({privateContent:{selectedAccountView:selectedLabel}});
+   }catch{ /* Host state persistence is optional. Never block local tab selection. */ }
    for(const [i,button] of Array.from(tabs.children).entries()){
      button.setAttribute('aria-selected',String(i===n));button.tabIndex=i===n?0:-1;
    }
