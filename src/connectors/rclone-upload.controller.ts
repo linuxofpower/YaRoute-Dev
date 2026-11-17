@@ -33,7 +33,7 @@ export class RcloneUploadController {
       '<main style="font:16px system-ui;margin:3rem auto;max-width:38rem">'+
       '<h1>Import one local Rclone remote</h1>'+
       '<p>Choose a local rclone.conf file. Only the remote you name is imported; '+
-      'other remotes are ignored. The file is sent directly to this NestNyx HTTPS '+
+      'other remotes are not sent. The selected remote is sent directly to this NestNyx HTTPS '+
       'service, never to ChatGPT. Do not use a shared computer.</p>'+
       '<label>Local Rclone file <input id="file" type="file" required '+
       'accept=".conf,.txt,text/plain"></label><br><br>'+
@@ -53,7 +53,13 @@ export class RcloneUploadController {
       'if(!f||!r||!/^[A-Za-z][A-Za-z0-9_.-]{0,119}$/.test(r)||'+
       'f.size>65536||f.size<10){s.textContent="Choose a valid file (up to 64 KiB) and remote name.";return;}'+
       'b.disabled=true;s.textContent="Checking remote…";'+
-      'try{const content=await f.text();'+
+      'try{const lines=(await f.text()).split(/\\r?\\n/);'+
+      'let selected=false,sections=0;const chosen=[];'+
+      'for(const line of lines){const match=/^\\[([A-Za-z][A-Za-z0-9_.-]{0,119})\\]$/.exec(line.trim());'+
+      'if(match){selected=match[1]===r;if(selected)sections++;}'+
+      'if(selected)chosen.push(line);}'+
+      'if(sections!==1)throw Error("Selected remote not unique");'+
+      'const content=chosen.join("\\n");'+
       'const response=await fetch("/connect/rclone/import/complete",'+
       '{method:"POST",credentials:"omit",headers:{"Content-Type":"application/json",'+
       '"X-Nyx-Rclone-Import":"1"},body:JSON.stringify({state,remote:r,config:content})});'+
