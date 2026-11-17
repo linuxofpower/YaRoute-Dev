@@ -78,3 +78,25 @@ test('invalid requests fail closed',()=>{
   assert.throws(()=>choose([],req('storage:list',{path:'../secret'})),/INVALID/);
   assert.throws(()=>choose([],req('repository:metadata')),/INVALID/);
 });
+
+test('Google Drive duplicate selection uses verified namespace and exact root',()=>{
+  const narrow=candidate('drive-a',['storage:list']);
+  const broad=candidate('drive-b',['storage:list','storage:move']);
+  for (const item of [narrow,broad]) {
+    item.connection.provider='google-drive';
+    item.verifiedProvider='google-drive';
+    item.verifiedNamespace='my-drive:permission-id';
+    item.connection.resources[0].kind='drive';
+    item.connection.resources[0].id='root';
+  }
+  const request=req('storage:list',{provider:'google-drive',
+    verifiedNamespace:'my-drive:permission-id',rootId:'root'});
+  assert.equal(choose([narrow,broad],request).id,'drive-b');
+  assert.throws(()=>choose([narrow,broad],{...request,rootId:'other'}),/NO_AUTHORIZED/);
+});
+
+test('relabeling a connection cannot change identity or win selection by itself',()=>{
+  const a=candidate('aaa'),b=candidate('bbb');
+  b.connection.displayName='Extremely powerful admin account';
+  assert.equal(choose([b,a],req()).id,'aaa');
+});
