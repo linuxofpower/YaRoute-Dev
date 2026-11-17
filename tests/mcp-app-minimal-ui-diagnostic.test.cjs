@@ -28,7 +28,7 @@ test('cached v10-v14 Connections and Home URLs remain available with v15 UI',()=
  assert.match(source,/for \(const version of \[10,11,12,13,14\]\)/);
  assert.match(source,/CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML/);
  assert.match(source,/CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML/);
- assert.match(source,/oldUri=item\.uri\.replace\(/);
+ assert.match(source,/oldUri=compatibilityResourceUri\(item\.uri,version\)/);
  assert.match(source,/server\.registerResource\(item\.label\+' \(compatibility v'/);
  assert.match(source,/uri:oldUri,mimeType:'text\/html;profile=mcp-app',text:item\.html/);
  assert.match(source,/connectDomains:\[\]/);
