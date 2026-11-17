@@ -95,3 +95,69 @@ export function parseSelectedLocalRclone(
   }
   return profile;
 }
+
+
+export interface LocalRcloneBatchItem {
+  name: string;
+  provider: TenantRcloneProvider;
+  rootId: string;
+  profile: TenantRcloneProfile;
+}
+export interface LocalRcloneBatch {
+  items: LocalRcloneBatchItem[];
+  unsupported: string[];
+  rejected: {name:string; reason:string}[];
+}
+
+/** Inspect all sections without accepting names, arbitrary options or credentials as authority. */
+export function parseLocalRcloneBatch(contents: string): LocalRcloneBatch {
+  if(typeof contents!=='string'||contents.length<10||contents.length>65536||
+     contents.includes('\0'))throw new Error('RCLONE_BATCH_FILE_INVALID');
+  const byName = new Map<string,{name:string;lines:string[]}>();
+  let current: {name:string;lines:string[]} | undefined;
+  const lines=contents.split(/\r?\n/);
+  for(const line of lines) {
+    const t=line.trim();
+    if(!t||t.startsWith('#')||t.startsWith(';')) {
+      if(current)current.lines.push(line);
+      continue;
+    }
+    if(t.startsWith('[')) {
+      const match=/^\[([A-Za-z][A-Za-z0-9_.-]{0,79})\]$/.exec(t);
+      if(!match)throw new Error('RCLONE_BATCH_SECTION_INVALID');
+      const key=match[1].toLowerCase();
+      if(byName.has(key))throw new Error('RCLONE_BATCH_DUPLICATE_REMOTE');
+      current={name:match[1],lines:[t]};
+      byName.set(key,current);
+      if(byName.size>24)throw new Error('RCLONE_BATCH_REMOTE_LIMIT');
+    } else if(current) current.lines.push(line);
+    else throw new Error('RCLONE_BATCH_FORMAT_INVALID');
+  }
+  const items:LocalRcloneBatchItem[]=[];
+  const unsupported:string[]=[];
+  const rejected:{name:string;reason:string}[]=[];
+  for(const item of byName.values()) {
+    const typeLines=item.lines.filter(line=>/^\s*type\s*=/.test(line));
+    if(typeLines.length!==1) {
+      rejected.push({name:item.name,reason:'invalid_provider_type'});continue;
+    }
+    const kind=typeLines[0].split('=').slice(1).join('=').trim();
+    if(kind!=='drive'&&kind!=='mega') {
+      unsupported.push(item.name);continue;
+    }
+    const provider:TenantRcloneProvider=kind==='drive'?'google-drive':'mega';
+    const rootLines=item.lines.filter(line=>/^\s*root_folder_id\s*=/.test(line));
+    if(rootLines.length>1){rejected.push({name:item.name,reason:'invalid_root'});continue;}
+    const rootId=provider==='mega'?'MEGA_ROOT':
+      rootLines.length===1?rootLines[0].split('=').slice(1).join('=').trim():'root';
+    try {
+      const profile=parseSelectedLocalRclone(
+        item.lines.join('\n'),item.name,provider,rootId);
+      items.push({name:item.name,provider,rootId,profile});
+    } catch {
+      rejected.push({name:item.name,reason:'unsupported_or_invalid_profile'});
+    }
+  }
+  if(items.length>12)throw new Error('RCLONE_BATCH_SUPPORTED_REMOTE_LIMIT');
+  return {items,unsupported,rejected};
+}
