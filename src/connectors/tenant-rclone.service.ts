@@ -222,6 +222,33 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
    * Never expose this method directly through MCP/HTTP and never accept ownerId
    * or raw credentials from model-generated arguments.
    */
+  /**
+   * Safe batch retry: stage only when no pending ciphertext and no provider
+   * identity proof exist. Never replace a pending OAuth/MEGA enrollment.
+   */
+  async stageImportedCredentialIfAbsent(ownerId:string,connectionId:string,
+                                         profile:TenantRcloneProfile) {
+    const item=await this.owned(ownerId,connectionId,profile.provider);
+    if(item.status!=='pending'||item.externalAccountId!=='pending')
+      throw new Error('TENANT_IMPORT_PENDING_CONNECTION_REQUIRED');
+    if(profile.provider==='mega' &&
+       (profile.transientTwoFactorCode!==undefined||
+        profile.verifiedRoot!==undefined))
+      throw new Error('TENANT_IMPORT_TRANSIENT_MEGA_FIELD_FORBIDDEN');
+    tenantRcloneConfig(profile);
+    const packed=this.seal(ownerId,connectionId,profile);
+    const saved=await this.db().query(
+      'INSERT INTO nyx_rclone_tenant_credentials_v2 '+
+      '(owner_id,connection_id,provider,encrypted_profile,state) '+
+      "SELECT $1,$2,$3,$4,'pending' "+
+      'WHERE NOT EXISTS (SELECT 1 FROM nyx_storage_verified_identity_v1 '+
+      'WHERE owner_id=$1 AND connection_id=$2) '+
+      'ON CONFLICT (owner_id,connection_id,state) DO NOTHING '+
+      'RETURNING connection_id',
+      [ownerId,connectionId,profile.provider,packed]);
+    return {staged:saved.rowCount===1};
+  }
+
   async stageCredential(ownerId: string, connectionId: string, profile: TenantRcloneProfile) {
     const item = await this.owned(ownerId, connectionId, profile.provider);
     if (item.status === 'revoked') throw new Error('TENANT_RCLONE_CONNECTION_FORBIDDEN');
