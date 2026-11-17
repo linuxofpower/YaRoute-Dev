@@ -368,6 +368,8 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
    */
   async activateImportedReadOnly(ownerId:string, connectionId:string) {
     const owned=await this.owned(ownerId,connectionId);
+    if(owned.provider!=='mega' && owned.provider!=='google-drive')
+      throw new Error('TENANT_IMPORT_PROVIDER_FORBIDDEN');
     if(owned.status!=='pending')throw new Error('TENANT_IMPORT_NOT_PENDING');
     const client=await this.db().connect();
     let begun=false;
