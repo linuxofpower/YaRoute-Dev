@@ -34,6 +34,7 @@ import { githubInstallationUrl } from '../connectors/github-app.service';
 import { CONNECTIONS_PANEL_URI, CONNECTIONS_PANEL_HTML, CONNECTIONS_HOME_URI, CONNECTIONS_HOME_HTML, CONNECTIONS_PANEL_LABEL, CONNECTIONS_HOME_LABEL, CONNECTIONS_PANEL_BRAND_ORIGIN } from '../connectors/connections-panel';
 import type { ConnectorCapability, ConnectorResourceRule } from '../connectors/connector-registry';
 import { ACCOUNT_VIEW_URI, ACCOUNT_VIEW_HTML, signStorageView, verifyStorageView } from '../connectors/multi-account-view';
+import { compatibilityResourceUri } from './mcp-ui-version';
 import { PRIVATE_REMOTE_ROOT, findPrivateRemote, privateRemoteView,
   type ApprovedPrivateRemote } from '../connectors/private-pro-virtual-connections';
 
@@ -227,8 +228,7 @@ export class McpService {
         {label:CONNECTIONS_PANEL_LABEL,uri:CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML},
         {label:CONNECTIONS_HOME_LABEL,uri:CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML},
       ]) {
-        const oldUri=item.uri.replace(/\/v14\.html$/, '/v'+version+'.html');
-        if (oldUri===item.uri)throw new Error('NYX_MCP_UI_ALIAS_URI_INVALID');
+        const oldUri=compatibilityResourceUri(item.uri,version);
         server.registerResource(item.label+' (compatibility v'+version+')',oldUri,
           {mimeType:'text/html;profile=mcp-app'},
           async()=>({contents:[{
