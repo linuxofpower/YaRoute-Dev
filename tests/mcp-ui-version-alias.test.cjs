@@ -28,5 +28,5 @@ test('resource aliases reject unchanged, unversioned and invalid target URIs',()
 test('the MCP server uses validated dynamic alias construction, not hardcoded v14',()=>{
  const source=fs.readFileSync(path.join(__dirname,'..','src','mcp','mcp.service.ts'),'utf8');
  assert.match(source,/const oldUri=compatibilityResourceUri\(item\.uri,version\)/);
- assert.doesNotMatch(source,/item\.uri\.replace\(\/\\\/v14\\\.html\$/);
+ assert.doesNotMatch(source,/oldUri=item\.uri\.replace\(/);
 });
