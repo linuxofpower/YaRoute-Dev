@@ -243,6 +243,8 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       "SELECT $1,$2,$3,$4,'pending' "+
       'WHERE NOT EXISTS (SELECT 1 FROM nyx_storage_verified_identity_v1 '+
       'WHERE owner_id=$1 AND connection_id=$2) '+
+      'AND NOT EXISTS (SELECT 1 FROM nyx_rclone_tenant_credentials_v2 ' +
+      'WHERE owner_id=$1 AND connection_id=$2) ' +
       'ON CONFLICT (owner_id,connection_id,state) DO NOTHING '+
       'RETURNING connection_id',
       [ownerId,connectionId,profile.provider,packed]);
