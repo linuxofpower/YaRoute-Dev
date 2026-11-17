@@ -20,6 +20,7 @@ import { CopyJobPayload } from '../storage/storage.types';
 import { assessPotentialFinancialLoss } from '../connectors/financial-risk-preflight';
 import { ConnectorsService } from '../connectors/connectors.service';
 import { TenantRcloneService } from '../connectors/tenant-rclone.service';
+import { TenantRcloneUploadService } from '../connectors/tenant-rclone-upload.service';
 import { TenantGoogleOAuthService } from '../connectors/tenant-google-oauth.service';
 import { TenantMegaEnrollmentService } from '../connectors/tenant-mega-enrollment.service';
 import { publicTenantMegaOnly } from '../connectors/public-tenant-provider.policy';
@@ -57,6 +58,7 @@ export class McpService {
     private readonly tenantKeys: NyxTenantKeyService,
     private readonly connections: ConnectorsService,
     private readonly tenantRclone: TenantRcloneService,
+    private readonly tenantRcloneUpload: TenantRcloneUploadService,
     private readonly tenantGoogle: TenantGoogleOAuthService,
     private readonly tenantMega: TenantMegaEnrollmentService,
     private readonly github: GithubReadonlyConnector,
@@ -155,6 +157,7 @@ export class McpService {
              'nyx_storage_connection_begin_google','nyx_storage_connection_begin_mega',
              'nyx_storage_connection_test_pending','nyx_storage_connection_activate',
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
+              ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import'] : []),
               'nyx_storage_connection_revoke',
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
                 ['nyx_storage_mega_file_mutate'] : [])] : []),
@@ -827,6 +830,18 @@ export class McpService {
         annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
       },async({id,rootPath})=>this.safeTool(()=>
         this.tenantMega.begin(this.connectorOwner(),id,rootPath)));
+
+      // Only a signed owner can obtain a short-lived first-party upload link.
+      // Never accept local Rclone credential bytes in MCP arguments.
+      if (process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true') {
+        server.registerTool('nyx_storage_connection_begin_import', {
+          title:'Import my local Rclone file via secure HTTPS',
+          description:'Owner-bound one-time HTTPS link for selecting one remote from a local Rclone file. Do not send file contents or secrets to ChatGPT.',
+          inputSchema:z.object({id:z.string().uuid()}).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+        },async({id})=>this.safeTool(()=>
+          this.tenantRcloneUpload.begin(this.connectorOwner(),id)));
+      }
 
       server.registerTool('nyx_storage_connection_test_pending', {
         title: 'Check pending connection connectivity',
