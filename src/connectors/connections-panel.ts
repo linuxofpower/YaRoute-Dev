@@ -9,8 +9,8 @@ const connectionsIsDev = process.env.NYX_DEPLOYMENT_MODE === 'public' ||
   process.env.NYX_SERVICE_NAME === 'DevProNestNyx' ||
   process.env.NYX_PUBLIC_URL === 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
 const connectionsKind = connectionsIsDev ? 'dev' : 'pro';
-export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v14.html';
-export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v14.html';
+export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v15.html';
+export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v15.html';
 export const CONNECTIONS_PANEL_LABEL = connectionsIsDev ? '🔵 NestNyx Dev · Connections' : '🟣 NestNyx Pro · Connections';
 export const CONNECTIONS_HOME_LABEL = connectionsIsDev ? '🏠 NestNyx Dev · Home' : '🏠 NestNyx Pro · Home';
 // Public users connect only their own storage; never show the operator's
@@ -115,6 +115,11 @@ body{max-width:900px;padding:clamp(10px,2.8vw,22px);line-height:1.45}
 #nyx-account-bar label{font-size:12px}
 #nyx-account-bar select,#nyx-google-shortcut{width:100%;box-sizing:border-box;border-radius:9px;min-height:38px}
 #nyx-google-shortcut{border-color:var(--nyx-accent)}
+#nyx-import-launch{border:2px solid var(--nyx-accent);font-weight:750;min-height:46px;flex:none}
+#nyx-import-banner[hidden]{display:none}
+#nyx-import-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+#nyx-import-banner p{margin:0;max-width:550px}
+#nyx-import-banner strong{display:block;margin-bottom:4px}
 .nyx-provider-group{background:var(--nyx-surface);border-color:var(--nyx-border);overflow:hidden}
 .nyx-provider-group[open]>summary{border-bottom:1px solid var(--nyx-border)}
 .nyx-provider-list .card{border:1px solid var(--nyx-border);border-radius:11px;padding:12px;margin:9px 0;background:var(--nyx-surface)}
@@ -136,7 +141,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
  <div class="session-person-main"><div class="session-label" id="nyx-session-user">Checking signed-in account…</div>
  <div class="session-reference" id="nyx-session-reference">OAuth verification pending</div></div></div>
  <div class="session-actions"><button class="session-switch" id="nyx-add-google-login" type="button" aria-expanded="false" aria-controls="nyx-login-add-help">+ Add Google account</button>
- <button class="session-switch" id="nyx-view-both-google" type="button">View both Google accounts</button>
+ <button class="session-switch" id="nyx-view-both-google" type="button">Switch Primary / Personal view</button>
  <button class="session-switch" id="nyx-switch-login" type="button" aria-expanded="false" aria-controls="nyx-switch-help">About account views</button></div>
  <div id="nyx-login-add-help" hidden role="region" aria-label="Add a Google login">
  <strong>Keep your existing account connected.</strong>
@@ -152,11 +157,16 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
  <p class="account-detail" id="nyx-active-identity">No active cloud account selected.</p>
  </div>
  <div class="account-picker">
- <label for="nyx-account-select">Selected cloud account</label>
+ <label for="nyx-account-select">Storage connection within this Google login</label>
  <select id="nyx-account-select" aria-label="Switch between your authorized storage accounts"><option value="">No active account</option></select>
+ <p class="muted">This selector is not an OAuth account switch. Use the Primary / Personal view above to compare both connected Google profiles.</p>
  <button id="nyx-google-shortcut" type="button" ${publicMegaOnly ? 'disabled title="Google Drive is disabled in MEGA-only mode"' : ''}>Connect Google Drive</button>
  </div>
 </div>
+<section id="nyx-import-banner" ${rcloneFileImportEnabled ? '' : 'hidden'} aria-label="Import local Rclone configuration">
+ <div><strong>📂 Import all my Rclone remotes</strong><p class="muted">Choose one local rclone.conf file. NestNyx stages supported Google Drive and MEGA connections for the Google login shown above. No credentials go through ChatGPT messages.</p></div>
+ <button id="nyx-import-launch" type="button">Choose rclone.conf</button>
+</section>
 <section id="nyx-add-menu" hidden aria-label="Add a connection">
 <h2>Add a connection</h2>
 <div id="nyx-provider-choices" role="group" aria-label="Choose a provider">
@@ -461,6 +471,17 @@ function renderTenant(connections){
      item.provider==='google-drive'&&item.status==='active'?
      'Verified Google account (private subject identifier)':'Authorization required');
    detail.className='nyx-connection-detail';box.append(detail);
+   if(item.status==='pending' && rcloneFileImportEnabled){
+     box.append(button('Verify & activate imported connection (read-only)',async()=>{
+       const proof=await call('nyx_storage_connection_test_pending',{id:item.id});
+       if(proof!=='verified')throw Error('Read-only provider verification failed. Keep this connection pending and retry when authorization works.');
+       const result=await call('nyx_storage_connection_finish_import',{id:item.id});
+       if(result?.status!=='active'||result?.connectionId!==item.id)
+         throw Error('No activation receipt. Leave connection pending.');
+       show('Verified and activated '+item.displayName+' with storage:list only.');
+       await refreshTenantStorage();
+     }));
+   }
    if(item.status==='active')box.append(button(
      item.id===selectedTenantAccount?'✓ Selected account':'Use this account',async()=>{
        selectedTenantAccount=item.id;renderTenant(connections);
@@ -950,19 +971,26 @@ document.getElementById('nyx-google-shortcut').addEventListener('click',()=>{
  show('Create a Google Drive connection, enter its folder ID, and press Google OAuth sign-in. Consent opens securely in your browser.');
 });
 document.getElementById('refresh').addEventListener('click',()=>refresh().catch(e=>show(e.message,true)));
-document.getElementById('nyx-import-all').addEventListener('click',async()=>{
+async function beginRcloneImportAll(){
+ if(!rcloneFileImportEnabled)
+   return show('The Rclone import feature is not enabled on this deployment.',true);
+ const controls=['nyx-import-all','nyx-import-launch'].map(id=>document.getElementById(id));
+ controls.forEach(control=>{control.disabled=true;});
  try{
   const result=await call('nyx_storage_connection_begin_import_all',{});
-  if(typeof result?.url!=='string')throw Error('Batch import link unavailable');
+  if(typeof result?.url!=='string')throw Error('Batch import link unavailable. Reopen the Personal OAuth connection and refresh plugin tools.');
   const link=new URL(result.url);
   const base=${JSON.stringify(iconOrigin)};
   if(!base||link.protocol!=='https:'||link.origin!==base||
      link.pathname!=='/connect/rclone/import/batch')
     throw Error('Untrusted Rclone batch import link');
   await request('ui/open-link',{url:result.url});
-  show('Select your rclone.conf once. NestNyx will stage and test every supported Google Drive and MEGA remote, then show results.');
+  show('Select your rclone.conf once. NestNyx will stage and test each supported Drive/MEGA remote for THIS authenticated Google owner.');
  }catch(e){show(e.message||'Cannot begin batch import',true);}
-});
+ finally{controls.forEach(control=>{control.disabled=false;});}
+}
+document.getElementById('nyx-import-all').addEventListener('click',beginRcloneImportAll);
+document.getElementById('nyx-import-launch').addEventListener('click',beginRcloneImportAll);
 document.getElementById('rclone-refresh').addEventListener('click',()=>refreshRclone());
 for(const [provider,label] of [['google-drive','google'],['mega','mega']]){
  document.getElementById('tenant-'+label+'-add').addEventListener('click',async()=>{
