@@ -157,7 +157,7 @@ export class McpService {
              'nyx_storage_connection_begin_google','nyx_storage_connection_begin_mega',
              'nyx_storage_connection_test_pending','nyx_storage_connection_activate',
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
-              ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import'] : []),
+              ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import','nyx_storage_connection_begin_import_all'] : []),
               'nyx_storage_connection_revoke',
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
                 ['nyx_storage_mega_file_mutate'] : [])] : []),
@@ -841,6 +841,16 @@ export class McpService {
           annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
         },async({id})=>this.safeTool(()=>
           this.tenantRcloneUpload.begin(this.connectorOwner(),id)));
+      }
+
+      if (process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true') {
+        server.registerTool('nyx_storage_connection_begin_import_all', {
+          title:'Import all my local Rclone connections',
+          description:'One-time owner-bound HTTPS file upload. Automatically import all supported Google Drive and MEGA remotes; no file contents or credentials in MCP. Existing connections are preserved.',
+          inputSchema:z.object({}).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+        },async()=>this.safeTool(()=>
+          this.tenantRcloneUpload.beginAll(this.connectorOwner())));
       }
 
       server.registerTool('nyx_storage_connection_test_pending', {
