@@ -72,9 +72,10 @@ export function parseSelectedLocalRclone(
     if (values.client_id) profile.clientId = safe(values.client_id,2048);
     if (values.client_secret) profile.clientSecret = safe(values.client_secret,2048);
     if (values.scope) {
-      if (!['drive','drive.file','drive.readonly'].includes(values.scope))
+      const scope = values.scope;
+      if (scope !== 'drive' && scope !== 'drive.file' && scope !== 'drive.readonly')
         throw new Error('RCLONE_IMPORT_DRIVE_SCOPE_UNSUPPORTED');
-      profile.scope = values.scope;
+      profile.scope = scope;
     }
     return profile;
   }
