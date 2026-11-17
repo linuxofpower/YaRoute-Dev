@@ -4,7 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 // independently under each already-authenticated plugin connection and present
 // them in ONE tabbed UI. It is never a credential, delegation or mutation grant.
 export const ACCOUNT_VIEW_SCHEMA = 'nyx.account-view.snapshot.v1';
-export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v1.html';
+export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v3.html';
 export type StorageViewItem = {
   displayName: string;
   provider: 'mega' | 'google-drive';
@@ -12,11 +12,16 @@ export type StorageViewItem = {
   selected: string[];
   providerVerified: string[];
   resourceCount: number;
+  /** Effective operation, under this connection only; NEVER a union of accounts. */
+  effective?: string[];
+  /** HMAC of confirmed MEGA account and exactly MEGA_ROOT, not a credential. */
+  duplicateKey?: string | null;
 };
 export type StorageViewSnapshot = {
   schema: typeof ACCOUNT_VIEW_SCHEMA;
   ownerHint: string;
   display: string;
+  pictureUrl: string | null;
   issuedAt: number;
   expiresAt: number;
   connections: StorageViewItem[];
@@ -31,11 +36,22 @@ function key(secret: string): Buffer {
   // Domain separation: never use the storage-encryption key directly as HMAC.
   return createHmac('sha256',bytes).update('nyx-account-view-snapshot-v1').digest();
 }
+function trustedPictureUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length>2048) return null;
+  try {
+    const url=new URL(value);
+    return url.origin==='https://lh3.googleusercontent.com' &&
+      url.pathname.startsWith('/') && url.pathname.length>1 &&
+      !url.username && !url.password && !url.search && !url.hash
+      ? url.href : null;
+  } catch { return null; }
+}
 function recordValid(s:StorageViewSnapshot):boolean {
   return !!s && typeof s==='object' &&
     s.schema===ACCOUNT_VIEW_SCHEMA &&
     typeof s.ownerHint==='string' && /^[a-f0-9]{16}$/.test(s.ownerHint) &&
     typeof s.display==='string' && s.display.length>=1 && s.display.length<=120 &&
+    (s.pictureUrl===null || trustedPictureUrl(s.pictureUrl)===s.pictureUrl) &&
     Number.isSafeInteger(s.issuedAt) && Number.isSafeInteger(s.expiresAt) &&
     s.expiresAt-s.issuedAt===180 &&
     Array.isArray(s.connections) && s.connections.length<=12 &&
@@ -47,19 +63,112 @@ function recordValid(s:StorageViewSnapshot):boolean {
       c.selected.every(v=>['storage:list','storage:move','storage:delete'].includes(v)) &&
       Array.isArray(c.providerVerified) && c.providerVerified.length<=3 &&
       c.providerVerified.every(v=>['storage:list','storage:move','storage:delete'].includes(v)) &&
-      Number.isSafeInteger(c.resourceCount) && c.resourceCount>=0 && c.resourceCount<=10);
+      Number.isSafeInteger(c.resourceCount) && c.resourceCount>=0 && c.resourceCount<=10 &&
+      (c.effective===undefined || (Array.isArray(c.effective) &&
+        c.effective.length<=3 && c.effective.every(v=>
+          ['storage:list','storage:move','storage:delete'].includes(v)))) &&
+      (c.duplicateKey===undefined || c.duplicateKey===null ||
+        (typeof c.duplicateKey==='string' && /^[a-f0-9]{32}$/.test(c.duplicateKey))));
+}
+
+export type AccountStorageSource={
+  label:string; ownerHint:string; connections:StorageViewItem[];
+};
+/**
+ * Only a provider-verified, ACTIVE MEGA account rooted at exactly MEGA_ROOT
+ * qualifies for a cross-profile duplicate hint. No label/alias matching.
+ * A hint grants NO authorization, sharing, or cross-tenant access.
+ */
+export function storageSnapshotItem(connection:{
+  displayName:string; provider:string; status:string;
+  capabilities:string[]; providerCapabilities:string[];
+  externalAccountId?:string;
+  resources?:Array<{kind:string;id:string;capabilities:string[]}>;
+},secret:string,megaWriteEnabled:boolean):StorageViewItem {
+  const allow=(c:string)=>['storage:list','storage:move','storage:delete'].includes(c);
+  const selected=(connection.capabilities||[]).filter(allow);
+  const providerVerified=(connection.providerCapabilities||[]).filter(allow);
+  const resources=connection.resources||[];
+  const effective=connection.status==='active'
+    ? selected.filter(c=>providerVerified.includes(c) &&
+      resources.some(r=>r.capabilities.includes(c)) &&
+      (c==='storage:list'||(megaWriteEnabled&&connection.provider==='mega')))
+    : [];
+  let duplicateKey:null|string=null;
+  const email=connection.externalAccountId?.trim().toLowerCase()||'';
+  if(connection.provider==='mega' && connection.status==='active' &&
+     /^[a-z0-9.+_-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) &&
+     resources.length===1 && resources[0].kind==='mega-root' &&
+     resources[0].id==='MEGA_ROOT' && effective.includes('storage:list')) {
+    duplicateKey=createHmac('sha256',key(secret))
+      .update('nyx-verified-mega-duplicate-v1\0'+email+'\0MEGA_ROOT')
+      .digest('hex').slice(0,32);
+  }
+  return {displayName:connection.displayName,
+    provider:connection.provider as 'mega'|'google-drive',
+    status:connection.status as 'active'|'pending'|'revoked',
+    selected,providerVerified,resourceCount:resources.length,
+    effective,duplicateKey};
+}
+export type PreferredDuplicate={
+  duplicateKey:string; provider:'mega'; preferred:{
+    label:string;ownerHint:string;displayName:string;effective:string[];
+  };
+  alternatives:Array<{
+    label:string;ownerHint:string;displayName:string;effective:string[];
+  }>;
+  /** Preferred individual source per operation; metadata only, never a token. */
+  preferredFor:Partial<Record<'storage:list'|'storage:move'|'storage:delete',{
+    label:string;ownerHint:string;displayName:string;effective:string[];
+  }>>;
+};
+/**
+ * Compare verified capabilities of actual individual connections.
+ * Never manufacture a combined permission or authorize a cross-owner call.
+ * Prefer the strongest single connection; Primary wins ONLY an equal grant tie.
+ */
+export function summarizeVerifiedDuplicates(accounts:AccountStorageSource[]):PreferredDuplicate[] {
+  const grouped=new Map<string,Array<{
+    label:string;ownerHint:string;displayName:string;effective:string[];
+  }>>();
+  for(const account of accounts)for(const item of account.connections){
+    if(item.provider!=='mega'||item.status!=='active'||
+       !item.duplicateKey||!item.effective?.includes('storage:list'))continue;
+    const sources=grouped.get(item.duplicateKey)||[];
+    sources.push({label:account.label,ownerHint:account.ownerHint,
+      displayName:item.displayName,effective:[...item.effective]});
+    grouped.set(item.duplicateKey,sources);
+  }
+  const summaries:PreferredDuplicate[]=[];
+  for(const [duplicateKey,sources] of grouped){
+    // At least TWO distinct signed-in OAuth owners must attest the same account.
+    if(new Set(sources.map(s=>s.ownerHint)).size<2)continue;
+    const strength=(a:typeof sources[number])=>new Set(a.effective).size;
+    sources.sort((a,b)=>strength(b)-strength(a) ||
+      Number(b.label==='Primary')-Number(a.label==='Primary') ||
+      a.label.localeCompare(b.label)||a.displayName.localeCompare(b.displayName));
+    const preferredFor:PreferredDuplicate['preferredFor']={};
+    for(const capability of ['storage:list','storage:move','storage:delete'] as const){
+      // One real connection must carry the entire requested capability;
+      // never borrow it from another account or union grants.
+      preferredFor[capability]=sources.find(c=>c.effective.includes(capability));
+    }
+    summaries.push({duplicateKey,provider:'mega',
+      preferred:sources[0],alternatives:sources.slice(1),preferredFor});
+  }
+  return summaries;
 }
 
 export function signStorageView(
   ownerId: string, display: string, connections: StorageViewItem[],
-  secret: string, now = Math.floor(Date.now()/1000),
+  secret: string, now = Math.floor(Date.now()/1000), pictureUrl: string | null = null,
 ): string {
   if(typeof ownerId!=='string'||!ownerId.startsWith('oauth:')||ownerId.length>700)
     throw new Error('NYX_ACCOUNT_VIEW_OWNER_REQUIRED');
   const snapshot: StorageViewSnapshot={
     schema:ACCOUNT_VIEW_SCHEMA,
     ownerHint:createHash('sha256').update(ownerId).digest('hex').slice(0,16),
-    display,issuedAt:now,expiresAt:now+180,connections,
+    display,pictureUrl:trustedPictureUrl(pictureUrl),issuedAt:now,expiresAt:now+180,connections,
   };
   if(!recordValid(snapshot))throw new Error('NYX_ACCOUNT_VIEW_INVALID');
   const body=Buffer.from(JSON.stringify(snapshot)).toString('base64url');
@@ -99,6 +208,10 @@ export const ACCOUNT_VIEW_HTML=`<!doctype html><html lang="en"><head>
 h1{font-size:18px;margin:0 0 4px}.muted{opacity:.75;font-size:12px}
 header{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:16px}
 #tabs{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}
+.avatar{width:34px;height:34px;min-width:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#087d74;color:white;overflow:hidden;font-weight:700}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.account-head{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+#tabs button{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 5px}
 button{font:inherit;min-height:42px;padding:9px 15px;border-radius:999px;border:1px solid #8888;background:transparent;color:inherit;cursor:pointer}
 button[aria-selected=true]{border:2px solid #008b79;background:#008b7922;font-weight:700}
 .panel{border:1px solid #8887;border-radius:14px;padding:15px;min-height:130px}
@@ -106,24 +219,47 @@ button[aria-selected=true]{border:2px solid #008b79;background:#008b7922;font-we
 .row strong{font-size:14px;word-break:break-word}
 .meta{margin-top:4px;font-size:12px;opacity:.82;overflow-wrap:anywhere}
 .note{margin-top:16px;font-size:12px;opacity:.78}
+#overlaps{margin:10px 0 12px;border-color:#008b7990}
+#overlaps h2{font-size:15px;margin:0 0 9px}
+#overlaps p{font-size:12px;line-height:1.5}
+#overlaps .source{padding:7px 0;border-top:1px solid #8883}
 </style></head><body>
 <header><div><h1>NestNyx Dev · Connections</h1>
 <div class="muted" id="summary">Primary and Personal · collecting authenticated connection summaries</div></div>🔐</header>
+<section id="overlaps" class="panel" aria-label="Verified overlapping MEGA accounts" hidden></section>
 <div id="tabs" role="tablist" aria-label="Choose which connected account to examine"></div>
 <section id="panel" class="panel" role="tabpanel" tabindex="0" aria-live="polite">
 Waiting for authenticated account summaries…</section>
-<p class="note">Switching tabs changes only what you see. It does not switch OAuth credentials, link accounts, grant access, or authorize file operations. Snapshots expire after 3 minutes. Use your authenticated account when requesting an action.</p>
+<p class="note">Switching tabs changes only what you see. It does not switch OAuth credentials, link accounts, grant access, or authorize file operations. Snapshots expire after 3 minutes. A tab never authorizes another account's operations; route actions through the original signed-in profile. A duplicate summary does not combine permissions or imply permanent-delete access.</p>
 <script>
 (function(){
- const tabs=document.getElementById('tabs'),panel=document.getElementById('panel');
+ const tabs=document.getElementById('tabs'),panel=document.getElementById('panel'),overlaps=document.getElementById('overlaps');
  let records=[],current=0;
  const node=(tag,text,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=String(text);return e;};
+ function avatar(v) {
+   const outer=node('span',(v.label||'G').trim().slice(0,1).toUpperCase(),'avatar');
+   outer.setAttribute('aria-label','Google profile photo for '+v.label);
+   if(typeof v.pictureUrl==='string' && v.pictureUrl.length<=2048) {
+     try {
+       const u=new URL(v.pictureUrl);
+       if(u.origin==='https://lh3.googleusercontent.com' && u.pathname.length>1 &&
+          !u.search && !u.hash && !u.username && !u.password) {
+         const img=node('img');img.alt='';img.referrerPolicy='no-referrer';img.src=u.href;
+         img.addEventListener('error',()=>outer.replaceChildren(node('span',(v.label||'G').trim().slice(0,1).toUpperCase())));
+         outer.replaceChildren(img);
+       }
+     }catch{}
+   }
+   return outer;
+ }
  function show(n){
    current=n;const v=records[n];if(!v)return;
    for(const [i,button] of Array.from(tabs.children).entries()){
      button.setAttribute('aria-selected',String(i===n));button.tabIndex=i===n?0:-1;
    }
-   panel.replaceChildren(node('strong',v.label+' · '+v.display));
+   const head=node('div',undefined,'account-head');
+   head.append(avatar(v),node('strong',v.label+' · '+v.display));
+   panel.replaceChildren(head);
    panel.append(node('div','Verified OAuth owner reference: '+v.ownerHint,'meta'));
    if(!v.connections.length){panel.append(node('p','No storage connections enrolled for this Google identity.'));return;}
    for(const c of v.connections){
@@ -131,6 +267,7 @@ Waiting for authenticated account summaries…</section>
      row.append(node('strong',c.displayName+' · '+(c.provider==='mega'?'MEGA':'Google Drive')));
      row.append(node('div','Connection: '+c.status+' · Selected: '+(c.selected.join(', ')||'none'),'meta'));
      row.append(node('div','Provider verified: '+(c.providerVerified.join(', ')||'none')+' · Allowed roots: '+c.resourceCount,'meta'));
+     row.append(node('div','Effective on this connection only: '+((c.effective||[]).join(', ')||'none'),'meta'));
      panel.append(row);
    }
  }
@@ -138,15 +275,41 @@ Waiting for authenticated account summaries…</section>
    const envelope=value?.structuredContent??value;
    const payload=envelope?.result??envelope;
    if(!payload || payload.schema!=='nyx.account-view.viewer.v1' || !Array.isArray(payload.accounts))return;
-   if(payload.accounts.length<2||payload.accounts.length>4)return;
+   if(payload.accounts.length<2||payload.accounts.length>3)return;
    const safe=payload.accounts.every(a=>a&&typeof a.label==='string'&&a.label.length>0&&a.label.length<=40&&
      typeof a.display==='string'&&a.display.length>0&&a.display.length<=120&&
-     typeof a.ownerHint==='string'&&Array.isArray(a.connections));
+     typeof a.ownerHint==='string'&&Array.isArray(a.connections)&&
+     (a.pictureUrl===null||typeof a.pictureUrl==='string'));
    if(!safe)return;
    records=payload.accounts;tabs.replaceChildren();
-   document.getElementById('summary').textContent=records.length+' authenticated accounts loaded together · view-only tabs';
+   overlaps.replaceChildren();
+   const verified=Array.isArray(payload.verifiedDuplicates)?payload.verifiedDuplicates:[];
+   if(verified.length){
+     overlaps.hidden=false;
+     overlaps.append(node('h2','Verified duplicate MEGA accounts'));
+     overlaps.append(node('p','Preferred means strongest permissions on one already-connected OAuth profile. Other profile credentials remain isolated; nothing is shared or merged.'));
+     for(const d of verified){
+       if(!d||d.provider!=='mega'||!d.preferred)continue;
+       const p=d.preferred;
+       overlaps.append(node('div','Overall preferred: '+p.label+' · '+p.displayName+' ('+p.effective.join(', ')+')','source'));
+       const operations=[
+         ['storage:list','Read'],
+         ['storage:move','Move or rename'],
+         ['storage:delete','Reversible trash'],
+       ];
+       for(const [cap,title] of operations){
+         const source=d.preferredFor?.[cap];
+         if(source)overlaps.append(node('div',title+': '+source.label+' · '+source.displayName,'meta'));
+         else overlaps.append(node('div',title+': not authorized by any connected profile','meta'));
+       }
+       for(const a of d.alternatives||[]){
+         overlaps.append(node('div','Also connected: '+a.label+' · '+a.displayName+' ('+(a.effective||[]).join(', ')+')','meta'));
+       }
+     }
+   }else overlaps.hidden=true;
+   document.getElementById('summary').textContent=records.length+' signed account snapshots · all profiles shown · view-only tabs';
    records.forEach((v,i)=>{
-     const b=node('button',v.label+' ('+v.connections.length+')');b.type='button';b.setAttribute('role','tab');
+     const b=node('button');b.append(avatar(v),node('span',v.label+' ('+v.connections.length+')'));b.type='button';b.setAttribute('role','tab');
      b.addEventListener('click',()=>show(i));tabs.append(b);
    });
    show(0);
