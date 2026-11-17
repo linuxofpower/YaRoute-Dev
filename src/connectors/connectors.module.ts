@@ -34,6 +34,6 @@ import { GithubOAuthController } from './github-oauth.controller';
         new GithubWriteConnector(connections.registryPolicy(),credentials),
       inject:[ConnectorsService,GithubAppService]},
   ],
-  exports:[HerokuBrokerClient,PrivateLegacyBrokerClient,ConnectorsService,GithubAppService,GithubReadonlyConnector,GithubWriteConnector,TenantRcloneService,TenantGoogleOAuthService,TenantMegaEnrollmentService,PrivateLegacyOwnerLinkService],
+  exports:[HerokuBrokerClient,PrivateLegacyBrokerClient,ConnectorsService,GithubAppService,GithubReadonlyConnector,GithubWriteConnector,TenantRcloneService,TenantRcloneUploadService,TenantGoogleOAuthService,TenantMegaEnrollmentService,PrivateLegacyOwnerLinkService],
 })
 export class ConnectorsModule {}
