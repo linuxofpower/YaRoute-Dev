@@ -63,7 +63,7 @@ test('public capability inventory explains safe Drive 404 recovery without claim
  const capabilities=mcp.slice(mcp.indexOf("'nyx_capabilities'"),mcp.indexOf("'nyx_risk_preview'"));
  assert.match(capabilities,/PRIVATE_BOOTSTRAP_NOT_EXPOSED_TO_PUBLIC_TENANTS/);
  assert.match(capabilities,/separate-authorized-ChatGPT-source-resolution/);
- assert.match(capabilities,/Re-discover the resource by name and verified parent/);
+ assert.match(capabilities,/A 404 under a different connected account is an access mismatch/);
  assert.match(capabilities,/No canonical-initialization COMPLETE or FIF verification/);
  assert.match(mcp,/if \(process\.env\.NYX_DEPLOYMENT_MODE==='public'\) return server;/);
 });
