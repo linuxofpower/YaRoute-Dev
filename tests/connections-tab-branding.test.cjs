@@ -36,10 +36,10 @@ function view(mode,service,url){
 test('blue Dev pilot and purple private Pro get distinct branded MCP Apps resource IDs',()=>{
  const dev=view('public','NestNyx','https://dev-nest-nyx-0df80c227630.herokuapp.com');
  const pro=view('private','NestNyx','https://example.com');
- assert.match(dev.connectionsUri,/\/dev\/connections\/v15\.html$/);
- assert.match(pro.connectionsUri,/\/pro\/connections\/v15\.html$/);
- assert.match(dev.homeUri,/\/dev\/home\/v15\.html$/);
- assert.match(pro.homeUri,/\/pro\/home\/v15\.html$/);
+ assert.match(dev.connectionsUri,/\/dev\/connections\/v16\.html$/);
+ assert.match(pro.connectionsUri,/\/pro\/connections\/v16\.html$/);
+ assert.match(dev.homeUri,/\/dev\/home\/v16\.html$/);
+ assert.match(pro.homeUri,/\/pro\/home\/v16\.html$/);
  assert.notEqual(dev.connectionsUri,pro.connectionsUri);
  assert.notEqual(dev.connectionsUri,dev.homeUri);
  assert.notEqual(pro.connectionsUri,pro.homeUri);
@@ -113,7 +113,7 @@ test('combined account viewer is display-only and does not switch OAuth connecti
  assert.match(html,/Google account reference:/);
  assert.match(html,/This login owns the connections below/);
  assert.match(html,/id="nyx-view-both-google"/);
- assert.match(html,/Switch Primary \/ Personal view/);
+ assert.match(html,/Compare Primary \/ Personal/);
  assert.match(html,/id="nyx-switch-login" type="button" aria-expanded="false" aria-controls="nyx-switch-help"/);
  assert.match(html,/id="nyx-switch-help" hidden/);
  assert.match(html,/Primary and Personal stay connected simultaneously/);
@@ -128,6 +128,9 @@ test('combined account viewer is display-only and does not switch OAuth connecti
  assert.match(html,/nyx_account_view_snapshot/);
  assert.match(html,/nyx_accounts_view/);
  assert.match(html,/sendFollowUpMessage/);
+ assert.match(html,/nyx-view-both-feedback/);
+ assert.match(html,/Copy the request below into chat/);
+ assert.match(html,/renderFeedback\(/);
  assert.match(html,/no OAuth login switching and no reconnection/);
  assert.doesNotMatch(html,/id="nyx-switch-account-label"|id="nyx-open-google-account"/);
  assert.doesNotMatch(html,/document\\.cookie|localStorage|sessionStorage/);

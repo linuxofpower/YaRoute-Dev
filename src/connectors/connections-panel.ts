@@ -9,8 +9,8 @@ const connectionsIsDev = process.env.NYX_DEPLOYMENT_MODE === 'public' ||
   process.env.NYX_SERVICE_NAME === 'DevProNestNyx' ||
   process.env.NYX_PUBLIC_URL === 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
 const connectionsKind = connectionsIsDev ? 'dev' : 'pro';
-export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v15.html';
-export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v15.html';
+export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v16.html';
+export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v16.html';
 export const CONNECTIONS_PANEL_LABEL = connectionsIsDev ? '🔵 NestNyx Dev · Connections' : '🟣 NestNyx Pro · Connections';
 export const CONNECTIONS_HOME_LABEL = connectionsIsDev ? '🏠 NestNyx Dev · Home' : '🏠 NestNyx Pro · Home';
 // Public users connect only their own storage; never show the operator's
@@ -103,7 +103,9 @@ body{max-width:900px;padding:clamp(10px,2.8vw,22px);line-height:1.45}
 #nyx-account-bar .session-actions button{margin-top:0}
 #nyx-add-google-login{border-color:var(--nyx-accent)!important}
 #nyx-login-add-help{border:1px solid var(--nyx-border);border-radius:10px;padding:9px 11px;margin-top:8px;font-size:12px}
-#nyx-login-add-help[hidden],#nyx-switch-help[hidden]{display:none}
+#nyx-login-add-help[hidden],#nyx-switch-help[hidden],#nyx-view-both-feedback[hidden]{display:none}
+#nyx-view-both-feedback{padding:10px;margin:8px 0 4px;border:1px solid var(--nyx-border);border-radius:9px;font-size:12px}
+#nyx-view-both-feedback textarea{width:100%;min-height:80px;max-width:100%;font-size:12px;margin-top:6px;white-space:pre-wrap}
 #nyx-switch-help{border:1px solid var(--nyx-border);border-radius:10px;padding:9px 11px;margin-top:8px;font-size:12px}
 #nyx-session-account-state{font-size:12px;font-weight:650;margin:3px 0;color:var(--nyx-fg,inherit)}
 
@@ -141,8 +143,9 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
  <div class="session-person-main"><div class="session-label" id="nyx-session-user">Checking signed-in account…</div>
  <div class="session-reference" id="nyx-session-reference">OAuth verification pending</div></div></div>
  <div class="session-actions"><button class="session-switch" id="nyx-add-google-login" type="button" aria-expanded="false" aria-controls="nyx-login-add-help">+ Add Google account</button>
- <button class="session-switch" id="nyx-view-both-google" type="button">Switch Primary / Personal view</button>
+ <button class="session-switch" id="nyx-view-both-google" type="button">Compare Primary / Personal</button>
  <button class="session-switch" id="nyx-switch-login" type="button" aria-expanded="false" aria-controls="nyx-switch-help">About account views</button></div>
+ <div id="nyx-view-both-feedback" hidden role="status" aria-live="polite"></div>
  <div id="nyx-login-add-help" hidden role="region" aria-label="Add a Google login">
  <strong>Keep your existing account connected.</strong>
  <p>To connect another NestNyx Google identity, use ChatGPT Settings → Plugins → NestNyx Dev → Connected accounts → Connect another account, when available. Complete Google OAuth there, then reopen this panel.</p>
@@ -950,15 +953,29 @@ document.getElementById('nyx-switch-login').addEventListener('click',()=>{
 });
 document.getElementById('nyx-view-both-google').addEventListener('click',async()=>{
  const prompt='Open ONE NestNyx Dev combined Connections panel showing BOTH of my already linked Google accounts, Primary and Personal. Use nyx_account_view_snapshot separately with each authenticated plugin connection, then call nyx_accounts_view with both signed snapshots. Render their storage connections as two selectable display-only tabs in the same viewer. Keep both sessions connected, never substitute or share credentials, and make NO file or permission changes.';
- const send=window.openai?.sendFollowUpMessage;
- if(typeof send!=='function')
-   return show('Ask ChatGPT: '+prompt,true);
+ const button=document.getElementById('nyx-view-both-google');
+ const feedback=document.getElementById('nyx-view-both-feedback');
+ const renderFeedback=(message)=>{
+   feedback.hidden=false;feedback.replaceChildren();
+   const explanation=document.createElement('p');explanation.textContent=message;
+   const copy=document.createElement('textarea');copy.readOnly=true;copy.rows=3;
+   copy.setAttribute('aria-label','Copy this request into ChatGPT if comparison does not appear');
+   copy.value=prompt;
+   feedback.append(explanation,copy);
+ };
+ button.disabled=true;
+ renderFeedback('Requesting a combined, read-only account comparison from ChatGPT. This does not switch your OAuth login.');
  try{
+   const send=window.openai?.sendFollowUpMessage;
+   if(typeof send!=='function'){
+     renderFeedback('Automatic comparison is unavailable in this ChatGPT host. Copy the request below into the chat.');
+     return;
+   }
    await send({prompt});
-   show('Requested ONE combined viewer with both connected Google accounts. File operations remain isolated by owner.');
+   renderFeedback('Comparison request sent. Look for a new ChatGPT reply with Primary and Personal tabs. If no viewer appears, copy the request below into chat.');
  }catch{
-   show('ChatGPT could not open the combined viewer from this panel. Ask in chat: '+prompt,true);
- }
+   renderFeedback('ChatGPT could not start the comparison automatically. Copy the request below into chat.');
+ }finally{button.disabled=false;}
 });
 document.getElementById('nyx-account-select').addEventListener('change',e=>{
  selectedTenantAccount=e.target.value;refreshTenantStorage();

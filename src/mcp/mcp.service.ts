@@ -223,7 +223,7 @@ export class McpService {
     // after deployment. Keep v10-v12 URIs fetchable so ChatGPT doesn't display
     // "App unavailable" when it has cached an old Connections/Home template.
     // Each alias serves the current UI, with the requested URI in the response.
-    for (const version of [10,11,12,13,14]) {
+    for (const version of [10,11,12,13,14,15]) {
       for (const item of [
         {label:CONNECTIONS_PANEL_LABEL,uri:CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML},
         {label:CONNECTIONS_HOME_LABEL,uri:CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML},
@@ -285,6 +285,19 @@ export class McpService {
       {mimeType:'text/html;profile=mcp-app'},
       async()=>({contents:[{
         uri:ACCOUNT_VIEW_URI,mimeType:'text/html;profile=mcp-app',
+        text:ACCOUNT_VIEW_HTML,
+        _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
+          'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
+      }]}));
+
+    // Keep the old read-only viewer resource retrievable from cached ChatGPT
+    // messages while v3 adds delayed-tool-output and selection-state handling.
+    const accountViewV2Uri=ACCOUNT_VIEW_URI.replace(/\/multi-v3\.html$/, '/multi-v2.html');
+    if(accountViewV2Uri===ACCOUNT_VIEW_URI)throw new Error('NYX_ACCOUNT_VIEW_COMPAT_URI_INVALID');
+    server.registerResource('NestNyx Multi-account Viewer (compatibility v2)',accountViewV2Uri,
+      {mimeType:'text/html;profile=mcp-app'},
+      async()=>({contents:[{
+        uri:accountViewV2Uri,mimeType:'text/html;profile=mcp-app',
         text:ACCOUNT_VIEW_HTML,
         _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},

@@ -4,7 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 // independently under each already-authenticated plugin connection and present
 // them in ONE tabbed UI. It is never a credential, delegation or mutation grant.
 export const ACCOUNT_VIEW_SCHEMA = 'nyx.account-view.snapshot.v1';
-export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v2.html';
+export const ACCOUNT_VIEW_URI = 'ui://nestnyx/dev/connections/multi-v3.html';
 export type StorageViewItem = {
   displayName: string;
   provider: 'mega' | 'google-drive';
@@ -117,9 +117,15 @@ Waiting for authenticated account summaries…</section>
 (function(){
  const tabs=document.getElementById('tabs'),panel=document.getElementById('panel');
  let records=[],current=0;
+ let selectedLabel=typeof window.openai?.widgetState?.privateContent?.selectedAccountView==='string'
+   ? window.openai.widgetState.privateContent.selectedAccountView : '';
  const node=(tag,text,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=String(text);return e;};
  function show(n){
-   current=n;const v=records[n];if(!v)return;
+   const v=records[n];if(!v)return;
+   current=n;selectedLabel=v.label;
+   try{
+     window.openai?.setWidgetState?.({privateContent:{selectedAccountView:selectedLabel}});
+   }catch{ /* Host state persistence is optional. Never block local tab selection. */ }
    for(const [i,button] of Array.from(tabs.children).entries()){
      button.setAttribute('aria-selected',String(i===n));button.tabIndex=i===n?0:-1;
    }
@@ -149,9 +155,14 @@ Waiting for authenticated account summaries…</section>
      const b=node('button',v.label+' ('+v.connections.length+')');b.type='button';b.setAttribute('role','tab');
      b.addEventListener('click',()=>show(i));tabs.append(b);
    });
-   show(0);
+   const stored=records.findIndex(v=>v.label===selectedLabel);
+   show(stored>=0?stored:Math.min(current,records.length-1));
  }
  render(window.openai?.toolOutput);
+ window.addEventListener('openai:set_globals',event=>{
+   const data=event.detail?.globals?.toolOutput;
+   if(data!==undefined)render(data);
+ },{passive:true});
  window.addEventListener('message',event=>{
   if(event.source!==window.parent || !event.data ||
     event.data.method!=='ui/notifications/tool-result')return;
