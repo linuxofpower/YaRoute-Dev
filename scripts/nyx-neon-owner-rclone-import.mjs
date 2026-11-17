@@ -135,16 +135,25 @@ function rcloneConfig() {
   if(!isObject(value))fail('CONFIG_INVALID');
   return value;
 }
-function appEnvironment() {
-  let data;
-  try{data=JSON.parse(collect('heroku',['config','--json','-a','dev-nest-nyx']));}
-  catch{fail('APP_CONFIG_UNAVAILABLE');}
+/**
+ * Offline import can stage pending tenant ciphertext while legacy operator
+ * settings remain on Heroku. No live provider grants or cutover are implied.
+ * Finalization remains gated: a public tenant runtime must be legacy-free.
+ * This rule does NOT change TenantRcloneService's runtime isolation policy.
+ */
+export function validateImporterEnvironment(data,mode) {
   if(!isObject(data)||data.NYX_DEPLOYMENT_MODE!=='public'||
      data.NYX_PUBLIC_CONNECTORS_ENABLED!=='true'||
      data.NYX_MULTIUSER_RCLONE_ENABLED!=='true'||
-     data.NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED!=='true'||
-     ['RCLONE_CONFIG_B64','RCLONE_CONFIG','RCLONE_CONFIG_PATH','NYX_SHARED_ROOTS_JSON']
-       .some(k=>Boolean(text(data[k]))))fail('PUBLIC_ISOLATION_NOT_READY');
+     data.NYX_PUBLIC_TENANT_GOOGLE_MULTI_ENABLED!=='true')
+    fail('PUBLIC_ISOLATION_NOT_READY');
+  if(!['stage','stage-six','finalize','finalize-six'].includes(mode))
+    fail('IMPORT_MODE_INVALID');
+  const hasLegacy=['RCLONE_CONFIG_B64','RCLONE_CONFIG',
+     'RCLONE_CONFIG_PATH','NYX_SHARED_ROOTS_JSON']
+    .some(k=>Boolean(text(data[k])));
+  if(hasLegacy && !['stage','stage-six'].includes(mode))
+    fail('PUBLIC_ISOLATION_NOT_READY');
   if(typeof data.DATABASE_URL!=='string' ||
     !/^postgres(?:ql)?:\/\//.test(data.DATABASE_URL))fail('DATABASE_URL_INVALID');
   const keyText=data.NYX_STORAGE_ENCRYPTION_KEY;
@@ -153,6 +162,12 @@ function appEnvironment() {
   const key=Buffer.from(keyText,'base64');
   if(key.length!==32||key.toString('base64')!==keyText)fail('KEY_INVALID');
   return {url:data.DATABASE_URL,key};
+}
+function appEnvironment(mode) {
+  let data;
+  try{data=JSON.parse(collect('heroku',['config','--json','-a','dev-nest-nyx']));}
+  catch{fail('APP_CONFIG_UNAVAILABLE');}
+  return validateImporterEnvironment(data,mode);
 }
 export async function stageWithDb(db,plan,key,ids=()=>randomUUID()) {
   const client=await db.connect();
@@ -560,7 +575,7 @@ async function main(argv) {
     fail('EXPLICIT_CONFIRMATION_REQUIRED');
   if(process.env.NYX_IMPORT_APPROVED_OWNER!==plan.ownerId)
     fail('OWNER_ATTESTATION_REQUIRED');
-  const app=appEnvironment();
+  const app=appEnvironment(options.mode);
   const {Pool}=await import('pg');
   const db=new Pool({connectionString:app.url,max:1,connectionTimeoutMillis:5000,
     statement_timeout:15000});
