@@ -41,6 +41,8 @@ export function parseSelectedLocalRclone(
     values[m[1]] = m[2];
   }
   if (sections !== 1) throw new Error('RCLONE_IMPORT_REMOTE_NOT_UNIQUE');
+  if (values.type !== (provider === 'google-drive' ? 'drive' : 'mega'))
+    throw new Error('RCLONE_IMPORT_PROVIDER_MISMATCH');
 
   const allowed = provider === 'google-drive'
     ? new Set(['type','token','client_id','client_secret','root_folder_id','team_drive','scope'])
