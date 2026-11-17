@@ -139,8 +139,20 @@ export class McpService {
         // Public tenants deliberately cannot access the private MAIN bootstrap.
         // Advertise only tools that are registered for this deployment mode.
         initialization: process.env.NYX_DEPLOYMENT_MODE === 'public'
-          ? { available: false, reason: 'PRIVATE_BOOTSTRAP_NOT_EXPOSED_TO_PUBLIC_TENANTS' }
+          ? {
+            available: false,
+            reason: 'PRIVATE_BOOTSTRAP_NOT_EXPOSED_TO_PUBLIC_TENANTS',
+            // This is an authorization boundary, not proof of a broken CLI.
+            // A separate ChatGPT/Drive read is possible only with its own grants.
+            alternative: 'separate-authorized-ChatGPT-source-resolution',
+          }
           : { available: true, status: 'registered-requires-verified-bootstrap' },
+        sourceRecovery: {
+          inaccessibleDriveId: 'Re-discover the resource by name and verified parent in the same authorized Drive account; retry an exact read. Do not infer deletion or swap identities from a 404.',
+          authorityOrder: 'current-valid-Footer -> referenced-Head-and-Body -> owning-Area-sources',
+          completionGate: 'No canonical-initialization COMPLETE or FIF verification without those live receipts.',
+          privateBoundary: 'Never route public MCP tenants into the private MAIN bootstrap.',
+        },
         commandEntrypoints: process.env.NYX_DEPLOYMENT_MODE === 'public' ? {} : {
           execute: { tool: 'nyx_execute', commands: 'backend-resolved; not all Head commands guaranteed' },
           help: { tool: 'nyx_help', command: 'hel', mode: 'read-only' },
