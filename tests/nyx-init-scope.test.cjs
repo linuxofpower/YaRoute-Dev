@@ -103,11 +103,11 @@ test('Head inherited GNo syntax is scope, not a fourth initialization target', (
     args: ['GNo'] }), /MODIFIER_REQUIRES_TARGET/);
 });
 
-test('unscoped canonical commands cannot silently interpret modifier syntax as a target', () => {
+test('legacy unscoped commands preserve historical modifier-looking target arguments', () => {
   const resolver = new NyxCommandResolver(); const cli = makeCli();
   delete cli.commands.ini.execution.scope;
-  assert.throws(() => resolver.resolve(cli, {command:'ini', args:['Technical', 'GNo']}), /SCOPE_NOT_SUPPORTED/);
-  assert.throws(() => resolver.resolve(cli, {command:'ini', args:['Technical', 'oGN']}), /SCOPE_NOT_SUPPORTED/);
+  assert.deepEqual(resolver.resolve(cli, {command:'ini', args:['Technical', 'GNo']}).targets, ['Technical', 'GNo']);
+  assert.deepEqual(resolver.resolve(cli, {command:'ini', args:['Technical', 'oGN']}).targets, ['Technical', 'oGN']);
 });
 
 test('scope upgrade and downgrade require an existing conversation identity', () => {
