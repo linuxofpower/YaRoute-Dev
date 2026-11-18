@@ -247,7 +247,7 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     }
     const allowed=connection.provider==='mega' &&
       process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-      ? ['storage:list','storage:move','storage:delete'] :
+      ? ['storage:list','storage:write','storage:move','storage:delete'] :
       connection.provider==='google-drive' && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
       ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'];
     if (!Array.isArray(capabilities) ||
@@ -271,7 +271,7 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       throw new Error('TENANT_MEGA_SINGLE_ROOT_REQUIRED');
     const allowed=connection.provider==='mega' &&
       process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-      ? ['storage:list','storage:move','storage:delete'] :
+      ? ['storage:list','storage:write','storage:move','storage:delete'] :
       connection.provider==='google-drive' && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
       ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'];
     if (!Array.isArray(resources) || resources.length > 10 ||
@@ -363,7 +363,7 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       // User-enabled capabilities and chosen resources remain separate.
       providerCapabilities: provider==='mega' &&
         process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-        ? ['storage:list','storage:move','storage:delete'] :
+        ? ['storage:list','storage:write','storage:move','storage:delete'] :
         provider==='google-drive' && verifiedGoogleFullDrive &&
         process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
         ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'],
