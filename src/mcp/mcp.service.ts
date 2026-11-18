@@ -935,6 +935,16 @@ export class McpService {
             operation,sourcePath,destinationPath)));
       }
 
+      if(process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true') {
+        server.registerTool('nyx_storage_google_verify_rw', {
+          title:'Verify existing imported Google Drive credentials for RW',
+          description:'Provider-side read-only tokeninfo and Drive account check. Upgrades provider-verified capabilities only when the stored active token really has full Drive scope. User-selected permissions are unchanged.',
+          inputSchema:z.object({id:z.string().uuid(),rootId:z.string().min(1).max(256)}).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+        },async({id,rootId})=>this.safeTool(()=>
+          this.tenantRclone.verifyExistingGoogleWriteGrant(this.connectorOwner(),id,rootId)));
+      }
+
       if (process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true') {
         server.registerTool('nyx_storage_google_file_mutate', {
           title:'Rename, move, or trash one file in my verified Google Drive root',
