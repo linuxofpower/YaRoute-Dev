@@ -977,6 +977,19 @@ export class McpService {
           this.tenantRclone.createTenantTextFile(this.connectorOwner(),id,provider,rootId,path,content)));
       }
 
+      server.registerTool('nyx_storage_connection_select_best', {
+        title:'Select my strongest verified cloud connection for an operation',
+        description:'Read-only choice among active connections within the same verified OAuth owner, physical provider identity and exact authorized root. Does not transfer credentials or execute the operation.',
+        inputSchema:z.object({
+          id:z.string().uuid(),rootId:z.string().min(1).max(256),
+          operation:z.enum(['storage:list','storage:write','storage:move','storage:delete']),
+          path:z.string().max(2048).optional(),
+        }).strict(),
+        annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+      },async({id,rootId,operation,path})=>this.safeTool(()=>
+        this.tenantRclone.selectBestAuthorizedConnection(
+          this.connectorOwner(),id,rootId,operation,path)));
+
       server.registerTool('nyx_storage_connection_revoke', {
         title:'Revoke my MEGA or Google Drive connection',
         description:'Owner-scoped: revoke this tenant storage grant and erase its pending/active encrypted credentials and unconsumed sign-in links. Does not revoke provider-side sessions or touch private/operator Rclone config.',
