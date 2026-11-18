@@ -70,6 +70,7 @@ export async function githubInstallationUrl():Promise<{url:string;provider:'gith
 function verifiedGrants(permissions:Record<string,string>):ConnectorCapability[] {
   const values=new Set<ConnectorCapability>(['repository:metadata']);
   if(['read','write'].includes(permissions.actions)) values.add('ci:read');
+  if(['read','write'].includes(permissions.administration)) values.add('github:protection:read');
   if(['read','write'].includes(permissions.contents)) values.add('resources:read');
   if(['read','write'].includes(permissions.contents)) values.add('releases:read');
   if(['read','write'].includes(permissions.issues)) values.add('issues:read');
@@ -83,6 +84,7 @@ function verifiedGrants(permissions:Record<string,string>):ConnectorCapability[]
 const permissionsFor=(capability:ConnectorCapability):Record<string,'read'|'write'>=>{
   switch(capability) {
     case 'ci:read':return {metadata:'read',actions:'read'};
+    case 'github:protection:read':return {metadata:'read',administration:'read'};
     case 'contents:write':return {metadata:'read',contents:'write'};
     case 'issues:write':return {metadata:'read',issues:'write'};
     case 'pulls:write':return {metadata:'read',pull_requests:'write'};
