@@ -497,6 +497,20 @@ function renderTenant(connections){
    root.readOnly=item.status==='active';
    const line=el('div');line.className='row';
    line.append(el('span','Allowed root'),root);box.append(line);
+   if(item.status==='active')box.append(button('Use fullest authorized connection',async()=>{
+     const selectedRoot=(item.resources||[]).find(x=>x.kind===kind)?.id;
+     if(!selectedRoot)throw Error('No verified storage root selected');
+     const result=await call('nyx_storage_connection_select_best',{
+       id:item.id,rootId:selectedRoot,operation:'storage:list',
+     });
+     if(!result?.connectionId || !connections.some(x=>
+       x.id===result.connectionId&&x.status==='active'))
+       throw Error('No verified same-owner selection returned');
+     selectedTenantAccount=result.connectionId;
+     renderTenant(connections);
+     show('Selected strongest eligible '+result.displayName+
+       ' for browsing. Mutations still require their own explicit grants.');
+   }));
    const activeRoot=(item.resources||[]).find(x=>x.kind===kind);
    const hasReadList=item.status==='active' &&
      (item.capabilities||[]).includes('storage:list') &&
