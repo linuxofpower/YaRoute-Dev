@@ -27,7 +27,7 @@ test('Google Drive mutation is provider and owner authorized and uses recoverabl
  assert.match(storage,/TENANT_GOOGLE_DESTINATION_EXISTS/);
  assert.match(storage,/nyx_rclone_google_mutations_v1/);
  assert.match(storage,/state='uncertain'/);
- assert.doesNotMatch(storage,/--drive-use-trash=false/);
+ assert.doesNotMatch(storage,/['\"]--drive-use-trash=false['\"]/);
  assert.match(api,/registerTool\('nyx_storage_google_file_mutate'/);
  assert.match(api,/process\.env\.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true'/);
 });
