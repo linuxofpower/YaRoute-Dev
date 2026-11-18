@@ -624,6 +624,30 @@ export class McpService {
     },async({id,repo})=>this.safeTool(()=>
       this.limitedConnectionApi(id,()=>this.github.releases(this.connectorOwner(),id,repo))));
 
+    server.registerTool('nyx_connection_github_rulesets',{
+      title:'List GitHub repository protection rulesets',
+      description:'Read-only repository-scoped ruleset listing. Requires verified GitHub Administration read permission.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200)}),
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+    },async({id,repo})=>this.safeTool(()=>
+      this.limitedConnectionApi(id,()=>this.github.rulesets(this.connectorOwner(),id,repo))));
+
+    server.registerTool('nyx_connection_github_ruleset',{
+      title:'Inspect an exact GitHub protection ruleset',
+      description:'Read-only ruleset detail by integer ID. No settings are changed.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200),rulesetId:z.number().int().positive()}),
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+    },async({id,repo,rulesetId})=>this.safeTool(()=>
+      this.limitedConnectionApi(id,()=>this.github.ruleset(this.connectorOwner(),id,repo,rulesetId))));
+
+    server.registerTool('nyx_connection_github_classic_protection',{
+      title:'Inspect classic protection for a GitHub branch',
+      description:'Read-only classic branch protection; an unprotected branch reports protected:false.',
+      inputSchema:z.object({id:z.string().uuid(),repo:z.string().min(3).max(200),branch:z.string().min(1).max(120)}),
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true},
+    },async({id,repo,branch})=>this.safeTool(()=>
+      this.limitedConnectionApi(id,()=>this.github.classicProtection(this.connectorOwner(),id,repo,branch))));
+
     server.registerTool('nyx_connection_github_workflows',{
       title:'Read workflows from my authorized GitHub repository',
       description:'Read-only Actions API; owner, installation, selected repository and provider grants checked.',
