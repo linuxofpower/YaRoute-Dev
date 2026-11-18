@@ -123,7 +123,7 @@ test('combined account viewer is display-only and does not switch OAuth connecti
  assert.match(html,/id="nyx-switch-help" hidden/);
  assert.match(html,/Both Google logins remain independently connected/);
  assert.match(html,/signed three-minute snapshot from each linked account/);
- assert.match(html,/ONE combined viewer/);
+ assert.match(html,/one combined read-only viewer/);
  assert.match(html,/id="nyx-import-banner"/);
  assert.match(html,/id="nyx-import-launch"/);
  assert.match(html,/Choose rclone\.conf/);
