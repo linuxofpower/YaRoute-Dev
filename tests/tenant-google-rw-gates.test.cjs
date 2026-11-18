@@ -48,3 +48,13 @@ test('panel distinguishes requested per-root capability from verified provider c
  assert.match(panel,/nyx_storage_connection_roots/);
  assert.match(panel,/permanent deletion and binary uploads are not implemented/i);
 });
+
+
+test('fuller-permission selection uses server verified namespace and caller-owned connection',()=>{
+ assert.match(storage,/selectBestAuthorizedConnection\(ownerId:string,connectionId:string/);
+ assert.match(storage,/SELECT connection_id,owner_id,provider,namespace/);
+ assert.match(storage,/selectVerifiedStorageConnection\(candidates/);
+ assert.match(api,/registerTool\('nyx_storage_connection_select_best'/);
+ assert.match(panel,/Use fullest authorized connection/);
+ assert.match(panel,/operation:'storage:list'/);
+});
