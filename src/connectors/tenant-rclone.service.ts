@@ -149,6 +149,18 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
       updated_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (owner_id, connection_id, state)
     )`);
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_rclone_google_mutations_v1 (
+      id uuid PRIMARY KEY,
+      owner_id text NOT NULL,
+      connection_id text NOT NULL,
+      root_id text NOT NULL,
+      operation text NOT NULL CHECK (operation IN ('rename','move','trash')),
+      source_path text NOT NULL,
+      destination_path text,
+      state text NOT NULL CHECK (state IN ('running','verified','uncertain')),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      completed_at timestamptz
+    )`);
     // Durable receipts: an interrupted operation remains "running" for reconciliation.
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_rclone_mega_mutations_v1 (
       id uuid PRIMARY KEY,
@@ -779,6 +791,147 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
             SET state='uncertain',completed_at=now() WHERE id=$1
             AND owner_id=$2 AND connection_id=$3`,[receiptId,ownerId,connectionId]);
           throw new Error('TENANT_MEGA_OPERATION_UNCERTAIN_CHECK_AUDIT');
+        }
+      } finally {
+        await fs.rm(dir,{recursive:true,force:true});
+      }
+    } finally {
+      if(locked)await client.query('SELECT pg_advisory_unlock(hashtext($1),hashtext($2))',
+        [ownerId,connectionId]).catch(()=>{});
+      client.release();
+    }
+  }
+
+
+  /**
+   * Scoped Google Drive file operations. Trash uses Drive's recoverable trash,
+   * never Rclone --drive-use-trash=false, purge, or permanent deletion.
+   * Provider consent, selected capabilities AND both root grants must agree.
+   */
+  async mutateGoogleFile(ownerId:string,connectionId:string,rootId:string,
+    operation:'rename'|'move'|'trash',sourcePath:string,destinationPath?:string) {
+    if(process.env.NYX_DEPLOYMENT_MODE!=='public' ||
+       process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED!=='true')
+      throw new Error('TENANT_GOOGLE_MUTATIONS_DISABLED');
+    if(!['rename','move','trash'].includes(operation))
+      throw new Error('TENANT_GOOGLE_OPERATION_INVALID');
+    const clean=(value:string)=>{
+      const normalized=tenantRclonePath(value);
+      if(!value || normalized!==value ||
+        value.split('/').some(part=>!part||part==='.'||part==='..'))
+        throw new Error('TENANT_GOOGLE_FILE_PATH_INVALID');
+      return normalized;
+    };
+    const source=clean(sourcePath);
+    const dest=operation==='trash'?undefined:clean(destinationPath||'');
+    if(operation==='trash'&&destinationPath!==undefined)
+      throw new Error('TENANT_GOOGLE_TRASH_DESTINATION_FORBIDDEN');
+    if(dest===source)throw new Error('TENANT_GOOGLE_NOOP_FORBIDDEN');
+    if(operation==='rename'&&dest &&
+      path.posix.dirname(source)!==path.posix.dirname(dest))
+      throw new Error('TENANT_GOOGLE_RENAME_PARENT_CHANGED');
+
+    const capability=operation==='trash'?'storage:delete':'storage:move';
+    const policy=this.connectors.registryPolicy();
+    await policy.requireResource(ownerId,connectionId,capability,
+      {kind:'drive',id:rootId,path:source});
+    if(dest)await policy.requireResource(ownerId,connectionId,capability,
+      {kind:'drive',id:rootId,path:dest});
+    const target=await this.authorizedTarget(ownerId,connectionId,'google-drive',rootId,source);
+    const next=dest?await this.authorizedTarget(
+      ownerId,connectionId,'google-drive',rootId,dest):undefined;
+    if(target.profile.provider!=='google-drive' || target.profile.scope!=='drive')
+      throw new Error('TENANT_GOOGLE_FULL_SCOPE_REQUIRED');
+
+    const client=await this.db().connect();
+    let locked=false;
+    try {
+      await client.query('SELECT pg_advisory_lock(hashtext($1),hashtext($2))',
+        [ownerId,connectionId]);locked=true;
+      const dir=await fs.mkdtemp(path.join(os.tmpdir(),'nyx-tenant-google-write-'));
+      const cfg=path.join(dir,'rclone.conf');
+      try {
+        await fs.chmod(dir,0o700);
+        await fs.writeFile(cfg,tenantRcloneConfig(target.profile),{mode:0o600,flag:'wx'});
+        const run=async(args:string[]):Promise<string>=>new Promise((resolve,reject)=>{
+          let settled=false,bytes=0,stdout='';
+          const child=spawn(this.binary,['--config',cfg,'--drive-use-trash=true',
+            '--retries=1',...args],{
+            env:{PATH:process.env.PATH||'',HOME:dir,TMPDIR:dir,XDG_CONFIG_HOME:dir},
+            stdio:['ignore','pipe','pipe'],
+          });
+          const finish=(error?:Error)=>{
+            if(settled)return;settled=true;clearTimeout(timer);
+            if(error)reject(error);else resolve(stdout);
+          };
+          const timer=setTimeout(()=>{
+            child.kill('SIGKILL');finish(new Error('TENANT_GOOGLE_OPERATION_TIMEOUT'));
+          },45000);
+          child.stdout.on('data',(chunk:Buffer)=>{
+            bytes+=chunk.length;
+            if(bytes>256*1024){
+              child.kill('SIGKILL');finish(new Error('TENANT_GOOGLE_RESPONSE_OVERSIZE'));
+            } else stdout+=chunk.toString('utf8');
+          });
+          // Never expose provider stderr (which may contain account data).
+          child.stderr.on('data',()=>{});
+          child.once('error',()=>finish(new Error('TENANT_GOOGLE_COMMAND_FAILED')));
+          child.once('close',code=>finish(code===0?undefined:
+            new Error('TENANT_GOOGLE_COMMAND_FAILED')));
+        });
+        const findFile=async(fullPath:string)=>{
+          const parent=path.posix.dirname(fullPath)==='.'?'':path.posix.dirname(fullPath);
+          const leaf=path.posix.basename(fullPath);
+          const raw=await run(['lsjson','tenant:'+parent,'--max-depth','1']);
+          let files:unknown;
+          try{files=JSON.parse(raw);}catch{throw new Error('TENANT_GOOGLE_LIST_INVALID');}
+          if(!Array.isArray(files)||files.length>10000)
+            throw new Error('TENANT_GOOGLE_LIST_INVALID');
+          const found=files.filter(x=>x&&typeof x==='object'&&
+            (x as Record<string,unknown>).Path===leaf);
+          if(found.length>1)throw new Error('TENANT_GOOGLE_DUPLICATE_PATH');
+          if(!found.length)return null;
+          const entry=found[0] as Record<string,unknown>;
+          if(entry.IsDir!==false)throw new Error('TENANT_GOOGLE_FILES_ONLY');
+          return {id:typeof entry.ID==='string'?entry.ID:null,
+            size:typeof entry.Size==='number'?entry.Size:null};
+        };
+        const before=await findFile(target.path);
+        if(!before)throw new Error('TENANT_GOOGLE_SOURCE_MISSING');
+        if(next && await findFile(next.path))
+          throw new Error('TENANT_GOOGLE_DESTINATION_EXISTS');
+        const receiptId=randomUUID();
+        await client.query(
+          'INSERT INTO nyx_rclone_google_mutations_v1 '+
+          '(id,owner_id,connection_id,root_id,operation,source_path,destination_path,state) '+
+          "VALUES($1,$2,$3,$4,$5,$6,$7,'running')",
+          [receiptId,ownerId,connectionId,rootId,operation,source,dest||null]);
+        try {
+          if(operation==='trash') {
+            await run(['deletefile','tenant:'+target.path]);
+          } else {
+            await run(['moveto','tenant:'+target.path,'tenant:'+next!.path,'--ignore-existing']);
+          }
+          const missing=await findFile(target.path);
+          const present=next?await findFile(next.path):null;
+          if(missing||(next&&(!present||present.size!==before.size||
+            (before.id&&present.id&&before.id!==present.id))))
+            throw new Error('TENANT_GOOGLE_POSTCHECK_UNCERTAIN');
+          await this.persistActiveGoogleRefresh(
+            ownerId,connectionId,target.profile,target.packed,cfg);
+          await client.query(
+            "UPDATE nyx_rclone_google_mutations_v1 SET state='verified',completed_at=now() "+
+            'WHERE id=$1 AND owner_id=$2 AND connection_id=$3',
+            [receiptId,ownerId,connectionId]);
+          return {id:receiptId,operation,status:'verified' as const,
+            sourcePath:source,destinationPath:dest||null,
+            trashPolicy:operation==='trash'?'google-drive-trash':null};
+        } catch {
+          await client.query(
+            "UPDATE nyx_rclone_google_mutations_v1 SET state='uncertain',completed_at=now() "+
+            'WHERE id=$1 AND owner_id=$2 AND connection_id=$3',
+            [receiptId,ownerId,connectionId]);
+          throw new Error('TENANT_GOOGLE_OPERATION_UNCERTAIN_CHECK_AUDIT');
         }
       } finally {
         await fs.rm(dir,{recursive:true,force:true});
