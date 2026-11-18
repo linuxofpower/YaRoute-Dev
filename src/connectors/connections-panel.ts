@@ -529,6 +529,16 @@ function renderTenant(connections){
        await refreshTenantStorage();
      }));
      if(provider==='google-drive'){
+      permissions.append(button('Verify existing Drive RW token (no new consent)',async()=>{
+        const result=await call('nyx_storage_google_verify_rw',
+          {id:item.id,rootId:root.value.trim()});
+        if(result?.status!=='provider_scope_verified' || result?.connectionId!==item.id)
+          throw Error('Google Drive RW provider grant not independently verified');
+        show('Provider RW scope and Drive identity verified. Configure selected permissions separately; no file writes were attempted.');
+        await refreshTenantStorage();
+      }));
+    }
+    if(provider==='google-drive'){
       permissions.append(button('Authorize Google Drive full access (RW)',async()=>{
         const result=await call('nyx_storage_connection_begin_google',
           {id:item.id,folderId:root.value.trim(),access:'read-write'});
