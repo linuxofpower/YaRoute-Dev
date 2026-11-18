@@ -814,6 +814,77 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
   }
 
 
+  /**
+   * Attest an imported Google profile's REAL granted access via Google's
+   * tokeninfo and Drive account permissionId. Never trust the local Rclone
+   * scope declaration alone. Does not enable user-selected permissions.
+   */
+  async verifyExistingGoogleWriteGrant(ownerId:string,connectionId:string,rootId:string) {
+    if(process.env.NYX_DEPLOYMENT_MODE!=='public' ||
+       process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED!=='true')
+      throw new Error('TENANT_GOOGLE_WRITE_VERIFICATION_DISABLED');
+    const owned=await this.owned(ownerId,connectionId,'google-drive');
+    if(owned.status!=='active')throw new Error('TENANT_GOOGLE_CONNECTION_INACTIVE');
+    const selected=(owned.resources||[]).find(r=>
+      r.kind==='drive'&&r.id===rootId&&r.capabilities.includes('storage:list'));
+    if(!selected)throw new Error('TENANT_GOOGLE_ROOT_FORBIDDEN');
+    // Verifies live connectivity and persists a refreshed OAuth token first.
+    const probe=await this.probeAuthorizedRoot(ownerId,connectionId,'google-drive',rootId);
+    if(probe!=='verified')throw new Error('TENANT_GOOGLE_PROVIDER_READ_FAILED');
+    const active=await this.profile(ownerId,connectionId,'active');
+    if(active.profile.provider!=='google-drive' ||
+       active.profile.rootFolderId!==rootId ||
+       active.profile.scope!=='drive')
+      throw new Error('TENANT_GOOGLE_FULL_SCOPE_REQUIRED');
+    let token:unknown;
+    try{token=JSON.parse(active.profile.token);}catch{
+      throw new Error('TENANT_GOOGLE_TOKEN_INVALID');
+    }
+    const access=(token as {access_token?:unknown})?.access_token;
+    if(typeof access!=='string'||access.length<3||access.length>8192)
+      throw new Error('TENANT_GOOGLE_TOKEN_INVALID');
+    const query=new URL('https://oauth2.googleapis.com/tokeninfo');
+    query.searchParams.set('access_token',access);
+    const infoResponse=await fetch(query,{
+      redirect:'error',signal:AbortSignal.timeout(15000),
+    });
+    if(!infoResponse.ok)throw new Error('TENANT_GOOGLE_SCOPE_UNVERIFIED');
+    const infoText=await infoResponse.text();
+    if(infoText.length>16384)throw new Error('TENANT_GOOGLE_SCOPE_UNVERIFIED');
+    let info:unknown;
+    try{info=JSON.parse(infoText);}catch{throw new Error('TENANT_GOOGLE_SCOPE_UNVERIFIED');}
+    const scope=(info as {scope?:unknown})?.scope;
+    if(typeof scope!=='string' ||
+       !scope.split(/\s+/).includes('https://www.googleapis.com/auth/drive'))
+      throw new Error('TENANT_GOOGLE_FULL_SCOPE_REQUIRED');
+
+    const whoResponse=await fetch(
+      'https://www.googleapis.com/drive/v3/about?fields=user(permissionId)',{
+      headers:{authorization:'Bearer '+access},
+      redirect:'error',signal:AbortSignal.timeout(15000),
+    });
+    if(!whoResponse.ok)throw new Error('TENANT_GOOGLE_IDENTITY_UNVERIFIED');
+    const whoText=await whoResponse.text();
+    if(whoText.length>16384)throw new Error('TENANT_GOOGLE_IDENTITY_UNVERIFIED');
+    let who:unknown;
+    try{who=JSON.parse(whoText);}catch{throw new Error('TENANT_GOOGLE_IDENTITY_UNVERIFIED');}
+    const permissionId=(who as {user?:{permissionId?:unknown}})?.user?.permissionId;
+    if(typeof permissionId!=='string'||!/^[A-Za-z0-9_-]{1,256}$/.test(permissionId))
+      throw new Error('TENANT_GOOGLE_IDENTITY_UNVERIFIED');
+    const sql=await this.db().query(
+      "UPDATE nyx_connector_connections SET provider_capabilities=$4::jsonb,updated_at=now() "+
+      "WHERE owner_id=$1 AND id=$2 AND status='active' AND provider='google-drive' "+
+      "AND EXISTS (SELECT 1 FROM nyx_storage_verified_identity_v1 p "+
+      "WHERE p.owner_id=$1 AND p.connection_id=$2 AND p.provider='google-drive' "+
+      "AND p.external_id=$3) RETURNING id",
+      [ownerId,connectionId,permissionId,
+        JSON.stringify(['storage:list','storage:write','storage:move','storage:delete'])]);
+    if(sql.rowCount!==1)throw new Error('TENANT_GOOGLE_ATTESTED_IDENTITY_MISMATCH');
+    return {status:'provider_scope_verified' as const,connectionId,
+      rootId,providerCapabilities:['storage:list','storage:write','storage:move','storage:delete'],
+      selectedPermissionsUnchanged:true};
+  }
+
   /** Create one bounded UTF-8 text file; never overwrites an existing object.
    * Binary/large uploads require a separate first-party upload implementation.
    */
