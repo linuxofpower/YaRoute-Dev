@@ -185,7 +185,7 @@ export class GithubAppService {
   async refreshInstallationGrants(ownerId:string,connectionId:string) {
     const connection=await this.connections.getOwned(ownerId,connectionId);
     if(connection.provider!=='github'||connection.status!=='active'||
-       !connection.installationId||!/^[1-9]\\d{0,19}$/.test(connection.installationId))
+       !connection.installationId||!/^[1-9]\d{0,19}$/.test(connection.installationId))
       throw new Error('GITHUB_INSTALLATION_REQUIRED');
     const installation=await requestGitHub('/app/installations/'+connection.installationId,
       'GET',appJwt()) as GitHubInstallation;
