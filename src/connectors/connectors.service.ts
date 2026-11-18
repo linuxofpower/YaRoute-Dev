@@ -39,18 +39,19 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       max: 5, connectionTimeoutMillis: 5000});
     this.repository = new PostgresConnectorRepository(this.pool);
     await this.repository.initialize();
-    // Verified provider namespace identity, not labels, secret hashes, or folder
-    // paths, is unique per OAuth owner. Identity is attached only by trusted
-    // Google/MEGA server-side callbacks (or a reviewed verified importer).
+    // Independently verified provider identity is bound to each connection ID.
+    // Multiple connections for the same namespace are permitted by new schemas;
+    // existing Dev databases require the separately reviewed migration.
+    // Never infer identity from a display name or remote supplied by a caller.
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_storage_verified_identity_v1 (
       connection_id text PRIMARY KEY,
       owner_id text NOT NULL,
       provider text NOT NULL CHECK (provider IN ('google-drive','mega')),
       namespace text NOT NULL,
       external_id text NOT NULL,
-      verified_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE (owner_id, provider, namespace)
+      verified_at timestamptz NOT NULL DEFAULT now()
     )`);
+    await this.pool.query('CREATE INDEX IF NOT EXISTS nyx_storage_verified_identity_owner_namespace_idx ON nyx_storage_verified_identity_v1 (owner_id, provider, namespace)');
     await this.pool.query(`CREATE TABLE IF NOT EXISTS nyx_connector_link_states (
       state_digest text PRIMARY KEY,
       owner_id text NOT NULL,
@@ -246,7 +247,9 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     }
     const allowed=connection.provider==='mega' &&
       process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-      ? ['storage:list','storage:move','storage:delete'] : ['storage:list'];
+      ? ['storage:list','storage:write','storage:move','storage:delete'] :
+      connection.provider==='google-drive' && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
+      ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'];
     if (!Array.isArray(capabilities) ||
         capabilities.some(c => !allowed.includes(c))) {
       throw new Error('TENANT_RCLONE_READ_ONLY');
@@ -268,7 +271,9 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       throw new Error('TENANT_MEGA_SINGLE_ROOT_REQUIRED');
     const allowed=connection.provider==='mega' &&
       process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-      ? ['storage:list','storage:move','storage:delete'] : ['storage:list'];
+      ? ['storage:list','storage:write','storage:move','storage:delete'] :
+      connection.provider==='google-drive' && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
+      ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'];
     if (!Array.isArray(resources) || resources.length > 10 ||
         resources.some(r => !r || r.kind !== (connection.provider === 'mega' ? 'mega-root' : 'drive') ||
           !Array.isArray(r.capabilities) || r.capabilities.some(c => !allowed.includes(c)) ||
@@ -327,7 +332,8 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
   /** Trusted server-side provider verification only; never an MCP input. */
   async confirmStorageProvider(ownerId: string, id: string,
                                provider: 'google-drive' | 'mega', verifiedAccountId: string,
-                               verifiedDriveId?: string | null, verifiedGooglePermissionId?:string) {
+                               verifiedDriveId?: string | null, verifiedGooglePermissionId?:string,
+                               verifiedGoogleFullDrive = false) {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
@@ -357,7 +363,10 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       // User-enabled capabilities and chosen resources remain separate.
       providerCapabilities: provider==='mega' &&
         process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-        ? ['storage:list','storage:move','storage:delete'] : ['storage:list'],
+        ? ['storage:list','storage:write','storage:move','storage:delete'] :
+        provider==='google-drive' && verifiedGoogleFullDrive &&
+        process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
+        ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'],
       status: 'active',
     };
     const client=await this.db().connect();
