@@ -21,6 +21,7 @@ const publicTenantStorage = process.env.NYX_DEPLOYMENT_MODE === 'public' &&
 const publicMegaOnly = publicTenantStorage && process.env.NYX_PUBLIC_TENANT_MEGA_ONLY === 'true';
 const rcloneFileImportEnabled = publicTenantStorage && process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true';
 const megaMutationEnabled = publicTenantStorage && process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true';
+const googleMutationEnabled = publicTenantStorage && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true';
 const ownerLinkEnabled = publicTenantStorage && process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true';
 const privateBrokerEnabled = ownerLinkEnabled && process.env.NYX_PRIVATE_BROKER_CLIENT_ENABLED === 'true';
 const iconOrigin = process.env.NYX_PUBLIC_URL?.startsWith('https://')
@@ -211,6 +212,7 @@ const publicTenantStorage=${JSON.stringify(publicTenantStorage)};
 const publicMegaOnly=${JSON.stringify(publicMegaOnly)};
 const rcloneFileImportEnabled=${JSON.stringify(rcloneFileImportEnabled)};
 const megaMutationEnabled=${JSON.stringify(megaMutationEnabled)};
+const googleMutationEnabled=${JSON.stringify(googleMutationEnabled)};
 const ownerLinkEnabled=${JSON.stringify(ownerLinkEnabled)};
 const privateBrokerEnabled=${JSON.stringify(privateBrokerEnabled)};
 const root=document.getElementById('connection-list');
@@ -507,26 +509,37 @@ function renderTenant(connections){
    listCheck.checked=hasReadList;listCheck.disabled=true;
    scope.append(listCheck,el('span','Browse names (storage:list) — '+(hasReadList?'enabled':'not verified')));
    permissions.append(scope);
-   if(provider==='mega' && megaMutationEnabled && item.status==='active'){
+   if(((provider==='mega' && megaMutationEnabled) || (provider==='google-drive' && googleMutationEnabled)) && item.status==='active'){
      const toggles=[];
      for(const [label,cap] of [['Move/rename files','storage:move'],
-       ['Delete files to MEGA rubbish bin','storage:delete']]){
+       [provider==='mega'?'Delete files to MEGA rubbish bin':'Delete to Google Drive Trash (recoverable)','storage:delete']]){
        const row=el('label');const check=el('input');check.type='checkbox';
        check.checked=(item.capabilities||[]).includes(cap) &&
          (activeRoot?.capabilities||[]).includes(cap);
        row.append(check,el('span',label));permissions.append(row);
        toggles.push({cap,check});
      }
-     permissions.append(el('p','These checkboxes store your requested MEGA permissions; the provider authorization and a real disposable-file write test are separate.'));
+     permissions.append(el('p','These controls select permissions for this exact root. Provider authorization and a disposable-file mutation test are still required. Permanent deletion and uploads are not implemented.'));
      permissions.append(button('Save file permissions',async()=>{
        const caps=['storage:list',...toggles.filter(x=>x.check.checked).map(x=>x.cap)];
        await call('nyx_storage_connection_permissions',{id:item.id,capabilities:caps});
        await call('nyx_storage_connection_roots',{id:item.id,resources:[
-         {kind:'mega-root',id:root.value.trim(),capabilities:caps}]});
-       show('File permissions saved. Write access also requires MEGA reauthorization.');
+         {kind,id:root.value.trim(),capabilities:caps}]});
+       show('Requested permissions saved; provider reauthorization and a disposable-file test are still required.');
        await refreshTenantStorage();
      }));
-     if(!['storage:move','storage:delete'].every(cap=>
+     if(provider==='google-drive'){
+      permissions.append(button('Authorize Google Drive full access (RW)',async()=>{
+        const result=await call('nyx_storage_connection_begin_google',
+          {id:item.id,folderId:root.value.trim(),access:'read-write'});
+        const link=new URL(result.url);
+        if(link.protocol!=='https:' || link.origin!=='https://accounts.google.com')
+          throw Error('Untrusted Google OAuth URL');
+        await request('ui/open-link',{url:result.url});
+        show('Grant full Drive scope through Google. Then verify and activate the pending credential.');
+      }));
+    }
+    if(provider==='mega' && !['storage:move','storage:delete'].every(cap=>
          (item.providerCapabilities||[]).includes(cap))){
        permissions.append(button('Reauthorize MEGA for writes',async()=>{
          const result=await call('nyx_storage_connection_begin_mega',
@@ -538,12 +551,12 @@ function renderTenant(connections){
          show('Reauthorize securely, then finish activation here.');
        }));
      }
-     permissions.append(button('Finish pending MEGA reauthorization',async()=>{
+     permissions.append(button('Finish storage RW reauthorization',async()=>{
        const result=await call('nyx_storage_connection_test_pending',{id:item.id});
-       if(result!=='verified')throw Error('Pending MEGA credentials have not passed read probe');
+       if(result!=='verified')throw Error('Pending credentials have not passed read probe');
        const activated=await call('nyx_storage_connection_activate',{id:item.id});
-       if(activated.status!=='active')throw Error('MEGA activation failed');
-       show('MEGA login and read connectivity verified; requested permissions recorded. Rename/move/trash are not proven until tested on a disposable file.');
+       if(activated.status!=='active')throw Error('Storage activation failed');
+       show('Provider login and read connectivity verified; requested permissions recorded. Test on a disposable file before relying on writes.');
        await refreshTenantStorage();
      }));
    }else if(provider==='mega'){
