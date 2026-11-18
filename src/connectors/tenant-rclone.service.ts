@@ -9,6 +9,7 @@ import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider } fr
 import { ConnectorsService } from './connectors.service';
 import { verifyImportedGoogleIdentity } from './imported-google-identity';
 import { refreshedGoogleFromIsolatedConfig } from './rclone-google-token-refresh';
+import {selectVerifiedStorageConnection} from './storage-connection-selector';
 
 export type TenantRcloneProvider = 'google-drive' | 'mega';
 export type TenantRcloneProfile =
@@ -813,6 +814,50 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+
+  /**
+   * For an authenticated owner's one verified cloud namespace, select the
+   * strongest connection eligible for the exact operation and root.
+   * The starting ID must itself belong to the caller; namespace is fetched
+   * from trusted server-side attestation, never from MCP/model arguments.
+   */
+  async selectBestAuthorizedConnection(ownerId:string,connectionId:string,
+    rootId:string,operation:'storage:list'|'storage:write'|'storage:move'|'storage:delete',
+    relativePath?:string) {
+    const anchor=await this.owned(ownerId,connectionId);
+    if(anchor.status!=='active')throw new Error('TENANT_SELECTION_ANCHOR_INACTIVE');
+    if(!rootId)throw new Error('TENANT_SELECTION_ROOT_INVALID');
+    const proof=await this.db().query(
+      'SELECT provider,namespace FROM nyx_storage_verified_identity_v1 '+
+      'WHERE owner_id=$1 AND connection_id=$2',
+      [ownerId,connectionId]);
+    if(proof.rowCount!==1)throw new Error('TENANT_SELECTION_IDENTITY_UNVERIFIED');
+    const provider=proof.rows[0].provider as TenantRcloneProvider;
+    const namespace=proof.rows[0].namespace as string;
+    if(provider!==anchor.provider||!namespace)
+      throw new Error('TENANT_SELECTION_IDENTITY_INVALID');
+    const linked=await this.db().query(
+      'SELECT connection_id,owner_id,provider,namespace '+
+      'FROM nyx_storage_verified_identity_v1 '+
+      'WHERE owner_id=$1 AND provider=$2 AND namespace=$3',
+      [ownerId,provider,namespace]);
+    const records=await this.connectors.registryPolicy().list(ownerId);
+    const connections=new Map(records.map(x=>[x.id,x]));
+    const candidates=linked.rows.flatMap(row=>{
+      const c=connections.get(row.connection_id as string);
+      return c?[{connection:c,verifiedOwnerId:row.owner_id as string,
+        verifiedProvider:row.provider as TenantRcloneProvider,
+        verifiedNamespace:row.namespace as string}]:[];
+    });
+    const chosen=selectVerifiedStorageConnection(candidates,{
+      ownerId,provider,verifiedNamespace:namespace,rootId,
+      operation,path:relativePath,
+    });
+    return {connectionId:chosen.id,displayName:chosen.displayName,
+      provider:chosen.provider,rootId,operation,
+      selectionPolicy:'most-capable-eligible-within-verified-owner-and-namespace',
+      readOnlyDecision:true};
+  }
 
   /**
    * Attest an imported Google profile's REAL granted access via Google's
