@@ -951,6 +951,22 @@ export class McpService {
             operation,sourcePath,destinationPath)));
       }
 
+      if(process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true' ||
+         process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true') {
+        server.registerTool('nyx_storage_text_file_create', {
+          title:'Create a new UTF-8 text file in my verified cloud root',
+          description:'One bounded text file, without overwriting. Requires owner, verified provider, selected storage:write grant, root authorization, and provider RW permission. Does not provide binary uploads.',
+          inputSchema:z.object({
+            id:z.string().uuid(),provider:z.enum(['google-drive','mega']),
+            rootId:z.string().min(1).max(256),
+            path:z.string().min(1).max(2048),
+            content:z.string().max(65536),
+          }).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+        },async({id,provider,rootId,path,content})=>this.safeTool(()=>
+          this.tenantRclone.createTenantTextFile(this.connectorOwner(),id,provider,rootId,path,content)));
+      }
+
       server.registerTool('nyx_storage_connection_revoke', {
         title:'Revoke my MEGA or Google Drive connection',
         description:'Owner-scoped: revoke this tenant storage grant and erase its pending/active encrypted credentials and unconsumed sign-in links. Does not revoke provider-side sessions or touch private/operator Rclone config.',
