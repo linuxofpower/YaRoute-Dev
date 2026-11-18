@@ -247,7 +247,9 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
     }
     const allowed=connection.provider==='mega' &&
       process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-      ? ['storage:list','storage:move','storage:delete'] : ['storage:list'];
+      ? ['storage:list','storage:move','storage:delete'] :
+      connection.provider==='google-drive' && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
+      ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'];
     if (!Array.isArray(capabilities) ||
         capabilities.some(c => !allowed.includes(c))) {
       throw new Error('TENANT_RCLONE_READ_ONLY');
@@ -269,7 +271,9 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       throw new Error('TENANT_MEGA_SINGLE_ROOT_REQUIRED');
     const allowed=connection.provider==='mega' &&
       process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-      ? ['storage:list','storage:move','storage:delete'] : ['storage:list'];
+      ? ['storage:list','storage:move','storage:delete'] :
+      connection.provider==='google-drive' && process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
+      ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'];
     if (!Array.isArray(resources) || resources.length > 10 ||
         resources.some(r => !r || r.kind !== (connection.provider === 'mega' ? 'mega-root' : 'drive') ||
           !Array.isArray(r.capabilities) || r.capabilities.some(c => !allowed.includes(c)) ||
@@ -328,7 +332,8 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
   /** Trusted server-side provider verification only; never an MCP input. */
   async confirmStorageProvider(ownerId: string, id: string,
                                provider: 'google-drive' | 'mega', verifiedAccountId: string,
-                               verifiedDriveId?: string | null, verifiedGooglePermissionId?:string) {
+                               verifiedDriveId?: string | null, verifiedGooglePermissionId?:string,
+                               verifiedGoogleFullDrive = false) {
     this.assertTenantStorageMode();
     const connection = await this.owned(this.owner(ownerId), id);
     assertPublicTenantStorageProvider(connection.provider);
@@ -358,7 +363,10 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       // User-enabled capabilities and chosen resources remain separate.
       providerCapabilities: provider==='mega' &&
         process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true'
-        ? ['storage:list','storage:move','storage:delete'] : ['storage:list'],
+        ? ['storage:list','storage:move','storage:delete'] :
+        provider==='google-drive' && verifiedGoogleFullDrive &&
+        process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'
+        ? ['storage:list','storage:write','storage:move','storage:delete'] : ['storage:list'],
       status: 'active',
     };
     const client=await this.db().connect();
