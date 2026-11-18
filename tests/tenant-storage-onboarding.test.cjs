@@ -83,7 +83,7 @@ test('Google callback consumes state and stages provider-bound credential withou
  svc.pool={query:async(sql,params)=>{
    if(sql.startsWith('INSERT')) {
      stateRow={owner_id:params[1],connection_id:params[2],folder_id:params[3],
-        encrypted_verifier:params[4]};
+        requested_access:params[4],encrypted_verifier:params[5]};
      return {rowCount:1};
    }
    if(sql.startsWith('DELETE')&&sql.includes('RETURNING')) {
@@ -157,4 +157,37 @@ test('MEGA sign-in uses one-time HTTPS form link and requires a successful probe
  other.obscure=async()=> 'test-obscured-password';
  await assert.rejects(()=>other.complete(state,'tester@example.com','wrong'),/READ_PROBE_FAILED/);
  assert.equal(bad.confirmed.length,0);
+});
+
+
+test('Google full Drive consent requests RW only when explicit and verifies scope',async t=>{
+ env(t);
+ const c=connection('google-drive','folder123');
+ const {connectors,storage,confirmed}=stores(c);
+ const svc=new TenantGoogleOAuthService(connectors,storage);
+ svc.key=randomBytes(32);
+ let saved;
+ svc.pool={query:async(sql,params)=>{
+   if(sql.startsWith('INSERT'))saved={owner_id:params[1],connection_id:params[2],
+     folder_id:params[3],requested_access:params[4],encrypted_verifier:params[5]};
+   if(sql.includes('RETURNING'))return {rowCount:1,rows:[saved]};
+   return {rowCount:1};
+ }};
+ const {url}=await svc.begin(owner,id,'folder123','read-write');
+ assert.equal(new URL(url).searchParams.get('scope').includes('https://www.googleapis.com/auth/drive '),true);
+ const original=global.fetch;t.after(()=>{global.fetch=original;});
+ global.fetch=async target=>{
+   const str=String(target);
+   let data;
+   if(str.includes('/drive/v3/about?'))data={user:{permissionId:'permission42'}};
+   else if(str.includes('/drive/v3/files/'))data={id:'folder123',mimeType:'application/vnd.google-apps.folder',trashed:false};
+   else if(str.includes('/token'))data={access_token:'access',refresh_token:'refresh',expires_in:3600,
+     token_type:'Bearer',scope:'openid email https://www.googleapis.com/auth/drive'};
+   else data={sub:'subject42'};
+   return {ok:true,text:async()=>JSON.stringify(data)};
+ };
+ const state=new URL(url).searchParams.get('state');
+ const result=await svc.complete(state,'provider-code');
+ assert.equal(result.status,'pending_read_probe');
+ assert.equal(confirmed[0][6],true);
 });
