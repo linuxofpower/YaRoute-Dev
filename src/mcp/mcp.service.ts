@@ -808,9 +808,9 @@ export class McpService {
 
       server.registerTool('nyx_storage_connection_permissions', {
         title: 'Select storage connection capabilities',
-        description: 'Select read and, where explicitly enabled by server policy, MEGA move/trash permissions. Provider permissions remain independently enforced.',
+        description: 'Select separately authorized Google Drive write/move/trash or MEGA move/trash grants. Actual provider permissions and per-root grants are enforced.',
         inputSchema: z.object({id: z.string().uuid(),
-           capabilities: z.array(z.enum(['storage:list','storage:move','storage:delete'])).max(3)}),
+           capabilities: z.array(z.enum(['storage:list','storage:write','storage:move','storage:delete'])).max(4)}),
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
       }, async ({id,capabilities}) => this.safeTool(() =>
         this.connections.storagePermissions(this.connectorOwner(),id,capabilities)));
@@ -821,7 +821,7 @@ export class McpService {
         inputSchema: z.object({id:z.string().uuid(),resources:z.array(z.object({
           kind:z.enum(['drive','mega-root']),
           id:z.string().min(1).max(256),
-          capabilities:z.array(z.enum(['storage:list','storage:move','storage:delete'])).min(1).max(3),
+          capabilities:z.array(z.enum(['storage:list','storage:write','storage:move','storage:delete'])).min(1).max(4),
         }).strict()).max(10)}),
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
       }, async ({id,resources}) => this.safeTool(() =>
@@ -829,11 +829,11 @@ export class McpService {
 
       server.registerTool('nyx_storage_connection_begin_google', {
         title:'Authorize Google Drive for one NestNyx connection',
-        description:'Generate a ten-minute, owner-bound Google OAuth URL using PKCE and read-only Drive scope. Requires selected Drive folder ID. Sign in using Google; do not send tokens in chat.',
-        inputSchema:z.object({id:z.string().uuid(),folderId:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/)}),
+        description:'Generate an owner-bound Google OAuth PKCE URL with explicit read or full-drive consent. Full access still requires per-root grants.',
+        inputSchema:z.object({id:z.string().uuid(),folderId:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),access:z.enum(['read','read-write']).optional()}),
         annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
-      },async({id,folderId})=>this.safeTool(()=>
-        this.tenantGoogle.begin(this.connectorOwner(),id,folderId)));
+      },async({id,folderId,access})=>this.safeTool(()=>
+        this.tenantGoogle.begin(this.connectorOwner(),id,folderId,access||'read')));
 
       server.registerTool('nyx_storage_connection_begin_mega', {
         title:'Open a secure MEGA account sign-in form',
@@ -932,6 +932,22 @@ export class McpService {
           annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},
         },async({id,rootId,operation,sourcePath,destinationPath})=>this.safeTool(()=>
           this.tenantRclone.mutateMegaFile(this.connectorOwner(),id,rootId,
+            operation,sourcePath,destinationPath)));
+      }
+
+      if (process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true') {
+        server.registerTool('nyx_storage_google_file_mutate', {
+          title:'Rename, move, or trash one file in my verified Google Drive root',
+          description:'Owner-bound single-file rename, move or recoverable Trash. Requires verified full Drive OAuth scope and per-root grants. No permanent deletion.',
+          inputSchema:z.object({
+            id:z.string().uuid(),rootId:z.string().min(1).max(256),
+            operation:z.enum(['rename','move','trash']),
+            sourcePath:z.string().min(1).max(2048),
+            destinationPath:z.string().max(2048).optional(),
+          }).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},
+        },async({id,rootId,operation,sourcePath,destinationPath})=>this.safeTool(()=>
+          this.tenantRclone.mutateGoogleFile(this.connectorOwner(),id,rootId,
             operation,sourcePath,destinationPath)));
       }
 
