@@ -181,6 +181,23 @@ export class GithubAppService {
       String(id),verified.account.login,verifiedGrants(verified.permissions??{}),names);
   }
 
+  /** Reconcile existing connection grants using the App's trusted installation identity. */
+  async refreshInstallationGrants(ownerId:string,connectionId:string) {
+    const connection=await this.connections.getOwned(ownerId,connectionId);
+    if(connection.provider!=='github'||connection.status!=='active'||
+       !connection.installationId||!/^[1-9]\\d{0,19}$/.test(connection.installationId))
+      throw new Error('GITHUB_INSTALLATION_REQUIRED');
+    const installation=await requestGitHub('/app/installations/'+connection.installationId,
+      'GET',appJwt()) as GitHubInstallation;
+    if(String(installation.id)!==connection.installationId||
+       installation.app_id!==githubAppConfig().appId||
+       installation.account?.login!==connection.externalAccountId)
+      throw new Error('GITHUB_INSTALLATION_MISMATCH');
+    return this.connections.refreshGithubGrants(ownerId,connectionId,
+      connection.installationId,connection.externalAccountId,
+      verifiedGrants(installation.permissions??{}));
+  }
+
   /**
    * Every GitHub call mints a short-lived token restricted to one exact
    * user-selected repo AND one minimal provider permission. No token is persisted.
