@@ -543,7 +543,7 @@ function renderTenant(connections){
        row.append(check,el('span',label));permissions.append(row);
        toggles.push({cap,check});
      }
-     permissions.append(el('p','These controls select permissions for this exact root. The provider authorization and a real disposable-file write test are separate. Permanent deletion and binary uploads are not implemented.'));
+     permissions.append(el('p','These controls select permissions for this exact root. The provider authorization and a real disposable-file write test are separate. Permanent account-wide Trash cleanup is disabled unless separately enabled and confirmed; binary uploads are not implemented.'));
      permissions.append(button('Save file permissions',async()=>{
        const caps=['storage:list',...toggles.filter(x=>x.check.checked).map(x=>x.cap)];
        await call('nyx_storage_connection_permissions',{id:item.id,capabilities:caps});
