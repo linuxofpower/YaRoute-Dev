@@ -9,8 +9,8 @@ const connectionsIsDev = process.env.NYX_DEPLOYMENT_MODE === 'public' ||
   process.env.NYX_SERVICE_NAME === 'DevProNestNyx' ||
   process.env.NYX_PUBLIC_URL === 'https://dev-nest-nyx-0df80c227630.herokuapp.com';
 const connectionsKind = connectionsIsDev ? 'dev' : 'pro';
-export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v15.html';
-export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v15.html';
+export const CONNECTIONS_PANEL_URI = 'ui://nestnyx/' + connectionsKind + '/connections/v16.html';
+export const CONNECTIONS_HOME_URI = 'ui://nestnyx/' + connectionsKind + '/home/v16.html';
 export const CONNECTIONS_PANEL_LABEL = connectionsIsDev ? '🔵 NestNyx Dev · Connections' : '🟣 NestNyx Pro · Connections';
 export const CONNECTIONS_HOME_LABEL = connectionsIsDev ? '🏠 NestNyx Dev · Home' : '🏠 NestNyx Pro · Home';
 // Public users connect only their own storage; never show the operator's
