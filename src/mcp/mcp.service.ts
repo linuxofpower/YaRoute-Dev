@@ -1010,6 +1010,21 @@ export class McpService {
           this.tenantRclone.createTenantTextFile(this.connectorOwner(),id,provider,rootId,path,content)));
       }
 
+      if(process.env.NYX_PUBLIC_TRASH_CLEANUP_ENABLED==='true') {
+        server.registerTool('nyx_storage_trash_cleanup',{
+          title:'Preview or permanently empty my provider account Trash',
+          description:'Account-wide irreversible cleanup; not folder scoped. Omitting confirmed returns a no-write safety preview. Set confirmed=true only for an explicit authorized cleanup request. The provider may finish asynchronously.',
+          inputSchema:z.object({
+            id:z.string().uuid(),provider:z.enum(['google-drive','mega']),
+            rootId:z.string().min(1).max(256),confirmed:z.boolean().default(false),
+          }).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:true,
+            idempotentHint:false,openWorldHint:true},
+        },async({id,provider,rootId,confirmed})=>this.safeTool(()=>
+          this.tenantRclone.cleanupTenantTrash(
+            this.connectorOwner(),id,provider,rootId,confirmed)));
+      }
+
       server.registerTool('nyx_storage_connection_select_best', {
         title:'Select my strongest verified cloud connection for an operation',
         description:'Read-only choice among active connections within the same verified OAuth owner, physical provider identity and exact authorized root. Does not transfer credentials or execute the operation.',
