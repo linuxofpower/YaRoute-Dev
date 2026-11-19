@@ -173,6 +173,7 @@ export class McpService {
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
               ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import','nyx_storage_connection_begin_import_all','nyx_storage_connection_finish_import'] : []),
               'nyx_storage_connection_revoke',
+              ...(process.env.NYX_PUBLIC_TRASH_CLEANUP_ENABLED === 'true' ? ['nyx_storage_trash_cleanup'] : []),
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
                 ['nyx_storage_mega_file_mutate'] : [])] : []),
            ...(process.env.NYX_PRIVATE_OWNER_LINK_ENABLED === 'true' ? ['nyx_private_owner_link_status','nyx_private_owner_link_begin'] : []),
@@ -236,7 +237,7 @@ export class McpService {
     // after deployment. Keep v10-v12 URIs fetchable so ChatGPT doesn't display
     // "App unavailable" when it has cached an old Connections/Home template.
     // Each alias serves the current UI, with the requested URI in the response.
-    for (const version of [10,11,12,13,14]) {
+    for (const version of [10,11,12,13,14,15]) {
       for (const item of [
         {label:CONNECTIONS_PANEL_LABEL,uri:CONNECTIONS_PANEL_URI,html:CONNECTIONS_PANEL_HTML},
         {label:CONNECTIONS_HOME_LABEL,uri:CONNECTIONS_HOME_URI,html:CONNECTIONS_HOME_HTML},
@@ -1008,6 +1009,21 @@ export class McpService {
           annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
         },async({id,provider,rootId,path,content})=>this.safeTool(()=>
           this.tenantRclone.createTenantTextFile(this.connectorOwner(),id,provider,rootId,path,content)));
+      }
+
+      if(process.env.NYX_PUBLIC_TRASH_CLEANUP_ENABLED==='true') {
+        server.registerTool('nyx_storage_trash_cleanup',{
+          title:'Preview or permanently empty my provider account Trash',
+          description:'Account-wide irreversible cleanup; not folder scoped. Omitting confirmed returns a no-write safety preview. Set confirmed=true only for an explicit authorized cleanup request. The provider may finish asynchronously.',
+          inputSchema:z.object({
+            id:z.string().uuid(),provider:z.enum(['google-drive','mega']),
+            rootId:z.string().min(1).max(256),confirmed:z.boolean().default(false),
+          }).strict(),
+          annotations:{readOnlyHint:false,destructiveHint:true,
+            idempotentHint:false,openWorldHint:true},
+        },async({id,provider,rootId,confirmed})=>this.safeTool(()=>
+          this.tenantRclone.cleanupTenantTrash(
+            this.connectorOwner(),id,provider,rootId,confirmed)));
       }
 
       server.registerTool('nyx_storage_connection_select_best', {
