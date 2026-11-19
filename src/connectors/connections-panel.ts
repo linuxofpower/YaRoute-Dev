@@ -585,6 +585,30 @@ function renderTenant(connections){
          show('Reauthorize securely, then finish activation here.');
        }));
      }
+      if(provider==='mega'||provider==='google-drive'){
+        const canClear=(provider==='mega'?root.value.trim()==='MEGA_ROOT':
+          root.value.trim()==='root') &&
+          (item.capabilities||[]).includes('storage:delete') &&
+          (item.providerCapabilities||[]).includes('storage:delete') &&
+          (activeRoot?.capabilities||[]).includes('storage:delete');
+        if(canClear && ${process.env.NYX_PUBLIC_TRASH_CLEANUP_ENABLED==='true'})permissions.append(
+          button('Empty entire provider Trash (permanent)',async()=>{
+            const selectedRoot=root.value.trim();
+            const args={id:item.id,provider,rootId:selectedRoot,confirmed:false};
+            const preview=await call('nyx_storage_trash_cleanup',args);
+            if(preview.status!=='confirmation_required'||
+               preview.scope!=='entire-provider-account')
+              throw Error('Permanent cleanup preflight failed');
+            if(!confirm('Permanently EMPTY ALL Trash for '+item.displayName+
+              '? This affects the entire provider account, including files outside selected folders. It cannot be undone.'))return;
+            const accepted=await call('nyx_storage_trash_cleanup',{
+              ...args,confirmed:true});
+            if(accepted.status!=='accepted'||!accepted.id)
+              throw Error('Cleanup acceptance not verified; inspect audit');
+            show('Provider accepted permanent Trash cleanup '+accepted.id+
+              '. Final provider completion may be asynchronous.');
+          }));
+      }
      // Only test under this authenticated OAuth owner and the exact verified root.
      // Never overwrite an existing object. The final step uses recoverable Trash.
      const smokeCaps=['storage:list','storage:write','storage:move','storage:delete'];
