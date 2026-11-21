@@ -80,3 +80,26 @@ References:
 
 - https://developers.openai.com/plugins/build/auth
 - https://developers.openai.com/plugins/deploy/troubleshooting
+
+
+## Native multi-account viewer — Dev implementation contract
+
+- Two or more separately authenticated Google logins each produce a **signed,
+  three-minute, display-only** `nyx_account_view_snapshot` under their own
+  OAuth client connection; the model must not duplicate one owner's snapshot.
+- `nyx_accounts_view` requires distinct signed owner references and the invoking
+  OAuth identity must be one of them. The native MCP Apps UI uses one **Switch
+  account** dropdown populated from the issuer-verified display emails.
+- The selection persists only as non-authoritative widget presentation state.
+  It never switches OAuth tokens or authorizes cross-account storage operations.
+- Display all four grant names: `storage:list`, `storage:write`,
+  `storage:move`, `storage:delete`. A granted write capability still requires
+  a matching root grant, enabled write tool, and provider-side consent.
+- Older cached `multi-v2.html` and `multi-v3.html` resource URLs remain
+  resolvable for the same safe read-only UI.
+- A combined view is **not** proof of refresh-token renewal. OAuth session
+  renewal remains controlled by ChatGPT and Auth0 and needs an actual expiry
+  crossing test. Do not relax JWT verification to reduce reconnects.
+
+This code can be reviewed and tested in Dev without deploying to Pro or
+changing user-owned storage, credentials, or permissions.
