@@ -59,8 +59,8 @@ test('ChatGPT gets separate authenticated conversation-tab and global-sidebar la
  assert.ok(thread.includes('ui:{resourceUri:CONNECTIONS_PANEL_URI'));
  assert.ok(global.includes("'openai/outputTemplate':CONNECTIONS_HOME_URI"));
  assert.ok(global.includes('ui:{resourceUri:CONNECTIONS_HOME_URI'));
- assert.equal((mcp.match(/server\.registerResource\(/g)||[]).length,6);
- // The additional resource is a credential-free, read-only cross-profile snapshot viewer.
+ assert.equal((mcp.match(/server\.registerResource\(/g)||[]).length,7);
+ // Additional registrations include the credential-free combined viewer and its v2/v3 compatibility aliases.
  assert.match(mcp,/registerResource\('NestNyx Multi-account Viewer',ACCOUNT_VIEW_URI/);
  // The fifth source registration is inside a loop covering v10-v13 Home/Connections aliases.
  assert.match(mcp,/for \(const version of \[10,11,12,13,14,15\]\)/);
