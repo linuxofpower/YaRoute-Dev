@@ -73,15 +73,15 @@ test('viewer is display-only and requires signed, distinct, caller-included owne
 });
 
 test('native dropdown script parses and preserves authenticated read-only boundaries',()=>{
- const code=ACCOUNT_VIEW_HTML.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+ const code=ACCOUNT_VIEW_HTML.match(/<script>([\s\S]*?)<\/script>/)?.[1];
  assert.ok(code && code.length>1000);
  assert.doesNotThrow(()=>new vm.Script(code,{filename:'nestnyx-combined-account-viewer.js'}));
  assert.match(code,/selectedAccountView/);
- assert.match(code,/new Set\\(payload\\.accounts\\.map/);
- assert.match(code,/payload\\.readOnly!==true/);
- assert.match(code,/payload\\.noCrossTenantAuthorization!==true/);
- assert.match(code,/node\\('option',v\\.display\\)/);
- assert.doesNotMatch(code,/window\\.openai\\.callTool|tools\\/call|fetch\\(|localStorage|sessionStorage|document\\.cookie/);
+ assert.match(code,/new Set\(payload\.accounts\.map/);
+ assert.match(code,/payload\.readOnly!==true/);
+ assert.match(code,/payload\.noCrossTenantAuthorization!==true/);
+ assert.match(code,/node\('option',v\.display\)/);
+ assert.doesNotMatch(code,/window\.openai\.callTool|tools\/call|fetch\(|localStorage|sessionStorage|document\.cookie/);
 });
 test('four provider-selected caps survive signed storage snapshot verification',()=>{
  const caps=['storage:list','storage:write','storage:move','storage:delete'];
