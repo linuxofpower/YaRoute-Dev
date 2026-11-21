@@ -172,7 +172,12 @@ export class McpService {
              'nyx_storage_connection_test_pending','nyx_storage_connection_activate',
              'nyx_storage_connection_test_active','nyx_storage_connection_list_files',
               ...(process.env.NYX_PUBLIC_RCLONE_FILE_IMPORT_ENABLED === 'true' ? ['nyx_storage_connection_begin_import','nyx_storage_connection_begin_import_all','nyx_storage_connection_finish_import'] : []),
-              'nyx_storage_connection_revoke',
+              'nyx_storage_connection_revoke','nyx_storage_connection_select_best',
+              ...(process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true' ?
+                ['nyx_storage_google_verify_rw','nyx_storage_google_file_mutate'] : []),
+              ...(process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true' ||
+                  process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
+                ['nyx_storage_text_file_create'] : []),
               ...(process.env.NYX_PUBLIC_TRASH_CLEANUP_ENABLED === 'true' ? ['nyx_storage_trash_cleanup'] : []),
               ...(process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true' ?
                 ['nyx_storage_mega_file_mutate'] : [])] : []),
@@ -480,7 +485,8 @@ export class McpService {
         storageWriteAvailable:process.env.NYX_DEPLOYMENT_MODE==='public' &&
           process.env.NYX_PUBLIC_CONNECTORS_ENABLED==='true' &&
           process.env.NYX_MULTIUSER_RCLONE_ENABLED==='true' &&
-          process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true',
+          (process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED==='true' ||
+           process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED==='true'),
         sessionSwitchRequiresReconnect:true,
       };
     }));
