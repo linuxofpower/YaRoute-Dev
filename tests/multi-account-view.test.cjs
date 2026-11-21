@@ -86,8 +86,8 @@ test('native dropdown script parses and preserves authenticated read-only bounda
 test('four provider-selected caps survive signed storage snapshot verification',()=>{
  const caps=['storage:list','storage:write','storage:move','storage:delete'];
  const item={displayName:'Primary',provider:'mega',status:'active',selected:caps,providerVerified:caps,resourceCount:1};
- const view=verifyStorageView(signStorageView('oauth:primary','primary@example.test',[item],key,10000),key,10001);
+ const view=verifyStorageView(signStorageView('oauth:primary','Synthetic Primary account',[item],key,10000),key,10001);
  assert.deepEqual(view.connections[0].selected,caps);
  assert.deepEqual(view.connections[0].providerVerified,caps);
- assert.throws(()=>signStorageView('oauth:primary','primary@example.test',[{...item,selected:[...caps,'storage:permanent-delete']}],key,10000),/VIEW_INVALID/);
+ assert.throws(()=>signStorageView('oauth:primary','Synthetic Primary account',[{...item,selected:[...caps,'storage:permanent-delete']}],key,10000),/VIEW_INVALID/);
 });
