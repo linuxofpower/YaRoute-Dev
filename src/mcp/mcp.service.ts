@@ -304,6 +304,22 @@ export class McpService {
           'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
       }]}));
 
+
+    // Cached ChatGPT tool metadata may still reference v2 or v3. Both old
+    // resource URIs serve the current display-only dropdown, never OAuth grants.
+    for(const version of [2,3]){
+      const legacy=ACCOUNT_VIEW_URI.replace(/\/multi-v4\.html$/, '/multi-v'+version+'.html');
+      if(legacy===ACCOUNT_VIEW_URI)throw new Error('NYX_ACCOUNT_VIEW_COMPAT_URI_INVALID');
+      server.registerResource('NestNyx Multi-account Viewer (compatibility v'+version+')',legacy,
+        {mimeType:'text/html;profile=mcp-app'},
+        async()=>({contents:[{
+          uri:legacy,mimeType:'text/html;profile=mcp-app',
+          text:ACCOUNT_VIEW_HTML,
+          _meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},
+            'openai/ui':{availableDisplayModes:['inline','fullscreen']}},
+        }]}));
+    }
+
     // Separate global and thread entrypoints make each launcher independently
     // discoverable. Both reuse the SAME authenticated, read-only view payload.
     // No storage, Head authority, provider grants or credential paths are changed.
@@ -405,7 +421,7 @@ export class McpService {
         const connections=[...publicConnections,
           ...linkedRemotes.map(remote=>privateRemoteView(owner,remote,key))];
         const filtered=(caps:string[])=>caps.filter(c=>
-          ['storage:list','storage:move','storage:delete'].includes(c));
+          ['storage:list','storage:write','storage:move','storage:delete'].includes(c));
         const token=signStorageView(owner,label,connections.map(c=>({
           displayName:c.displayName,provider:c.provider as 'mega'|'google-drive',
           status:c.status as 'pending'|'active'|'revoked',
@@ -419,8 +435,8 @@ export class McpService {
           warning:'Read-only, signed, temporary display metadata. Not a bearer grant to any storage provider.'};
       }));
       server.registerTool('nyx_accounts_view',{
-        title:'View two separately authenticated NestNyx accounts in one tabbed panel',
-        description:'Show a read-only tabbed comparison from separately signed and unexpired Google OAuth account snapshots. Never switches an OAuth identity, grants sharing or accepts credentials. First invoke nyx_account_view_snapshot once per connected ChatGPT account.',
+        title:'Switch between authenticated NestNyx Google accounts in one dropdown',
+        description:'Open one read-only Connections viewer with a Switch account email dropdown from separately signed, unexpired Google OAuth snapshots. Never switches OAuth identity, grants sharing or accepts credentials. First invoke nyx_account_view_snapshot separately under each authenticated ChatGPT account.',
         inputSchema:z.object({accounts:z.array(z.object({
           label:z.string().min(1).max(40),
           snapshot:z.string().min(100).max(10100),
