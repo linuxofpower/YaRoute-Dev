@@ -577,6 +577,85 @@ export class GithubWriteConnector {
       throw new Error('GITHUB_PULL_RESPONSE_INVALID');
     return {repo,number:data.number,url:data.html_url,branch,base,draft:true};
   }
+  /**
+   * Mark one existing NYX bot-authored DRAFT PR ready for independent review.
+   * The target must be a GitHub-protected default branch, the source an exact
+   * nyx/* non-protected ref. This never approves, merges or deploys anything.
+   */
+  async readyProtectedDraft(owner:string,id:string,repo:string,number:number,
+    expectedHeadSha:string,expectedBaseSha:string) {
+    this.repoName(repo);
+    if(!Number.isSafeInteger(number)||number<1||number>1000000 ||
+       !/^[a-f0-9]{40}$/.test(expectedHeadSha) ||
+       !/^[a-f0-9]{40}$/.test(expectedBaseSha))
+      throw new Error('GITHUB_READY_INPUT_INVALID');
+    const pr=await this.call(owner,id,repo,'pulls:read','GET','/pulls/'+number);
+    const head=pr?.head?.ref;
+    if(typeof head!=='string'||!head.startsWith('nyx/'))
+      throw new Error('GITHUB_READY_NYX_BRANCH_REQUIRED');
+    this.workingBranch(head);
+    const boundary={branch:head};
+    const base=await this.defaultBranch(owner,id,repo,'pulls:write',boundary);
+    if(!['main','master'].includes(base) ||
+       pr?.state!=='open'||pr?.draft!==true ||
+       pr?.user?.login!=='nestnyx[bot]' ||
+       pr?.head?.repo?.full_name!==repo||
+       pr?.base?.repo?.full_name!==repo||
+       pr?.base?.ref!==base||
+       pr?.head?.sha!==expectedHeadSha||
+       pr?.base?.sha!==expectedBaseSha||
+       !/^PR_[A-Za-z0-9_-]{5,100}$/.test(pr?.node_id||''))
+      throw new Error('GITHUB_READY_PROTECTED_PR_MISMATCH');
+    const check=async(ref:string)=>{
+      const data=await this.call(owner,id,repo,'resources:read','GET',
+        '/branches/'+encodeURIComponent(ref),undefined,boundary);
+      if(data?.name!==ref||!/^[a-f0-9]{40}$/.test(data?.commit?.sha||''))
+        throw new Error('GITHUB_READY_BRANCH_UNVERIFIED');
+      return data;
+    };
+    const [target,source]=await Promise.all([check(base),check(head)]);
+    if(target.protected!==true||target.commit.sha!==expectedBaseSha ||
+       source.protected!==false||source.commit.sha!==expectedHeadSha)
+      throw new Error('GITHUB_READY_BRANCH_CHANGED_OR_UNPROTECTED');
+    // Only the selected repository's pre-authorized pull_requests:write grant.
+    const conn=await this.registry.requireResource(owner,id,'pulls:write',
+      {kind:'repository',id:repo,...boundary});
+    if(conn.provider!=='github'||!conn.installationId)
+      throw new Error('GITHUB_INSTALLATION_REQUIRED');
+    const token=await this.credentials.tokenFor(owner,id,conn.installationId,
+      repo,'pulls:write',boundary);
+    if(!token)throw new Error('GITHUB_CREDENTIAL_UNAVAILABLE');
+    // GitHub exposes draft->ready as a GraphQL mutation, not REST PATCH.
+    const query='mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id isDraft}}}';
+    const response=await this.http('https://api.github.com/graphql',{
+      method:'POST',
+      headers:{Authorization:'Bearer '+token,
+        Accept:'application/vnd.github+json','Content-Type':'application/json',
+        'X-GitHub-Api-Version':'2022-11-28'},
+      body:JSON.stringify({query,variables:{id:pr.node_id}}),
+      redirect:'error',signal:AbortSignal.timeout(10000),
+    });
+    if(!response.ok)throw new Error('GITHUB_READY_MUTATION_FAILED');
+    const raw=await response.text();
+    if(raw.length>20000)throw new Error('GITHUB_READY_RESPONSE_TOO_LARGE');
+    let data:any;
+    try{data=JSON.parse(raw);}catch{throw new Error('GITHUB_READY_RESPONSE_INVALID');}
+    if(data?.errors?.length||
+       data?.data?.markPullRequestReadyForReview?.pullRequest?.id!==pr.node_id||
+       data?.data?.markPullRequestReadyForReview?.pullRequest?.isDraft!==false)
+      throw new Error('GITHUB_READY_MUTATION_UNVERIFIED');
+    const current=await this.call(owner,id,repo,'pulls:read','GET','/pulls/'+number,
+      undefined,boundary);
+    if(current?.state!=='open'||current?.draft!==false||
+       current?.user?.login!=='nestnyx[bot]'||
+       current?.base?.ref!==base||current?.head?.ref!==head||
+       current?.base?.sha!==expectedBaseSha||current?.head?.sha!==expectedHeadSha)
+      throw new Error('GITHUB_READY_READBACK_MISMATCH');
+    return {repo,number,url:current.html_url,author:current.user.login,
+      head,headSha:expectedHeadSha,base,baseSha:expectedBaseSha,
+      draft:false,readyForIndependentReview:true,merged:false,deployed:false};
+  }
+
   async createIssue(owner:string,id:string,repo:string,title:string,body='') {
     if(typeof title!=='string'||!title.trim()||title.length>200 ||
        typeof body!=='string'||body.length>10000)
