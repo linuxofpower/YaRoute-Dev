@@ -27,6 +27,13 @@ const IGNORE=new Set([
  'tests/nyx-dev-deployment-guard.test.mjs',
  // Dev-only Git deployment history diagnostic must not promote without its script.
  'tests/nyx-heroku-git-divergence.test.mjs',
+ // These tests import scripts/nyx-neon-owner-rclone-import.mjs, a Dev-only
+ // operator utility excluded by NO_COPY. Keep every test in Dev CI; do not
+ // create broken Tester tests or transfer the operator script to Tester.
+ 'tests/neon-existing-mega-incremental.test.cjs',
+ 'tests/neon-offline-pending-stage.test.cjs',
+ 'tests/neon-owner-rclone-import.test.cjs',
+ 'tests/tenant-import-encrypted-runtime-compat.test.cjs',
 ]);
 // Only explicitly approved blue Dev/Tester assets may cross the binary stage.
 const TESTER_BLUE_BRANDING=new Set(['public/branding/icon.png','public/branding/nestnyx-dev.png']);

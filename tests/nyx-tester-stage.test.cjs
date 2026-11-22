@@ -148,3 +148,20 @@ test('only three reviewed text files receive bounded staging exceptions',()=>{
    'src/connectors/connections-panel.ts/../unsafe.ts','SRC/MCP/MCP.SERVICE.TS',
    '__proto__'])assert.equal(m.maxTesterSourceBlobBytes(p),65536);
 });
+
+test('Dev-only importer test dependencies remain in Dev and never stage without their script',()=>{
+ const operatorTests=[
+  'tests/neon-existing-mega-incremental.test.cjs',
+  'tests/neon-offline-pending-stage.test.cjs',
+  'tests/neon-owner-rclone-import.test.cjs',
+  'tests/tenant-import-encrypted-runtime-compat.test.cjs',
+ ];
+ const source={truncated:false,tree:[
+  ...operatorTests.map(path=>blob(path,SHA)),
+  blob('tests/public-tenant-health.test.cjs',SHA),
+ ]};
+ const target={truncated:false,tree:[]};
+ assert.deepEqual(m.candidatePaths(source,target).map(item=>item.path),[
+  'tests/public-tenant-health.test.cjs',
+ ]);
+});
