@@ -6,6 +6,7 @@ import { NyxCliRegistryService } from '../nyx/cli-registry.service';
 import { NyxHeadLibraryService } from '../nyx/head-library.service';
 import { NyxKeyService } from '../nyx/key.service';
 import { NyxTenantKeyService } from '../nyx/tenant-key.service';
+import { preparePublicIniPlan } from '../nyx/public-init-plan';
 import { extractKeySignals } from '../nyx/key-chat-extractor';
 import { RuntimeMaintenanceService } from './runtime-maintenance.service';
 import { Injectable, Logger } from '@nestjs/common';
@@ -146,6 +147,7 @@ export class McpService {
             // This is an authorization boundary, not proof of a broken CLI.
             // A separate ChatGPT/Drive read is possible only with its own grants.
             alternative: 'separate-authorized-ChatGPT-source-resolution',
+            assisted: {tool:'nyx_ini_plan', mode:'read-only-external-source-preflight', status:'PARTIAL_DIAGNOSTIC', nativeFif:false},
           }
           : { available: true, status: 'registered-requires-verified-bootstrap' },
         sourceRecovery: {
@@ -161,7 +163,7 @@ export class McpService {
           sum: { tool: 'nyx_sum', status: 'registered-requires-verified-bootstrap' },
         },
         auxiliaryTools: process.env.NYX_DEPLOYMENT_MODE === 'public' ?
-          ['get_profile','nyx_connections_home','nyx_connections_panel','nyx_connections_list','nyx_risk_preview',
+          ['nyx_ini_plan','get_profile','nyx_connections_home','nyx_connections_panel','nyx_connections_list','nyx_risk_preview',
             'nyx_account_view_snapshot','nyx_accounts_view',
            ...(process.env.NYX_PUBLIC_CONNECTORS_ENABLED === 'true' &&
                process.env.NYX_MULTIUSER_RCLONE_ENABLED === 'true' ?
@@ -1208,6 +1210,26 @@ export class McpService {
         canonicalChanged:false};
     }));
 
+
+    // Authenticated public tenants can preflight INI syntax without crossing
+    // the private MAIN bootstrap boundary. Separate authorized provider reads
+    // remain mandatory before anyone may claim source-verified initialization.
+    if (process.env.NYX_DEPLOYMENT_MODE === 'public') {
+      server.registerTool('nyx_ini_plan',{
+        title:'Prepare NYX initialization for my connected sources',
+        description:'Tenant-authenticated read-only preparation for Nyx ini, including GNo. Does not read private Head/Body/Footer, access operator Rclone, create a FIF or claim initialization completed. Resolve required sources separately through the user-authorized Google Drive connector.',
+        inputSchema:z.object({
+          target:z.string().min(1).max(1024).optional(),
+          targets:z.array(z.string().min(1).max(80)).max(16).optional(),
+          scope:z.enum(['local','global']).optional(),
+          depth:z.enum(['basic','normal','deep']).optional(),
+        }).strict(),
+        annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+      },async input=>this.safeTool(()=>{
+        this.connectorOwner();
+        return preparePublicIniPlan(input);
+      }));
+    }
 
     if (process.env.NYX_DEPLOYMENT_MODE==='public') return server;
 
