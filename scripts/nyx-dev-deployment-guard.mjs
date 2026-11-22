@@ -59,3 +59,38 @@ export async function requireCurrentDevDeployment(origin) {
   if(!current.deployedCurrentSource)throw Error('DEV_DEPLOYED_TESTER_RELEASE_NOT_VERIFIED');
   return current;
 }
+
+/**
+ * Independent live-feature acceptance. The HTTP /health endpoint and GitHub
+ * commit parity are necessary, but do not attest MCP registration, discovery,
+ * an executable source read or a FIF. Require a real tool invocation receipt
+ * and keep the result strictly scoped to the *preflight* feature.
+ */
+export function assessLiveIniPreflight({health,testerCommit,capabilities,
+                                       toolDiscovered=false,planResult=null}={}) {
+  const deployment=safeDevDeployment(health,testerCommit);
+  const assisted=capabilities?.initialization?.assisted;
+  const advertised=assisted?.tool==='nyx_ini_plan' &&
+    assisted?.status==='PARTIAL_DIAGNOSTIC' &&
+    capabilities?.auxiliaryTools?.includes('nyx_ini_plan')===true;
+  const executed=toolDiscovered===true &&
+    planResult?.schema==='nyx.public-ini-preflight.v1' &&
+    planResult?.status==='PARTIAL_DIAGNOSTIC' &&
+    planResult?.fif===null &&
+    planResult?.canonicalReadVerified===false &&
+    planResult?.privateBootstrapUsed===false;
+  const missing=[];
+  if(!deployment.deployedCurrentSource)missing.push('deployed_tester_commit_unverified');
+  if(!advertised)missing.push('live_capabilities_missing_ini_plan');
+  if(toolDiscovered!==true)missing.push('live_mcp_tool_discovery_missing');
+  if(!executed)missing.push('authenticated_ini_plan_call_unverified');
+  return {
+    schema:'nyx.ini-live-release-gate.v1',
+    status:missing.length===0?'PREFLIGHT_LIVE_VERIFIED':'PREFLIGHT_NOT_LIVE',
+    missing,
+    // Independent live source reads, Normal rendering and persisted FIF
+    // must be verified separately; do not conflate preflight with INI.
+    fullInitializationVerified:false,
+    credentialMaterialReturned:false,
+  };
+}

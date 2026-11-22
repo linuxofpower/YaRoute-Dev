@@ -1,3 +1,5 @@
+import { inspectIniReadiness } from './init-readiness';
+
 /**
  * Public-tenant, read-only INI preflight. This is deliberately NOT the private
  * NyxCommandExecutor bootstrap: public tenants do not own operator MAIN,
@@ -33,6 +35,7 @@ export function preparePublicIniPlan(input: PublicIniPlanInput) {
     throw Error('INI_PLAN_TARGETS_INVALID');
   }
   const targets: string[] = [];
+  const unresolvedTokens: string[] = [];
   let modifier: { scope: 'local' | 'global'; depth: 'basic' | 'normal' | 'deep' } | undefined;
   for (const token of tokens) {
     const match = LOCAL_MODIFIER.exec(token) ?? INHERITED_MODIFIER.exec(token);
@@ -45,6 +48,9 @@ export function preparePublicIniPlan(input: PublicIniPlanInput) {
       continue;
     }
     if (!TOKEN.test(token)) throw Error('INI_PLAN_TARGET_INVALID');
+    // A single-letter voice/chat suffix such as trailing 'I' must not become
+    // an invented Area target. Preserve it for authoritative Head resolution.
+    if (token.length === 1) { unresolvedTokens.push(token); continue; }
     if (!targets.some(x => x.toLowerCase() === token.toLowerCase())) targets.push(token);
   }
   if (!targets.length) throw Error('INI_PLAN_TARGET_REQUIRED');
@@ -55,13 +61,16 @@ export function preparePublicIniPlan(input: PublicIniPlanInput) {
   const scope = input.scope ?? modifier?.scope ?? 'local';
   const depth = input.depth ?? modifier?.depth ?? 'normal';
   const normalized = `o${scope === 'global' ? 'G' : 'L'}${depth === 'basic' ? 'B' : depth === 'deep' ? 'D' : 'N'}`;
+  const readiness = inspectIniReadiness();
   return {
     schema: 'nyx.public-ini-preflight.v1',
-    status: 'PARTIAL_DIAGNOSTIC' as const,
+    status: readiness.status,
     execution: 'READ_ONLY_EXTERNAL_SOURCE_PLAN' as const,
     command: 'ini',
     targets,
+    unresolvedTokens,
     scope, depth, modifier: normalized,
+    missingGates: readiness.missingGates,
     modifierSource: modifier ? 'explicit' : input.scope || input.depth ? 'request' : 'default',
     sourceManifest: [
       {key:'canonical_head_body_footer', required:true, owner:'authorized-external-connector'},
@@ -74,6 +83,7 @@ export function preparePublicIniPlan(input: PublicIniPlanInput) {
       'Targets are lexical candidates, not verified Area or Core Skill resolutions.',
       'Global routing scope does not authorize private or other-user resources.',
       'No authoritative source, target status, or canonical lineage was read by this Dev tool.',
+      ...(unresolvedTokens.length ? ['Single-letter tokens require Head resolution and were not added as targets.'] : []),
     ],
     nextAction: 'Resolve the exact sources through this OAuth user’s separately authorized provider; apply current canonical Head semantics; report explicit missing gates and visible-render receipts.',
     canonicalReadVerified: false,

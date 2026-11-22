@@ -16,6 +16,8 @@ test('assisted public initialization understands GNo without interpreting it as 
   assert.equal(result.privateBootstrapUsed,false);
   assert.deepEqual(result.files_to_paste,[]);
   assert.equal(result.canonicalChanged,false);
+  assert.ok(result.missingGates.includes('live_runtime_feature_verified'));
+  assert.ok(result.missingGates.includes('conversation_fif_persisted_and_read_back'));
 });
 
 test('no implicit private grant, no fake source verification and no invented session', () => {
@@ -49,4 +51,15 @@ test('public route is registered before private gate; only an external plan is o
   assert.match(src,/preparePublicIniPlan/);
   const plannerSource=readFileSync(join(__dirname,'..','src','nyx','public-init-plan.ts'),'utf8');
   assert.match(plannerSource,/separate-authorization-required/);
+});
+
+test('original chat input leaves dangling I unresolved, never silently makes it an Area', () => {
+  const r=preparePublicIniPlan({target:'YaRoute WebArt TechLab EasyWay GNo I'});
+  assert.deepEqual(r.targets,['YaRoute','WebArt','TechLab','EasyWay']);
+  assert.deepEqual(r.unresolvedTokens,['I']);
+  assert.equal(r.status,'PARTIAL_DIAGNOSTIC');
+  assert.equal(r.fif,null);
+  assert.equal(r.scope,'global');
+  assert.equal(r.depth,'normal');
+  assert.ok(r.warnings.some(x=>x.includes('Single-letter')));
 });
