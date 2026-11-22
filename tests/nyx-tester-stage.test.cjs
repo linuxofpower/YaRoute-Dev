@@ -135,9 +135,16 @@ providers: [PersistentService]`;
  assert.throws(()=>m.adaptTesterAppBranding('',original),/DEV_BRANDING_MODULE_NOT_READY/);
 });
 
-test('only the MCP registry receives the larger bounded text blob limit',()=>{
- assert.equal(m.maxTesterSourceBlobBytes('src/mcp/mcp.service.ts'),98304);
- for(const p of ['src/mcp/mcp.controller.ts','src/app.module.ts',
-   'tests/other.test.cjs','public/branding/icon.png','config/runtime.json',
-   'src/mcp/../sneaky.ts'])assert.equal(m.maxTesterSourceBlobBytes(p),65536);
+test('only three reviewed text files receive bounded staging exceptions',()=>{
+ const limits={
+  'src/mcp/mcp.service.ts':131072,
+  'src/connectors/connections-panel.ts':81920,
+  'src/connectors/tenant-rclone.service.ts':81920,
+ };
+ for(const [path,bound] of Object.entries(limits))assert.equal(m.maxTesterSourceBlobBytes(path),bound);
+ for(const p of ['src/mcp/mcp.controller.ts','src/app.module.ts','tests/other.test.cjs',
+   'public/branding/icon.png','config/runtime.json','src/mcp/../sneaky.ts',
+   'src/connectors/connections-panel.ts/extra','src/connectors/tenant-rclone.service.ts.bak',
+   'src/connectors/connections-panel.ts/../unsafe.ts','SRC/MCP/MCP.SERVICE.TS',
+   '__proto__'])assert.equal(m.maxTesterSourceBlobBytes(p),65536);
 });

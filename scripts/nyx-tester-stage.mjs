@@ -30,9 +30,14 @@ const IGNORE=new Set([
 ]);
 // Only explicitly approved blue Dev/Tester assets may cross the binary stage.
 const TESTER_BLUE_BRANDING=new Set(['public/branding/icon.png','public/branding/nestnyx-dev.png']);
-// The MCP registry grew beyond the old 64 KiB textual staging cap. Raise
-// only its text limit, while keeping every other path at the original bound.
-export const maxTesterSourceBlobBytes=(path)=>path==='src/mcp/mcp.service.ts'?98304:65536;
+// Only three reviewed, text-only source paths exceed the 64 KiB staging limit.
+// Keep the default for every other path; these bounds are not broad prefixes.
+const REVIEWED_TEXT_BOUNDS=new Map([
+ ['src/mcp/mcp.service.ts',131072],
+ ['src/connectors/connections-panel.ts',81920],
+ ['src/connectors/tenant-rclone.service.ts',81920],
+]);
+export const maxTesterSourceBlobBytes=(path)=>REVIEWED_TEXT_BOUNDS.get(path)??65536;
 const NO_COPY=/^(\.github\/|app\.json$|Procfile$|README\.md$|config\/|scripts\/|docs\/|public\/|broker\/|package(?:-lock)?\.json$)/;
 /** Runtime profiles are target-owned, but silently omitting drift can deploy
  * code with obsolete authority/key pins. Reconcile through a reviewed PR first. */
@@ -222,8 +227,11 @@ async function stage(){
  if(brandingModuleUpgrade)tree.push({path:'src/app.module.ts',mode:'100644',type:'blob',content:brandingModuleUpgrade});
  for(const p of paths){
   const blob=await api(sourceRepo,'/git/blobs/'+p.sourceBlob,sourceToken);
-  if(blob.encoding!=='base64'||typeof blob.content!=='string'||blob.size>maxTesterSourceBlobBytes(p.path))fail('NON_TEXT_OR_OVERSIZED_'+p.path);
+  const bound=maxTesterSourceBlobBytes(p.path);
+  if(blob.encoding!=='base64'||typeof blob.content!=='string'||
+     !Number.isSafeInteger(blob.size)||blob.size<0||blob.size>bound)fail('NON_TEXT_OR_OVERSIZED_'+p.path);
   const bytes=Buffer.from(blob.content.replace(/\s/g,''),'base64');
+  if(bytes.length!==blob.size||bytes.length>bound)fail('BLOB_SIZE_MISMATCH_'+p.path);
   if(TESTER_BLUE_BRANDING.has(p.path)){
     if(bytes.length>10000||bytes.length<24||bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||
        bytes.readUInt32BE(16)!==96||bytes.readUInt32BE(20)!==96)fail('BLUE_ICON_INVALID');
