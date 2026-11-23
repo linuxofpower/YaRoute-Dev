@@ -290,7 +290,11 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
     const ref = { ...handoffs, path: `${root}/revisions/${hash}/manifest.json` };
     const text = JSON.stringify({ schema: 'nyx.fib.v1', id: old.id, revision: hash, predecessor: { kind: old.kind, ref: old.ref, sha256: old.sha256 }, files: refs }, null, 2) + '\n';
     const receipt = await this.resources.createVerified(ref, text);
-    return { ...old, kind: 'FIB' as const, ref, sha256: receipt.sha256, promotionHash, fingerprint: sha256(JSON.stringify(fif)), fif };
+    const next = { ...old, kind: 'FIB' as const, ref, sha256: receipt.sha256,
+      promotionHash, fingerprint: sha256(JSON.stringify(fif)), fif };
+    // Composite verification runs BEFORE the lineage ledger advances.
+    await this.verify(next);
+    return next;
   }
 
   private async readFibSummary(checkpoint: Checkpoint): Promise<FibSummary> {
