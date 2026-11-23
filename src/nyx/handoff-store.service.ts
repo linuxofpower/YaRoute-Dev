@@ -247,7 +247,9 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
   }
 
   private async writeFibRevision(handoffs: ResourceRef, old: Checkpoint, fif: Fif, summary: FibSummary, promotionHash: string) {
-    const hash = sha256(JSON.stringify([promotionHash, old.sha256]));
+    // Domain-separate revisions with predecessor metadata from older v1 artifacts.
+    // An interrupted legacy upload must never collide with a new immutable layout.
+    const hash = sha256(JSON.stringify(['nyx.fib.revision.v2', promotionHash, old.sha256]));
     const root = `${handoffs.path}/FIB_${old.id}`;
     const outputs: Record<string, string> = {
       'fif.json': JSON.stringify(fif, null, 2) + '\n',
