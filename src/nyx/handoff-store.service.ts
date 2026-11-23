@@ -349,10 +349,32 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
     const content = await this.resources.read(checkpoint.ref);
     if (sha256(content) !== checkpoint.sha256) throw new Error('HANDOFF_CHECKPOINT_CHANGED');
     const document = JSON.parse(content);
-    if (document.schema === 'nyx.fib.v1') {
+    if (checkpoint.kind === 'FIB') {
+      this.validateFibManifest(checkpoint, document);
       for (const file of document.files) {
         if (sha256(await this.resources.read(file.ref)) !== file.sha256) throw new Error('FIB_MEMBER_CHANGED');
       }
-    }
+      const find = (name: string) => document.files.find((entry: any) => entry.ref.path.endsWith('/' + name));
+      let fif: Fif;
+      let sources: unknown;
+      let continuity: any;
+      try {
+        fif = JSON.parse(await this.resources.read(find('fif.json').ref));
+        sources = JSON.parse(await this.resources.read(find('sources.json').ref));
+        continuity = JSON.parse(await this.resources.read(find('continuity.json').ref));
+      } catch { throw new Error('FIB_MEMBER_INVALID'); }
+      if (fif.schema !== 'nyx.fif.v1' || fif.id !== checkpoint.id ||
+          JSON.stringify(fif) !== JSON.stringify(checkpoint.fif) ||
+          JSON.stringify(sources) !== JSON.stringify(fif.source_refs) ||
+          continuity.id !== checkpoint.id ||
+          JSON.stringify(continuity.predecessor) !== JSON.stringify(fif.continuity.predecessor))
+        throw new Error('FIB_LINEAGE_MISMATCH');
+      if (document.predecessor !== undefined &&
+          (JSON.stringify(document.predecessor.ref) !== JSON.stringify(fif.continuity.predecessor) ||
+           document.predecessor.sha256 !== continuity.predecessor_sha256 ||
+           document.predecessor.kind !== continuity.predecessor_kind))
+        throw new Error('FIB_LINEAGE_MISMATCH');
+    } else if (document.schema !== 'nyx.fif.v1' || document.id !== checkpoint.id)
+      throw new Error('FIF_CHECKPOINT_INVALID');
   }
 }
