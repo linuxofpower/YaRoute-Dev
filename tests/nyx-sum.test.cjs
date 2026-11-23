@@ -278,6 +278,7 @@ test('interrupted SUM resumes the original immutable FIB revision without losing
   assert.equal(failed,true);
   assert.equal(r.files.get(initial.fif.ref.path),originalFif);
   assert.equal([...r.files.keys()].filter(x=>x.endsWith('/fif.json')).length,1);
+  await new Promise(resolve=>setTimeout(resolve,8)); // Ensure a fresh attempt would use a different timestamp.
   const resumed=await e.execute({command:'sum',conversationId:initial.conversation_id,payload});
   assert.equal(resumed.continuity.transition,'FIF_TO_FIB');
   assert.equal(resumed.fif.id,initial.fif.id);
