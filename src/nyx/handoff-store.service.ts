@@ -98,7 +98,7 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
         schema: 'nyx.fif.v1',
         id,
         created_at: old?.fif.created_at ?? now,
-        updated_at: old?.fif.updated_at ?? now,
+        updated_at: now, // A changed source manifest is a fresh immutable checkpoint.
         ...metadata,
         chat_config: old?.fif.chat_config ?? metadata.chat_config,
         compact_context: old?.fif.compact_context ?? '',
