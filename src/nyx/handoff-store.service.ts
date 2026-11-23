@@ -269,7 +269,7 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
 
   private async readFibSummary(checkpoint: Checkpoint): Promise<FibSummary> {
     const manifest = JSON.parse(await this.resources.read(checkpoint.ref));
-    if (manifest.schema !== 'nyx.fib.v1' || !Array.isArray(manifest.files)) throw new Error('FIB_MANIFEST_INVALID');
+    this.validateFibManifest(checkpoint, manifest);
     const find = (name: string) => manifest.files.find((item: any) => item?.ref?.path?.endsWith('/' + name));
     const markdown = find('summary.md');
     const data = find('summary.json');
@@ -313,6 +313,36 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
     this.pending.set(id, work);
     try { return await work; }
     finally { if (this.pending.get(id) === work) this.pending.delete(id); }
+  }
+
+  /** The FIB manifest is the final commit marker for exactly five files. */
+  private validateFibManifest(checkpoint: Checkpoint, manifest: any) {
+    const required = new Set(['fif.json', 'summary.md', 'summary.json', 'sources.json', 'continuity.json']);
+    if (!manifest || manifest.schema !== 'nyx.fib.v1' ||
+        manifest.id !== checkpoint.id || !/^[a-f0-9]{64}$/.test(manifest.revision ?? '') ||
+        !Array.isArray(manifest.files) || manifest.files.length !== required.size ||
+        !checkpoint.ref.path.endsWith('/revisions/' + manifest.revision + '/manifest.json'))
+      throw new Error('FIB_MANIFEST_INVALID');
+    const prefix = checkpoint.ref.path.slice(0, -'manifest.json'.length);
+    const seen = new Set<string>();
+    for (const file of manifest.files) {
+      const ref = file?.ref;
+      const name = typeof ref?.path === 'string' && ref.path.startsWith(prefix)
+        ? ref.path.slice(prefix.length) : '';
+      if (!required.has(name) || seen.has(name) || ref.area !== checkpoint.ref.area ||
+          ref.driveId !== checkpoint.ref.driveId ||
+          !/^[a-f0-9]{64}$/.test(file?.sha256 ?? '') || file.verified !== true)
+        throw new Error('FIB_MANIFEST_INVALID');
+      seen.add(name);
+    }
+    // Optional for backwards compatibility with previously created v1 manifests.
+    if (manifest.predecessor !== undefined) {
+      const prev = manifest.predecessor;
+      if (!['FIF', 'FIB'].includes(prev?.kind) ||
+          typeof prev?.ref?.path !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(prev.sha256 ?? ''))
+        throw new Error('FIB_LINEAGE_MISMATCH');
+    }
   }
 
   private async verify(checkpoint: Checkpoint) {
