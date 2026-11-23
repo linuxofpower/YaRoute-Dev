@@ -96,6 +96,17 @@ test('promoted FIB member tampering blocks further SUM promotion', async () => {
 
 
 
+test('FIB readback accepts JSONB object key reordering and omitted undefined fields', async () => {
+  const r=resources(),h=handoffs(r);
+  const metadata={command:{name:'begin',targets:[],depth:'basic'},canonical:locator.canonical,
+    cli:{version:'test',sha256:'test'},loaded_context:{areas:[],sources:[]},source_refs:[]};
+  await h.initialize('owner','jsonb-order',ref('Handoffs'),metadata);
+  const checkpoint=await h.promote('owner','jsonb-order',ref('Handoffs'),{markdown:'Keep',data:{}});
+  const plain=JSON.parse(JSON.stringify(checkpoint.fif));
+  const reordered=Object.fromEntries(Object.entries(plain).reverse());
+  await h.verify({...checkpoint,fif:reordered});
+});
+
 test('FIB manifest rejects missing members even when forged checkpoint hashes match', async () => {
   const r=resources(),h=handoffs(r);
   const metadata={command:{name:'begin',targets:[],depth:'basic'},canonical:locator.canonical,
