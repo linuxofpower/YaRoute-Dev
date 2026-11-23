@@ -19,7 +19,7 @@
 3. Write `FIB_<id>/revisions/<revision>/` members: `fif.json`, `summary.md`, `summary.json`, `sources.json`, `continuity.json`. The predecessor's kind/ref/SHA is included in new revision metadata.
 4. Write `manifest.json` **last** as the commit marker. Verify its ID, revision, exact five member names/paths/hashes, embedded FIF/source consistency, and predecessor linkage on subsequent reads.
 5. Advance the serialized lineage checkpoint only after successfully writing/verifying the revision. Preserve earlier FIF/FIB artifacts; partial writes cannot legitimately be reported COMPLETE.
-6. Repeated unchanged SUM returns the same checkpoint; changed SUM appends a new revision. `ini ++` / `ini --` after promotion preserves FIB shape and the prior summary.
+6. Repeated unchanged SUM returns the same checkpoint; changed SUM appends a new revision. The SUM response exposes `continuity.transition`: `FIF_TO_FIB` for first promotion, `FIB_REVISION` for changed subsequent SUM, and `UNCHANGED` for an idempotent repeat; also returns the stable artifact ID and verified checkpoint SHA. `ini ++` / `ini --` after promotion preserves FIB shape and the prior summary.
 
 ## Public NestNyxDev boundary — not yet a native FIF/SUM
 
