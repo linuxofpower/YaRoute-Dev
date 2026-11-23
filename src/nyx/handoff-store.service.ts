@@ -254,6 +254,27 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
     // An interrupted legacy upload must never collide with a new immutable layout.
     const hash = sha256(JSON.stringify(['nyx.fib.revision.v2', promotionHash, old.sha256]));
     const root = `${handoffs.path}/FIB_${old.id}`;
+    // Crash recovery: the first immutable member fixes the timestamp used by
+    // every remaining member. Retrying after a partial upload must reproduce
+    // identical bytes, not collide on a newly computed updated_at value.
+    const firstRef = { ...handoffs, path: `${root}/revisions/${hash}/fif.json` };
+    const priorText = await this.resources.optionalRead(firstRef);
+    if (priorText !== undefined) {
+      let prior: Fif;
+      try { prior = JSON.parse(priorText); }
+      catch { throw new Error('FIB_RECOVERY_INVALID'); }
+      if (!prior || typeof prior.updated_at !== 'string' ||
+          !Number.isFinite(Date.parse(prior.updated_at)) ||
+          !isDeepStrictEqual(prior, JSON.parse(JSON.stringify({ ...fif, updated_at: prior.updated_at }))))
+        throw new Error('FIB_RECOVERY_CONFLICT');
+      const requestedUpdatedAt = fif.updated_at;
+      fif.updated_at = prior.updated_at;
+      if (summary.data && typeof summary.data === 'object' &&
+          !Array.isArray(summary.data) &&
+          (summary.data as Record<string, unknown>).updated_at === requestedUpdatedAt)
+        summary = { ...summary, data: { ...(summary.data as Record<string, unknown>),
+          updated_at: prior.updated_at } };
+    }
     const outputs: Record<string, string> = {
       'fif.json': JSON.stringify(fif, null, 2) + '\n',
       'summary.md': summary.markdown,
