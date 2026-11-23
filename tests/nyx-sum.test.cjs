@@ -142,15 +142,23 @@ test('SUM mutates continuity and promotes FIF to FIB under the same identity', a
   assert.equal(summed.fif.id, initial.fif.id);
   assert.equal(summed.fif.kind, 'FIB');
   assert.equal(summed.summary.title, 'Voice continuity');
-  assert.equal(summed.summary.message_count, 12);
+  assert.equal(summed.summary.message_count, 'UNKNOWN');
   const manifest = JSON.parse(r.files.get(summed.fif.ref.path));
   const fifEntry = manifest.files.find(x => x.ref.path.endsWith('/fif.json'));
   const summaryEntry = manifest.files.find(x => x.ref.path.endsWith('/summary.md'));
   const fif = JSON.parse(r.files.get(fifEntry.ref.path));
-  assert.equal(fif.message_count, 12);
+  assert.equal(fif.message_count, 'UNKNOWN');
+  assert.equal(fif.unverified_message_count, 12);
+  assert.equal(summed.summary.message_count, 'UNKNOWN');
   assert.equal(fif.compact_context, 'Voice chat continuity checkpoint.');
   assert.deepEqual(fif.urgent_items, ['Finish TechLab routing']);
   assert.equal(fif.next_action, 'Work on NoteFlow.');
+  const continuityEntry = manifest.files.find(x => x.ref.path.endsWith('/continuity.json'));
+  const continuity = JSON.parse(r.files.get(continuityEntry.ref.path));
+  assert.equal(manifest.predecessor.kind, 'FIF');
+  assert.equal(manifest.predecessor.sha256, initial.fif.sha256);
+  assert.equal(continuity.predecessor_sha256, initial.fif.sha256);
+  assert.equal(continuity.predecessor_kind, 'FIF');
   assert.equal(fif.chat_config.current.modifier, 'oLN');
   assert.match(r.files.get(summaryEntry.ref.path), /^# Voice continuity/);
 });
@@ -201,4 +209,44 @@ test('Head library verifies and reuses a canonical ZIP container', async () => {
   assert.equal(b.library.source, 'canonical-head');
   assert.equal(byteReads, 1);
   assert.equal(lib.snapshot().loaded, true);
+});
+
+test('incremental SUM retains omitted urgent items and next action, explicit [] clears only urgent items', async () => {
+  const r = new MemoryResources(), e = executor(r);
+  const initial = await e.execute({command:'ini', conversationId:'chat-delta'});
+  const a = await e.execute({command:'sum', conversationId:initial.conversation_id,
+    payload:{title:'First',summary:'Initial context', urgentItems:['Carry this'],nextAction:'Finish check'}});
+  const b = await e.execute({command:'sum', conversationId:initial.conversation_id,
+    payload:{title:'Second',summary:'New incremental context only'}});
+  assert.equal(a.fif.id,b.fif.id);
+  assert.notEqual(a.fif.ref.path,b.fif.ref.path);
+  const manifest = JSON.parse(r.files.get(b.fif.ref.path));
+  const fif = JSON.parse(r.files.get(manifest.files.find(x=>x.ref.path.endsWith('/fif.json')).ref.path));
+  assert.deepEqual(fif.urgent_items,['Carry this']);
+  assert.equal(fif.next_action,'Finish check');
+  assert.equal(manifest.predecessor.kind,'FIB');
+  assert.equal(manifest.predecessor.ref.path,a.fif.ref.path);
+  assert.equal(manifest.predecessor.sha256,a.fif.sha256);
+  const c = await e.execute({command:'sum',conversationId:initial.conversation_id,
+    payload:{title:'Third',summary:'Urgent items completed',urgentItems:[]}});
+  const manifestC=JSON.parse(r.files.get(c.fif.ref.path));
+  const fifC=JSON.parse(r.files.get(manifestC.files.find(x=>x.ref.path.endsWith('/fif.json')).ref.path));
+  assert.deepEqual(fifC.urgent_items,[]);
+  assert.equal(fifC.next_action,'Finish check');
+  assert.equal(r.files.has(a.fif.ref.path),true);
+});
+
+test('caller-supplied messageCount never becomes exact telemetry without a transcript receipt', async () => {
+  const r = new MemoryResources(), e = executor(r);
+  const initial=await e.execute({command:'ini',conversationId:'chat-count'});
+  const a=await e.execute({command:'sum',conversationId:initial.conversation_id,
+    payload:{title:'Count',summary:'Summary',messageCount:47}});
+  assert.equal(a.summary.message_count,'UNKNOWN');
+  const manifest=JSON.parse(r.files.get(a.fif.ref.path));
+  const fif=JSON.parse(r.files.get(manifest.files.find(x=>x.ref.path.endsWith('/fif.json')).ref.path));
+  assert.equal(fif.message_count,'UNKNOWN');
+  assert.equal(fif.unverified_message_count,47);
+  const summary=JSON.parse(r.files.get(manifest.files.find(x=>x.ref.path.endsWith('/summary.json')).ref.path));
+  assert.equal(summary.message_count_provenance,'UNVERIFIED_NO_TRANSCRIPT_RECEIPT');
+  assert.equal(summary.unverified_message_count,47);
 });
