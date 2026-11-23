@@ -256,3 +256,47 @@ test('caller-supplied messageCount never becomes exact telemetry without a trans
   assert.equal(summary.message_count_provenance,'UNVERIFIED_NO_TRANSCRIPT_RECEIPT');
   assert.equal(summary.unverified_message_count,47);
 });
+
+test('interrupted SUM resumes the original immutable FIB revision without losing FIF', async () => {
+  const r=new MemoryResources(),e=executor(r);
+  const initial=await e.execute({command:'ini',conversationId:'partial-retry'});
+  const originalFif=r.files.get(initial.fif.ref.path);
+  const create=r.createVerified.bind(r);
+  let failed=false;
+  r.createVerified=async (ref,text,options)=>{
+    if(!failed && ref.path.endsWith('/summary.md')) {
+      failed=true;
+      throw Error('SIMULATED_INTERRUPTED_UPLOAD');
+    }
+    return create(ref,text,options);
+  };
+  const payload={title:'Retry',summary:'Stable summary',messageCount:31,
+    urgentItems:['Keep the checkpoint'],nextAction:'Reconcile later'};
+  await assert.rejects(
+    ()=>e.execute({command:'sum',conversationId:initial.conversation_id,payload}),
+    /SIMULATED_INTERRUPTED_UPLOAD/);
+  assert.equal(failed,true);
+  assert.equal(r.files.get(initial.fif.ref.path),originalFif);
+  assert.equal([...r.files.keys()].filter(x=>x.endsWith('/fif.json')).length,1);
+  const resumed=await e.execute({command:'sum',conversationId:initial.conversation_id,payload});
+  assert.equal(resumed.continuity.transition,'FIF_TO_FIB');
+  assert.equal(resumed.fif.id,initial.fif.id);
+  assert.equal(resumed.continuity.verified,true);
+  const manifest=JSON.parse(r.files.get(resumed.fif.ref.path));
+  assert.equal(manifest.files.length,5);
+  const savedFif=JSON.parse(r.files.get(manifest.files.find(x=>x.ref.path.endsWith('/fif.json')).ref.path));
+  const summary=JSON.parse(r.files.get(manifest.files.find(x=>x.ref.path.endsWith('/summary.json')).ref.path));
+  assert.equal(savedFif.updated_at,summary.updated_at);
+  assert.deepEqual(savedFif.urgent_items,['Keep the checkpoint']);
+  assert.equal(savedFif.message_count,'UNKNOWN');
+});
+
+test('cross-owner SUM cannot promote another owner’s conversation FIF', async () => {
+  const r=new MemoryResources(),h=handoffs(r);
+  const metadata={command:{name:'ini',targets:[],depth:'normal'},
+    canonical:locator.canonical,cli:{version:'test',sha256:'test'},
+    loaded_context:{areas:[],sources:[]},source_refs:[]};
+  await h.initialize('owner-a','shared-name',ref('Handoffs'),metadata);
+  await assert.rejects(()=>h.summarize('owner-b','shared-name',ref('Handoffs'),{
+    title:'Unauthorized',summary:'Not allowed'}),/FIF_NOT_INITIALIZED/);
+});
