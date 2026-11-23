@@ -141,6 +141,10 @@ test('SUM mutates continuity and promotes FIF to FIB under the same identity', a
   });
   assert.equal(summed.fif.id, initial.fif.id);
   assert.equal(summed.fif.kind, 'FIB');
+  assert.equal(summed.continuity.transition, 'FIF_TO_FIB');
+  assert.equal(summed.continuity.artifact_id, initial.fif.id);
+  assert.equal(summed.continuity.checkpoint_sha256, summed.fif.sha256);
+  assert.equal(summed.continuity.verified, true);
   assert.equal(summed.summary.title, 'Voice continuity');
   assert.equal(summed.summary.message_count, 'UNKNOWN');
   const manifest = JSON.parse(r.files.get(summed.fif.ref.path));
@@ -171,10 +175,12 @@ test('identical SUM is idempotent; changed SUM appends a new FIB revision', asyn
   const writes = r.writes.length;
   const b = await e.execute({ command: 'sum', conversationId: initial.conversation_id, payload });
   assert.equal(b.fif.ref.path, a.fif.ref.path);
+  assert.equal(b.continuity.transition, 'UNCHANGED');
   assert.equal(r.writes.length, writes);
   const c = await e.execute({ command: 'sum', conversationId: initial.conversation_id, payload: { ...payload, messageCount: 6, summary: 'New data.' } });
   assert.equal(c.fif.id, a.fif.id);
   assert.notEqual(c.fif.ref.path, a.fif.ref.path);
+  assert.equal(c.continuity.transition, 'FIB_REVISION');
 });
 
 test('scope ++ and -- after SUM preserve FIB shape and summary while changing current scope', async () => {
