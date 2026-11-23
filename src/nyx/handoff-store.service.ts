@@ -176,7 +176,7 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
   async summarize(owner: string, conversationId: string, handoffs: ResourceRef, payload: SumPayload) {
     assertNoSecrets(payload);
     const id = artifactId(owner, conversationId);
-    const checkpoint = await this.locked(id, async (old, save) => {
+    const result = await this.locked(id, async (old, save) => {
       if (!old) throw new Error('FIF_NOT_INITIALIZED');
       await this.verify(old);
       const semanticHash = sha256(JSON.stringify({
@@ -185,7 +185,8 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
         chat_config: old.fif.chat_config,
         canonical: old.fif.canonical,
       }));
-      if (old.kind === 'FIB' && old.promotionHash === semanticHash) return old;
+      if (old.kind === 'FIB' && old.promotionHash === semanticHash)
+        return { checkpoint: old, transition: 'UNCHANGED' as const };
       const now = new Date().toISOString();
       const fif: Fif = {
         ...old.fif,
@@ -218,9 +219,10 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
       const summary: FibSummary = { markdown: `# ${payload.title}\n\n${payload.summary}\n`, data };
       const next = await this.writeFibRevision(handoffs, old, fif, summary, semanticHash);
       await save(next);
-      return next;
+      return { checkpoint: next, transition: old.kind === 'FIF'
+        ? 'FIF_TO_FIB' as const : 'FIB_REVISION' as const };
     }, handoffs);
-    return { ...checkpoint, conversationId, verified: true };
+    return { ...result.checkpoint, conversationId, verified: true, transition: result.transition };
   }
 
   private accessFor(config: ChatConfig, scope: ChatScope): ChatAccess {
