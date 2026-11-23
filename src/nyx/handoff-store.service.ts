@@ -42,6 +42,8 @@ export type Fif = {
   next_action?: string;
   continuity: { predecessor?: ResourceRef };
   message_count: number | 'UNKNOWN';
+  // Historical or caller-supplied counts are preserved as unverified hints, not exact telemetry.
+  unverified_message_count?: number;
 };
 type Checkpoint = { id: string; kind: 'FIF' | 'FIB'; ref: ResourceRef; sha256: string; fingerprint: string; promotionHash?: string; fif: Fif };
 type FibSummary = { markdown: string; data: unknown };
@@ -188,16 +190,26 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
       const fif: Fif = {
         ...old.fif,
         updated_at: now,
-        message_count: payload.messageCount ?? old.fif.message_count,
+        // The public/private caller may supply a number, but this service has no
+        // independent transcript receipt. Never promote it to an exact count.
+        message_count: 'UNKNOWN',
+        unverified_message_count: typeof payload.messageCount === 'number'
+          ? payload.messageCount
+          : old.fif.unverified_message_count ??
+            (typeof old.fif.message_count === 'number' ? old.fif.message_count : undefined),
         compact_context: payload.compactContext ?? payload.summary,
-        urgent_items: payload.urgentItems,
-        next_action: payload.nextAction,
+        // Omitted fields preserve continuity; an explicit [] clears urgent items.
+        urgent_items: payload.urgentItems ?? old.fif.urgent_items ?? [],
+        next_action: payload.nextAction ?? old.fif.next_action,
         continuity: { predecessor: old.ref },
       };
       const data = {
         title: payload.title,
         summary: payload.summary,
         message_count: fif.message_count,
+        message_count_provenance: 'UNVERIFIED_NO_TRANSCRIPT_RECEIPT',
+        ...(fif.unverified_message_count !== undefined ?
+          { unverified_message_count: fif.unverified_message_count } : {}),
         compact_context: fif.compact_context,
         urgent_items: fif.urgent_items,
         next_action: fif.next_action,
