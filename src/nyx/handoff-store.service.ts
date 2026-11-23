@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { Pool } from 'pg';
 import { ResourceRef, SumPayload } from './runtime.schema';
 import { NyxResourceStore, sha256 } from './resource-store.service';
@@ -367,14 +368,17 @@ export class HandoffStore implements OnModuleInit, OnModuleDestroy, FifPromotion
         sources = JSON.parse(await this.resources.read(find('sources.json').ref));
         continuity = JSON.parse(await this.resources.read(find('continuity.json').ref));
       } catch { throw new Error('FIB_MEMBER_INVALID'); }
+      // JSONB may reorder keys; compare normalized structural values, not
+      // serialization order. JSON round-trip also ignores optional undefined keys.
+      const fromLedger = JSON.parse(JSON.stringify(checkpoint.fif));
       if (fif.schema !== 'nyx.fif.v1' || fif.id !== checkpoint.id ||
-          JSON.stringify(fif) !== JSON.stringify(checkpoint.fif) ||
-          JSON.stringify(sources) !== JSON.stringify(fif.source_refs) ||
+          !isDeepStrictEqual(fif, fromLedger) ||
+          !isDeepStrictEqual(sources, fif.source_refs) ||
           continuity.id !== checkpoint.id ||
-          JSON.stringify(continuity.predecessor) !== JSON.stringify(fif.continuity.predecessor))
+          !isDeepStrictEqual(continuity.predecessor, fif.continuity.predecessor))
         throw new Error('FIB_LINEAGE_MISMATCH');
       if (document.predecessor !== undefined &&
-          (JSON.stringify(document.predecessor.ref) !== JSON.stringify(fif.continuity.predecessor) ||
+          (!isDeepStrictEqual(document.predecessor.ref, fif.continuity.predecessor) ||
            document.predecessor.sha256 !== continuity.predecessor_sha256 ||
            document.predecessor.kind !== continuity.predecessor_kind))
         throw new Error('FIB_LINEAGE_MISMATCH');
