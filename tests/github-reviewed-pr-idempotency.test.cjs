@@ -27,7 +27,7 @@ function mock(options={}) {
     const suffix=url.slice(('https://api.github.com/repos/'+repo).length);
     calls.push({method:req.method,suffix});
     if(req.method==='GET'&&suffix==='')return ok({default_branch:'master'});
-    if(req.method==='GET'&&suffix==='/branches/'+head)
+    if(req.method==='GET'&&suffix==='/branches/'+encodeURIComponent(head))
       return ok({name:head,protected:false,commit:{sha:headSha}});
     if(req.method==='GET'&&suffix==='/branches/tester')
       return ok({name:base,protected:false,commit:{sha:baseSha}});
