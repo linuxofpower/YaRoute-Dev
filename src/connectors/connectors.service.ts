@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
-import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider } from './public-tenant-provider.policy';
+import { assertPublicTenantGoogleOwnerId, assertPublicTenantStorageProvider, publicTenantMegaOnly, publicTenantGoogleMulti } from './public-tenant-provider.policy';
 import { ConnectorRegistry } from './connector-registry';
 import { PostgresConnectorRepository } from './postgres-connector-repository';
 import { verifiedStorageNamespace } from './storage-identity.policy';
@@ -103,10 +103,30 @@ export class ConnectorsService implements OnModuleInit, OnModuleDestroy {
       availableCapabilities: this.enabledCapabilities(provider),
     };
   }
+  /**
+   * Tools exposed by the current runtime, NOT the user's selected or
+   * provider-verified permission. Callers must intersect all three levels
+   * (availableCapabilities, capabilities, providerCapabilities) and the
+   * exact authorized root; this method never elevates persisted grants.
+   */
   private enabledCapabilities(provider: ConnectorProvider): ConnectorCapability[] {
-    const enabled = provider === 'github' ? ENABLED_PROVIDER_API_CAPABILITIES.github : undefined;
-    if (!enabled) return [];
-    return [...enabled].filter(cap => SELECTABLE_CONNECTOR_CAPABILITIES.includes(cap) && supportsCapability(provider,cap));
+    if (provider === 'github') {
+      return [...ENABLED_PROVIDER_API_CAPABILITIES.github].filter(cap =>
+        SELECTABLE_CONNECTOR_CAPABILITIES.includes(cap) && supportsCapability(provider,cap));
+    }
+    if (provider !== 'mega' && provider !== 'google-drive') return [];
+    const megaOnly = publicTenantMegaOnly();
+    const googleMulti = publicTenantGoogleMulti();
+    // A conflicting rollout cannot advertise either provider as available.
+    if (megaOnly === googleMulti) return [];
+    if (provider === 'google-drive' && !googleMulti) return [];
+    const writeEnabled = provider === 'mega'
+      ? process.env.NYX_PUBLIC_MEGA_WRITE_ENABLED === 'true'
+      : process.env.NYX_PUBLIC_GOOGLE_WRITE_ENABLED === 'true';
+    const enabled: ConnectorCapability[] = ['storage:list'];
+    if (writeEnabled) enabled.push('storage:write','storage:move','storage:delete');
+    return enabled.filter(cap =>
+      SELECTABLE_CONNECTOR_CAPABILITIES.includes(cap) && supportsCapability(provider,cap));
   }
   private assertProductionPermissions(provider: ConnectorProvider, capabilities: ConnectorCapability[]) {
     if (!Array.isArray(capabilities) || capabilities.some(cap => !this.enabledCapabilities(provider).includes(cap))) {
