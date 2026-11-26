@@ -178,9 +178,44 @@ export class NyxTenantKeyService {
         if(!f||!s)throw Error('KEY_FS_REPLAY_RECEIPT_MISSING');
         let fr:any,sr:any;
         try{fr=JSON.parse(f);sr=JSON.parse(s);}catch{throw Error('KEY_FS_REPLAY_RECEIPT_INVALID');}
-        if(fr.stage!=='oF'||sr.stage!=='oS'||
-          fr.afterSha256!==sr.beforeSha256||
-          sr.afterSha256!==receipt.afterSha256)
+        // A completion marker is not sufficient proof on retry: immutable stage
+        // members can be missing or altered independently. Verify each member
+        // against the SHA recorded in its stage receipt before claiming replay.
+        const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+        const verifyStage=async(stageReceipt:any,stage:'F'|'S')=>{
+          if(stageReceipt.schema!=='nyx.key.transaction.v1'||
+             stageReceipt.stage!==(stage==='F'?'oF':'oS')||
+             !stageReceipt.diff||typeof stageReceipt.diff.before!=='string'||
+             typeof stageReceipt.diff.after!=='string'||
+             digest(stageReceipt.diff.before)!==stageReceipt.beforeSha256||
+             digest(stageReceipt.diff.after)!==stageReceipt.afterSha256||
+             !Array.isArray(stageReceipt.mutations)||
+             !stageReceipt.mutations.length)
+            throw Error('KEY_FS_REPLAY_RECEIPT_INVALID');
+          const prefix=seedDirectory+'/key_'+transactionId+'_'+stage+'.';
+          for(const member of stageReceipt.mutations){
+            if(typeof member?.path!=='string'||!member.path.startsWith(prefix)||
+               !/^[a-f0-9]{64}$/.test(member.sha256))
+              throw Error('KEY_FS_REPLAY_RECEIPT_INVALID');
+            const value=await store.read(member.path);
+            if(value===null||digest(value)!==member.sha256)
+              throw Error('KEY_FS_REPLAY_MEMBER_CHANGED');
+          }
+          if(!stageReceipt.mutations.some((member:any)=>
+            member.path===prefix+'temp_key.json'&&member.sha256===stageReceipt.afterSha256))
+            throw Error('KEY_FS_REPLAY_RECEIPT_INVALID');
+          if(stage==='S'&&!stageReceipt.mutations.some((member:any)=>
+            member.path.endsWith('.seed.json')))
+            throw Error('KEY_FS_REPLAY_SEED_MISSING');
+        };
+        await verifyStage(fr,'F');
+        await verifyStage(sr,'S');
+        if(fr.afterSha256!==sr.beforeSha256||
+           sr.afterSha256!==receipt.afterSha256||
+           receipt.beforeSha256!==fr.beforeSha256||
+           receipt.firstReceipt!==receiptF||
+           receipt.secondReceipt!==receiptS||
+           receipt.seedStatus!=='pending_validation')
           throw Error('KEY_FS_REPLAY_RECEIPT_INVALID');
         await client.query('COMMIT');started=false;
         return {
