@@ -81,10 +81,10 @@ export function extractKeySignals(messages: KeyChatMessage[]): {
   messages.forEach((message,index)=>{
     if (message.role!=='user') {skip('assistant');return;}
     let fenced=false;
-    for (const rawLine of message.text.split(/\n/).slice(0,50)) {
+    for (const rawLine of message.text.split(/\n/)) {
       if (/^\s*(?:`{3}|~{3})/.test(rawLine)) {fenced=!fenced;skip('quotedOrCode');continue;}
       if (fenced || /^\s*>/.test(rawLine)) {skip('quotedOrCode');continue;}
-      for (const part of rawLine.split(/(?<=[.!?])\s+(?=[A-Z])/).slice(0,24)){
+      for (const part of rawLine.split(/(?<=[.!?])\s+(?=[A-Z])/)){
         const line=normalize(part.replace(/^\s*(?:[-*]|\d+[.)])\s*/,''));
         if (!line || line.length<12) {skip('nonDirective');continue;}
         if (commandOnly.test(line)) {skip('commandOnly');continue;}
