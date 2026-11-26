@@ -13,7 +13,7 @@ const args=['oauth:owner','source-id','destination-id',
  SRC,DST,'main',SOURCE_SHA,TESTER_SHA,REVIEW,[PATH]];
 function harness({sourceSha=SOURCE_SHA,testerSha=TESTER_SHA,
                    protectedTester=false,missing=false,wrongSize=false,
-                   truncated=false}={}){
+                   truncated=false,path=PATH,text=TEXT}={}){
  const calls=[],grants=[];
  const registry={requireResource:async (owner,id,cap,rule)=>{
   assert.equal(owner,'oauth:owner');
@@ -49,10 +49,10 @@ function harness({sourceSha=SOURCE_SHA,testerSha=TESTER_SHA,
   else if(options.method==='GET'&&suffix==='/git/commits/'+TESTER_SHA)
    output={tree:{sha:DST_TREE}};
   else if(options.method==='GET'&&suffix==='/git/trees/'+SRC_TREE+'?recursive=1')
-   output={truncated,tree:missing?[]:[{type:'blob',path:PATH,sha:BLOB_SHA,
-     size:wrongSize?1:Buffer.byteLength(TEXT)}]};
+   output={truncated,tree:missing?[]:[{type:'blob',path,sha:BLOB_SHA,
+     size:wrongSize?1:Buffer.byteLength(text)}]};
   else if(options.method==='GET'&&suffix==='/git/blobs/'+BLOB_SHA)
-   output={encoding:'base64',content:Buffer.from(TEXT).toString('base64')};
+   output={encoding:'base64',content:Buffer.from(text).toString('base64')};
   else if(options.method==='POST'&&suffix==='/git/trees')
    output={sha:BUILT_TREE};
   else if(options.method==='POST'&&suffix==='/git/commits')
@@ -118,4 +118,24 @@ test('NYX exposes dual owner-scoped source/destination MCP inputs without any me
  assert.match(s,/destinationConnectionId:z\.string\(\)\.uuid\(\)/);
  assert.match(s,/stageTesterFromDev\(this\.connectorOwner\(\)/);
  assert.doesNotMatch(s,/server\.registerTool\('nyx_connection_github_merge'/);
+});
+
+test('only the exact reviewed MCP service may exceed 64 KiB, with GitHub response still bounded',async()=>{
+ const large='x'.repeat(104809);
+ const allowedPath='src/mcp/mcp.service.ts';
+ const allowedArgs=args.map((v,i)=>i===9?[allowedPath]:v);
+ const h=harness({path:allowedPath,text:large});
+ const result=await h.api.stageTesterFromDev(...allowedArgs);
+ assert.equal(result.fileCount,1);
+ const staged=h.calls.find(c=>c.method==='POST'&&c.suffix==='/git/trees');
+ assert.equal(staged.body.tree[0].content.length,large.length);
+ const forbiddenPath='src/mcp/other.ts';
+ const bad=harness({path:forbiddenPath,text:large});
+ await assert.rejects(()=>bad.api.stageTesterFromDev(...args.map((v,i)=>i===9?[forbiddenPath]:v)),
+   /GITHUB_TESTER_SOURCE_FILE_LIMIT/);
+ assert.equal(bad.calls.some(c=>c.method==='POST'),false);
+ const oversized=harness({path:allowedPath,text:'x'.repeat(160*1024+1)});
+ await assert.rejects(()=>oversized.api.stageTesterFromDev(...allowedArgs),
+   /GITHUB_TESTER_SOURCE_FILE_LIMIT/);
+ assert.equal(oversized.calls.some(c=>c.method==='POST'),false);
 });
