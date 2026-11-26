@@ -79,7 +79,7 @@ test('public GitHub requests use only fixed repo and exact observed SHA',async()
 test('runtime report MCP tool is read-only and blocks public access to private bootstrap',()=>{
  const src=fs.readFileSync('src/mcp/mcp.service.ts','utf8');
  const start=src.indexOf("server.registerTool('nyx_runtime_checklist'");
- const end=src.indexOf('// Capability discovery is advisory:',start);
+ const end=src.indexOf("server.registerTool(\\n      'nyx_risk_preview'".replace('\\n','\n'),start);
  assert.ok(start>=0&&end>start);
  const route=src.slice(start,end);
  assert.match(route,/readOnlyHint: true/);
