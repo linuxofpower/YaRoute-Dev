@@ -31,7 +31,7 @@ function mock(options={}) {
       return ok({name:head,protected:false,commit:{sha:headSha}});
     if(req.method==='GET'&&suffix==='/branches/tester')
       return ok({name:base,protected:false,commit:{sha:baseSha}});
-    if(req.method==='GET'&&suffix==='/pulls?state=all&per_page=100')
+    if(req.method==='GET'&&suffix==='/pulls?state=all&per_page=20&head='+encodeURIComponent(repo.split('/')[0]+':'+head))
       return ok(pulls);
     if(req.method==='POST'&&suffix==='/pulls'){
       if(options.ambiguous)pulls.push(prior());
@@ -74,4 +74,12 @@ test('existing PR with different head SHA is rejected before write',async()=>{
   const f=mock({pulls:[mismatch]});
   await assert.rejects(()=>create(f.connector),/GITHUB_REVIEW_EXISTING_PR_MISMATCH/);
   assert.equal(f.calls.filter(c=>c.method==='POST').length,0);
+});
+
+test('review PR inventory is scoped to exact head rather than oversize repo-wide 100 PR listing',async()=>{
+ const f=mock({pulls:[prior()]});
+ const result=await create(f.connector);
+ assert.equal(result.alreadyExists,true);
+ assert.ok(f.calls.some(c=>c.suffix==='/pulls?state=all&per_page=20&head='+encodeURIComponent(repo.split('/')[0]+':'+head)));
+ assert.equal(f.calls.some(c=>c.suffix==='/pulls?state=all&per_page=100'),false);
 });
