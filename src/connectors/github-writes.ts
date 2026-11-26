@@ -61,7 +61,7 @@ export class GithubWriteConnector {
        (suffix.includes('..') && !(method==='GET' &&
          /^\/compare\/(?:main|master)\.\.\.tester$/.test(suffix))) ||
        (/[?#]/.test(suffix) && !(method==='GET' &&
-         (/^\/pulls\?state=all&per_page=100$/.test(suffix) ||
+         (/^\/pulls\?state=all&per_page=20&head=[A-Za-z0-9._%-]{3,200}$/.test(suffix) ||
           /^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(suffix) ||
           /^\/actions\/runs\?head_sha=[a-f0-9]{40}&per_page=10$/.test(suffix) ||
           /^\/contents\/config\/nyx-runtime-profile\.json\?ref=[a-f0-9]{40}$/.test(suffix)))))
@@ -89,7 +89,9 @@ export class GithubWriteConnector {
       throw new Error('GITHUB_PROVIDER_HTTP_'+String(status));
     }
     const raw=await response.text();
-    if(raw.length>100000)throw new Error('GITHUB_RESPONSE_TOO_LARGE');
+    // Only an exact Git blob GET may return a larger, bounded base64 body.
+    const bound=method==='GET' && /^\/git\/blobs\/[a-f0-9]{40}$/.test(suffix) ? 290000 : 100000;
+    if(raw.length>bound)throw new Error('GITHUB_RESPONSE_TOO_LARGE');
     try{return JSON.parse(raw);}catch{throw new Error('GITHUB_RESPONSE_INVALID');}
   }
   private async defaultBranch(owner:string,id:string,repo:string,
@@ -278,8 +280,8 @@ export class GithubWriteConnector {
     // SHA rather than reporting a false failure or submitting a duplicate PR.
     const existingReview=async()=>{
       const pulls=await this.call(owner,id,repo,'pulls:read','GET',
-        '/pulls?state=all&per_page=100',undefined,{branch:head});
-      if(!Array.isArray(pulls)||pulls.length>=100)
+        '/pulls?state=all&per_page=20&head='+encodeURIComponent(repo.split('/')[0]+':'+head),undefined,{branch:head});
+      if(!Array.isArray(pulls)||pulls.length>=20)
         throw new Error('GITHUB_REVIEW_PR_INVENTORY_INCOMPLETE');
       const matches=pulls.filter((p:any)=>
         p?.head?.ref===head&&p?.base?.ref===base&&
@@ -469,7 +471,9 @@ export class GithubWriteConnector {
     let total=0;
     for(const p of paths) {
       const e=index.get(p);
-      if(!e || e.size>65536 || (total+=e.size)>768000)
+      // MCP source is one audited, exact path; all other staged files retain 64 KiB.
+       const perFileLimit=p==='src/mcp/mcp.service.ts'?160*1024:65536;
+       if(!e || e.size>perFileLimit || (total+=e.size)>768000)
         throw new Error('GITHUB_TESTER_SOURCE_FILE_LIMIT');
       // Enforce the owner's per-path source-read and destination-write grants.
       await this.registry.requireResource(owner,sourceId,'resources:read',
