@@ -176,3 +176,21 @@ test('tenant separation and replay conflict are enforced',()=>run(null,async()=>
  ...keyInput,transactionId:'same',candidates:[candidate('Deploy unrelated operation')],
  }),/KEY_FS_REPLAY_CONFLICT/);
 }));
+
+test('FS replay rejects a missing immutable stage member without claiming APPLIED',()=>run(null,async()=>{
+ const db=makeDb(),s=service(db);
+ await s.executeFs('oauth:missing-member',keyInput);
+ const member=[...db.rows.keys()].find(k=>k.endsWith('_S.head.seed.json'));
+ assert.ok(member);
+ db.rows.delete(member);
+ await assert.rejects(()=>s.executeFs('oauth:missing-member',keyInput),/KEY_FS_REPLAY_MEMBER_CHANGED/);
+}));
+
+test('FS replay rejects a substituted immutable stage snapshot',()=>run(null,async()=>{
+ const db=makeDb(),s=service(db);
+ await s.executeFs('oauth:tampered-snapshot',keyInput);
+ const member=[...db.rows.keys()].find(k=>k.endsWith('_F.temp_key.json'));
+ assert.ok(member);
+ db.rows.set(member,'{"candidates":[]}\n');
+ await assert.rejects(()=>s.executeFs('oauth:tampered-snapshot',keyInput),/KEY_FS_REPLAY_MEMBER_CHANGED/);
+}));
