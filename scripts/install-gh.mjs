@@ -5,10 +5,12 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 
-// Build-time only; no user-supplied source URL, version or archive hash.
-// Runtime execution is separately disabled unless the public pilot flag is on.
-if(process.env.NYX_GITHUB_CLI_PILOT_ENABLED!=='true') {
-  console.log('Restricted gh CLI not requested for this build.');
+// Prepare the pinned binary in public connector builds even while the
+// runtime pilot remains disabled. Enabling the pilot later must NOT depend
+// on an unrelated rebuild. Private/Pro and disabled connector builds skip it.
+import {preparePinnedGhAtBuild} from './gh-install-policy.mjs';
+if(!preparePinnedGhAtBuild()) {
+  console.log('Pinned gh CLI skipped: public connectors not enabled at build.');
   process.exit(0);
 }
 const version='2.105.0';
