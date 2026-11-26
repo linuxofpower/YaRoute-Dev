@@ -5,7 +5,7 @@ This is an evidence-backed release checklist, not a canonical Head/Footer mutati
 
 ## Verified now
 
-- GitHub: Dev `linuxofpower/YaRoute-Dev` main `73bef39e367846cbe0b29ab480b805d77cac193c`; Tester `yaMorozYaroslav/YaRoute` tester `1b9590d71358f14c64516adcf3d70938835cb578`; Pro master `94db6e59f424379d1dee334f64fe0cffcd32ea24` protected.
+- GitHub: Dev repository main `73bef39e367846cbe0b29ab480b805d77cac193c`; Tester `yaMorozYaroslav/YaRoute` tester `1b9590d71358f14c64516adcf3d70938835cb578`; Pro master `94db6e59f424379d1dee334f64fe0cffcd32ea24` protected.
 - Recent Tester CI/security audit green. Heroku Tester deploy preflight reported an exact running SHA match for `1b9590d7`. This does NOT attest Pro runtime.
 - Two genuine separate NestNyxDev OAuth accounts authenticated. Read-only owner listing: 8 active connections for one account and 7 active + 2 pending for the other, no overlapping connection IDs.
 - Both owners listed own selected provider root successfully. Reusing the other owner's connection for `list_files` returned `TENANT_RCLONE_CONNECTION_FORBIDDEN` in both directions.
