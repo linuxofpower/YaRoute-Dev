@@ -204,6 +204,8 @@ export class NyxTenantKeyService {
       });
       if(second.status!=='APPLIED'||!second.activeUpdated)
         throw Error('KEY_FS_SEED_NOT_APPLIED');
+      if(!second.mutations.some(m=>m.path.endsWith('.seed.json')))
+        throw Error('KEY_FS_SEED_PROPOSAL_EMPTY');
       const frText=await store.read(receiptF),srText=await store.read(receiptS);
       if(!frText||!srText)throw Error('KEY_FS_STAGE_RECEIPT_MISSING');
       const fr=JSON.parse(frText),sr=JSON.parse(srText);
