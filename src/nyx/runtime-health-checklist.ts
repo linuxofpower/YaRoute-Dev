@@ -17,7 +17,7 @@ export type ProfileDiagnostic = {
   ready?: boolean;
   authorityMatches?: boolean;
   error?: string;
-  keys?: Array<{ key: string; mode: 'observe' | 'enforce'; status: 'verified' | 'changed' | 'unavailable' }>;
+  keys?: Array<{ key: string; mode: string; status: string }>;
 };
 
 export function buildNyxRuntimeChecklist(input: {
