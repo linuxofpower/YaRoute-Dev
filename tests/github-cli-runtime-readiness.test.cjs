@@ -49,7 +49,7 @@ test('private Pro does not inspect binaries or reveal public readiness',()=>{
 test('MCP inventory advertises PR-ready and conditionally gated CLI probe',()=>{
   const source=fs.readFileSync('src/mcp/mcp.service.ts','utf8');
   assert.match(source,/githubCliPilot: publicGithubCliReadiness\(\)/);
-  assert.match(source,/\\? \['nyx_connection_github_pr_ready_to_ref'\] : \[\]/);
+  assert.match(source,/\? \['nyx_connection_github_pr_ready_to_ref'\] : \[\]/);
   assert.match(source,/NYX_GITHUB_CLI_PILOT_ENABLED === 'true'/);
   assert.match(source,/nyx_connection_github_cli_probe/);
 });
