@@ -217,7 +217,7 @@ export class NyxTenantKeyService {
         firstReceipt:receiptF,secondReceipt:receiptS,
         beforeSha256:fr.beforeSha256,afterSha256:sr.afterSha256,
         seedStatus:'pending_validation',canonicalChanged:false,
-      },null,2)+'\\n';
+      },null,2)+'\n';
       await store.writeNew(donePath,done);
       if(await store.read(donePath)!==done)throw Error('KEY_FS_DONE_READBACK_FAILED');
       await client.query('COMMIT');started=false;
