@@ -110,11 +110,12 @@ export class SafeGithubCli {
       throw Error('GITHUB_CLI_CONNECTION_FORBIDDEN');
     // Both grants are proven by the authenticated user's actual GitHub App
     // connection, independently of caller-supplied connection ID/repo.
+    const scope=tool==='git'?'resources:read':'repository:metadata';
     await this.connections.registryPolicy().requireResource(ownerId,connectionId,
-      'repository:metadata',{kind:'repository',id:repo});
+      scope,{kind:'repository',id:repo});
     const executable=this.resolveBinary(tool);
     const token=await this.githubApp.tokenFor(ownerId,connectionId,owned.installationId,
-      repo,'repository:metadata');
+      repo,scope);
     const home=await mkdtemp(path.join(os.tmpdir(),'nyx-safe-github-cli-'));
     try{
       const plan=safeCliPlan(tool,repo,token,home);
