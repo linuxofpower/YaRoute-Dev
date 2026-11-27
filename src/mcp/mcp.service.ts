@@ -958,9 +958,9 @@ export class McpService {
 
       server.registerTool('nyx_storage_connection_permissions', {
         title: 'Select storage connection capabilities',
-        description: 'Select separately authorized Google Drive write/move/trash or MEGA move/trash grants. Actual provider permissions and per-root grants are enforced.',
+        description: 'Select separately authorized storage:list, storage:read for exact NYX source files, or provider write/move/trash grants. Source read requires separate provider proof and matching user-selected root; never auto-enabled.',
         inputSchema: z.object({id: z.string().uuid(),
-           capabilities: z.array(z.enum(['storage:list','storage:write','storage:move','storage:delete'])).max(4)}),
+           capabilities: z.array(z.enum(['storage:list','storage:read','storage:write','storage:move','storage:delete'])).max(5)}),
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
       }, async ({id,capabilities}) => this.safeTool(() =>
         this.connections.storagePermissions(this.connectorOwner(),id,capabilities)));
@@ -971,7 +971,7 @@ export class McpService {
         inputSchema: z.object({id:z.string().uuid(),resources:z.array(z.object({
           kind:z.enum(['drive','mega-root']),
           id:z.string().min(1).max(256),
-          capabilities:z.array(z.enum(['storage:list','storage:write','storage:move','storage:delete'])).min(1).max(4),
+          capabilities:z.array(z.enum(['storage:list','storage:read','storage:write','storage:move','storage:delete'])).min(1).max(5),
         }).strict()).max(10)}),
         annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false},
       }, async ({id,resources}) => this.safeTool(() =>
