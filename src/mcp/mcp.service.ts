@@ -9,7 +9,7 @@ import { NyxTenantKeyService } from '../nyx/tenant-key.service';
 import { preparePublicIniPlan } from '../nyx/public-init-plan';
 import { extractKeySignals } from '../nyx/key-chat-extractor';
 import { parseKeyFinUpdCommand, publicFinUpdPreflight } from '../nyx/yaro-key-fin-upd';
-import { inspectFinSource } from '../nyx/fin-source-inspection';
+import { inspectFinSource, reconcileFinSourcePins } from '../nyx/fin-source-inspection';
 import { RuntimeMaintenanceService } from './runtime-maintenance.service';
 import { composeRuntimeHealthReport, fetchPublicGitHubEvidence } from './runtime-health-report';
 import { Injectable, Logger } from '@nestjs/common';
@@ -1408,6 +1408,7 @@ export class McpService {
             comparedWithCallerDigest:entry.expectedSha256?'MATCH':'NOT_PROVIDED'});
         }
 
+        const sourceConsistency=reconcileFinSourcePins(observedSources);
         const stages=parsed.stages;
         let keyResult:unknown=null;
         if(stages.includes('key_oF')){
@@ -1472,6 +1473,7 @@ export class McpService {
           upd:stages.includes('upd')?planning?.upd??null:null,
           sourceSummary,
           observedSourceFiles:observedSources,
+          sourceConsistency,
           sourceCurrentness:'NOT_VERIFIED_BY_PUBLIC_ADAPTER',
           verifiedBoundaries:{
             key:keyResult?'owner-scoped Neon KEY transaction':'not_requested',
