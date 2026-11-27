@@ -34,6 +34,45 @@ const MAX_ARCHIVE_TOTAL=96*1024*1024;
 /** Inspect verified source bytes, not the caller's claimed metadata. Never
  * return source contents or claim a bundle is the newest canonical version.
  */
+
+/** Checks authentic provider-read bundle bytes against the pointer INSIDE a
+ * supplied Footer. It does NOT prove that this Footer is the newest canonical.
+ */
+export function reconcileFinSourcePins(sources:FinSourceInspection[]) {
+  if(!Array.isArray(sources)||sources.length>8)
+    throw Error('FIN_SOURCE_SET_INVALID');
+  const chosen=new Map<FinSourceKind,FinSourceInspection>();
+  for(const s of sources){
+    if(chosen.has(s.sourceKind))
+      throw Error('FIN_SOURCE_CLASS_DUPLICATE');
+    chosen.set(s.sourceKind,s);
+  }
+  const footer=chosen.get('footer');
+  const head=chosen.get('head'),body=chosen.get('body');
+  const checks=[
+    {kind:'head' as const,seen:head,pin:footer?.footerDeclaredPins?.head},
+    {kind:'body' as const,seen:body,pin:footer?.footerDeclaredPins?.body},
+  ];
+  for(const {seen,pin} of checks){
+    if(seen && footer && pin &&
+       (seen.pathBasename!==pin.file||seen.sha256!==pin.sha256))
+      throw Error('FIN_SOURCE_PIN_MISMATCH');
+  }
+  const matched=checks.filter(x=>x.seen && x.pin &&
+    x.seen.pathBasename===x.pin.file&&x.seen.sha256===x.pin.sha256);
+  return {
+    schema:'nyx.fin.source-set.v1' as const,
+    footerPresent:!!footer,
+    verifiedSourceClasses:[...chosen.keys()],
+    internallyConsistentWithFooter:matched.length===2,
+    matchedPointers:matched.map(x=>x.kind),
+    missingSourceClasses:['head','body','footer'].filter(c=>!chosen.has(c as FinSourceKind)),
+    canonicalAuthorityVerified:false,
+    canonicalCurrentness:'NOT_VERIFIED' as const,
+    pendingKeysAndLcbReconciled:false,
+  };
+}
+
 export function inspectFinSource(bytes:Buffer,sourceKind:FinSourceKind,
   relativePath:string):FinSourceInspection {
   if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>16*1024*1024)
@@ -67,8 +106,10 @@ export function inspectFinSource(bytes:Buffer,sourceKind:FinSourceKind,
     for(const entry of entries){
       const name=entry.entryName as string;
       const size=entry.header?.size as number;
+      const parts=typeof name==='string'?name.replace(/\/$/,'').split('/'):[];
       if(typeof name!=='string'||name.startsWith('/')||name.includes('\\')||
-         name.split('/').some(v=>v==='.'||v==='..'||v==='')||
+         !parts.length||parts.some(v=>v==='.'||v==='..'||v==='')||
+         (name.endsWith('/')&&size!==0)||
          typeof size!=='number'||!Number.isSafeInteger(size)||size<0)
         throw Error('FIN_SOURCE_ZIP_UNSAFE');
       total+=size;
