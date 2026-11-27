@@ -48,6 +48,14 @@ export function parseKeyFinUpdCommand(input:string):YaroCommandSequence {
   // pending KEY-local oFxS shorthand.
   if(/x\s+S(?=\s|x|$)/i.test(input))throw Error('YARO_COMMAND_SEQUENCE_INVALID');
   const compact=input.replace(/\s+/g,'');
+  // Existing Dev-only KEY single-command aliases. These do not globalize
+  // later commands: a global multi-command chain must still use terminal Go.
+  const keyOnly=/^nyxkeyofxs([gl])$/i.exec(compact);
+  if(keyOnly)return {
+    normalized:keyOnly[1].toLowerCase()==='g'?'NyxkeyoFxkeyoSGo':'NyxkeyoFxkeyoS',
+    scope:keyOnly[1].toLowerCase()==='g'?'global':'local',
+    stages:['key_oF','key_oS'],pendingAlias:true,
+  };
   const global=/go$/i.test(compact);
   const scope:KeyScope=global?'global':'local';
   const base=global?compact.slice(0,-2):compact;
