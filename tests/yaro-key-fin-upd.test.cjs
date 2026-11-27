@@ -112,7 +112,7 @@ test('every in-scope KEY requires an explicit sourced disposition',()=>{
   sourceReceipts:verified('local'),dispositions:[disposition(a)],
  });
  assert.equal(plan.status,'PARTIAL_DIAGNOSTIC');
- assert.deepEqual(plan.missingDispositions,['head:B','footer:C']);
+ assert.deepEqual(plan.missingDispositions,['footer:C','head:B']);
  assert.equal(plan.keyUtilization.length,3);
  assert.ok(plan.keyUtilization.find(x=>x.id==='B').reason);
  assert.equal(plan.finSeedCandidate,null);
