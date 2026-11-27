@@ -44,6 +44,9 @@ const globalExtras:SourceClass[]=['active_keys','pending_keys','lcb'];
 export function parseKeyFinUpdCommand(input:string):YaroCommandSequence {
   if(typeof input!=='string'||input.length<8||input.length>240)
     throw Error('YARO_COMMAND_INVALID');
+  // A separated x S is not a Yaro command. Never normalize it into the
+  // pending KEY-local oFxS shorthand.
+  if(/x\s+S(?=\s|x|$)/i.test(input))throw Error('YARO_COMMAND_SEQUENCE_INVALID');
   const compact=input.replace(/\s+/g,'');
   const global=/go$/i.test(compact);
   const scope:KeyScope=global?'global':'local';
