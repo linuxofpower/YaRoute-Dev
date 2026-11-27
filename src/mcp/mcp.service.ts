@@ -1365,7 +1365,9 @@ export class McpService {
         const bytes=await this.tenantRclone.readAuthorizedFinSource(
           this.connectorOwner(),input.connectionId,input.provider,
           input.rootId,input.path);
-        const result=inspectFinSource(bytes,input.sourceKind,input.path);
+        const result=input.sourceKind==='registry'
+          ?inspectNPathsRegistry(bytes,input.path)
+          :inspectFinSource(bytes,input.sourceKind,input.path);
         if(input.expectedSha256&&input.expectedSha256!==result.sha256)
           throw Error('FIN_SOURCE_HASH_MISMATCH');
         return {...result,connectionId:input.connectionId,provider:input.provider,
