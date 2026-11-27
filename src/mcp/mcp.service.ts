@@ -1398,9 +1398,10 @@ export class McpService {
         }
         return {
           schema:'nyx.yaro.public-execution.v1',
-          status:planning?'PARTIAL_DIAGNOSTIC': 'COMPLETE_KEY_ONLY',
+          status:'PARTIAL_DIAGNOSTIC',
           command:parsed.normalized,
-          sourceGrammar:'head_db_v032 / CLI v007 / compact grammar v009',
+          implementationBaseline:'head_db_v032 / CLI v007 / compact grammar v009',
+          canonicalAuthorityVerifiedInRuntime:false,
           pendingAlias:parsed.pendingAlias,
           scope:parsed.scope,stages,
           key:keyResult,
