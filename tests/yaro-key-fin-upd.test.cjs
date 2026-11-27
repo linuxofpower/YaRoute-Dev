@@ -43,6 +43,9 @@ test('inherited Go applies to each step; without Go remains local',()=>{
  assert.deepEqual(parseKeyFinUpdCommand('Nyx fin x upd Go').stages,['fin','upd']);
  assert.deepEqual(parseKeyFinUpdCommand('Nyx upd Go').stages,['upd']);
  assert.deepEqual(parseKeyFinUpdCommand('Nyx key oFxS').stages,['key_oF','key_oS']);
+ assert.equal(parseKeyFinUpdCommand('Nyx key oFxSG').scope,'global');
+ assert.equal(parseKeyFinUpdCommand('Nyx key oFxSL').scope,'local');
+ assert.equal(parseKeyFinUpdCommand('Nyx key oFxSG').normalized,'NyxkeyoFxkeyoSGo');
 });
 
 test('no general xS meaning, F→S reversal, UPD-before-FIN or scope escalation',()=>{
