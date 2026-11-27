@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const AdmZip=require('adm-zip');
 const {createHash}=require('node:crypto');
-const {inspectFinSource}=require('../dist/nyx/fin-source-inspection');
+const {inspectFinSource,reconcileFinSourcePins}=require('../dist/nyx/fin-source-inspection');
 const {TenantRcloneService}=require('../dist/connectors/tenant-rclone.service');
 const H='head_db_v033',B='body_db_v029',F='footer_db_v103';
 const checksum=x=>createHash('sha256').update(x).digest('hex');
@@ -104,3 +104,25 @@ test('provider preflight does not silently enable user/root permissions',()=>wit
   /FIN_SOURCE_PROVIDER_PROBE_REQUIRED/);
  assert.equal(enabled,1);
 }));
+
+test('valid provider-read Head+Body match Footer declared pins but do not claim currentness',()=>{
+ const set=[inspectFinSource(head,'head',H+'.zip'),
+   inspectFinSource(body,'body',B+'.zip'),
+   inspectFinSource(footer,'footer',F+'.zip')];
+ const result=reconcileFinSourcePins(set);
+ assert.equal(result.internallyConsistentWithFooter,true);
+ assert.deepEqual(result.matchedPointers,['head','body']);
+ assert.equal(result.canonicalAuthorityVerified,false);
+ assert.equal(result.canonicalCurrentness,'NOT_VERIFIED');
+ assert.equal(result.pendingKeysAndLcbReconciled,false);
+});
+test('mismatched and duplicated Head cannot pass a FIN source preflight',()=>{
+ const h=inspectFinSource(head,'head',H+'.zip');
+ const b=inspectFinSource(body,'body',B+'.zip');
+ const f=inspectFinSource(footer,'footer',F+'.zip');
+ assert.throws(()=>reconcileFinSourcePins([{...h,sha256:'f'.repeat(64)},b,f]),/FIN_SOURCE_PIN_MISMATCH/);
+ assert.throws(()=>reconcileFinSourcePins([h,h,b,f]),/FIN_SOURCE_CLASS_DUPLICATE/);
+ const partial=reconcileFinSourcePins([f]);
+ assert.equal(partial.internallyConsistentWithFooter,false);
+ assert.deepEqual(partial.missingSourceClasses,['head','body']);
+});
