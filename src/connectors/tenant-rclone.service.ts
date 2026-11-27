@@ -683,6 +683,24 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
 
 
   /**
+   * Read-only provider preflight for a selected owner/root. This verifies
+   * the existing provider session and then advertises that the PROVIDER can
+   * read. It deliberately does not enable user-selected storage:read or
+   * expand selected resource permissions.
+   */
+  async prepareFinSourceRead(ownerId:string,connectionId:string,
+    provider:TenantRcloneProvider,resourceId:string) {
+    if(process.env.NYX_DEPLOYMENT_MODE!=='public' ||
+       process.env.NYX_PUBLIC_NYX_SOURCE_READ_ENABLED==='false')
+      throw Error('FIN_SOURCE_READ_DISABLED');
+    const status=await this.probeAuthorizedRoot(
+      ownerId,connectionId,provider,resourceId,'');
+    if(status!=='verified')throw Error('FIN_SOURCE_PROVIDER_PROBE_REQUIRED');
+    return this.connectors.attestFinSourceReadAvailable(
+      ownerId,connectionId,provider);
+  }
+
+  /**
    * Opt-in exact-byte read of one file for Yaro FIN source inspection.
    * Requires independently verified provider capability, user-enabled
    * storage:read, and exact owner-selected root/resource authorization.
@@ -692,7 +710,7 @@ export class TenantRcloneService implements OnModuleInit, OnModuleDestroy {
   async readAuthorizedFinSource(ownerId:string,connectionId:string,
     provider:TenantRcloneProvider,resourceId:string,relativePath:string) {
     if(process.env.NYX_DEPLOYMENT_MODE!=='public' ||
-       process.env.NYX_PUBLIC_NYX_SOURCE_READ_ENABLED!=='true')
+       process.env.NYX_PUBLIC_NYX_SOURCE_READ_ENABLED==='false')
       throw Error('FIN_SOURCE_READ_DISABLED');
     const clean=tenantRclonePath(relativePath);
     if(!clean||clean.endsWith('/')||clean!==relativePath||
