@@ -1,0 +1,22 @@
+name: NYX Public MCP Security Boundary
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-mcp-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate anonymous-denial and metadata assertions locally
+        run: node --test tests/nyx-public-access-audit.test.cjs
+      - name: Probe public Dev endpoint without credentials
+        run: node scripts/nyx-public-access-audit.mjs
